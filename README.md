@@ -1,7 +1,7 @@
 # BorgIOS
 Borg Inertnet OS -  A peer 2 peer autonomous network operating system for distributed cloud compute 
 
-#My Conversation With Copiolet Re BorgIOS 
+#My Conversation With Copilot Re BorgIOS 
 
 ## You
 Can you help me create a white paper for this software project "BorgIOS
