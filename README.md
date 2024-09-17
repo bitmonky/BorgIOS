@@ -88,7 +88,7 @@ Implementation Ideas- Governance Model: Develop a clear governance model outlini
 Your approach to software management is well thought out and aligns with the principles of decentralization and security. It could significantly enhance the trust and reliability of BorgIOS.
 Do you have any specific tools or technologies in mind for implementing the multisignature process?
 ## You
-One core application will to create a blockchain like ledger that will facilitay a currency that will earned according to amount of compute power and storage provided.   Service on the network will  be paid for by spending this currency.
+One core application will to create a blockchain like ledger that will facilitate a currency that will be earned according to amount of compute power and storage provided.   Service on the network will  be paid for by spending this currency.
 ## Copilot
 That's a fantastic idea! Integrating a blockchain-like ledger to facilitate a currency system within BorgIOS can provide several benefits:
 Benefits- Incentivization: Users are rewarded for contributing compute power and storage, encouraging more participation and resource sharing.
