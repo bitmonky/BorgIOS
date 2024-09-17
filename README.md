@@ -73,7 +73,7 @@ Implementation Ideas- Backup Solutions: Encourage users to implement robust back
 Your approach emphasizes security and uniformity, which are crucial for a distributed network operating system. It's a bold strategy that could set BorgIOS apart, but it will be important to address user concerns and provide strong support.
 What do you think about these considerations? Are there any specific strategies you have in mind to address potential user concerns?
 ## You
-Core software for the net work will be stored on the network as a repository and will require majority multsignares to make changes to the software.
+Core software for the net work will be stored on the network as a repository and will require majority multisignatures to make changes to the software.
 ## Copilot
 That's a robust and democratic approach to managing the core software of BorgIOS! Requiring majority multisignatures for changes ensures that no single entity can unilaterally alter the software, enhancing security and trust within the network. Here are some key points and considerations for this feature:
 Benefits- Security: Multisignature approval reduces the risk of unauthorized or malicious changes to the software.
