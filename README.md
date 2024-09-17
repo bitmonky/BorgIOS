@@ -130,7 +130,7 @@ Potential Challenges- Network Latency: Retrieving shards from multiple nodes mig
 Your approach to file storage aligns well with the principles of distributed computing and can significantly enhance the robustness and security of BorgIOS. It's an exciting feature that could set your network operating system apart.
 Do you have any specific technologies or frameworks in mind for implementing the sharding and retrieval process?
 ## You
-User of the network will have to connect to the network using a digital pasport that they can install on their device.  the passport will run in a browser and access the network by proxy on the devices localhost where request will require a digital signature for authentication
+Users of the network will have to connect to the network using a digital pasport that they can install on their device.  the passport will run in a browser and access the network by proxy on the devices localhost where request will be make on the clients behalf and will by digitaly signing request before sending them to the network.
 ## Copilot
 That's a great idea! Using a digital passport for network access adds a strong layer of security and user authentication. Here are some key points and considerations for implementing this feature:
 Benefits- Enhanced Security: Digital signatures ensure that only authenticated users can access the network, reducing the risk of unauthorized access.
