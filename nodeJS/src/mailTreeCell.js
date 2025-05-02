@@ -1,10 +1,3 @@
-/***************************************************
-PeerTree App - MailTreeTreeCell
-Message Delivery System Using PeerTree Nodes As Post Office Boxes 
-allowing users to send and recieve mail with out an email address or phone 
-number;
-*/
-
 const fs = require('fs');
 
 const options = {
@@ -13,63 +6,45 @@ const options = {
 };
 //const {MkyNetNode,MkyNetObj,MkyNetTab}   = require('./peerTree');
 const {PeerTreeNet}     = require('./peerTree');
-const {shardTreeObj,shardTreeCellReceptor} = require('./shardTreeObj.js');
+const {mailTreeObj,mailTreeCellReceptor} = require('./mailTreeObj.js');
 
 /*******************
 Create PeerTree Network Peer
 *******************
 */
 
-  var isRoot = process.argv[3];
+  var parm = process.argv[3];
 
   var reset = null
-  if (isRoot == 'rootReset'){
-    isRoot == 'root';
+  if (parm == 'rootReset'){
     reset = true;
   }
-  if (isRoot == 'rootRebuild'){
-    isRoot == 'root';
-    reset = 'rebuild';
-  }
-  const peerNet = new PeerTreeNet(options,'shardNet',13393,13394);
-  peerNet.nodeType = 'shardCell';
+  const mkyNet = new PeerTreeNet(options,'mailCell',13393,13394);
+  mkyNet.nodeType = 'mailCell';
 
-  if (isRoot == 'reset'){
-    isRoot = null;
-    reset = true;
-  }
-    
-main();
+  main();
+
 async function main(){
-  await peerNet.netStarted();
-  var rootBranch = false;
-  if (!isRoot){
-    startShardCell(rootBranch);
-  }
-  else {
-    rootBranch = true;
-    startShardCell(rootBranch);
-  }
+    await mkyNet.netStarted();
+    startMailCell();
 }
-var rBranch = null;
-function startShardCell(){
-    var scell = new shardTreeObj(peerNet,reset);
-    const scellReceptor = new shardTreeCellReceptor(scell,13395);
-    scell.attachReceptor(scellReceptor);
-    if (rBranch){
-      console.log('\nNEW>>>SETTING shardCell TO ROOT');
-      scell.isRoot = true;
-    }
-    scell.net.on('mkyReq',(res,j)=>{
-      scell.handleReq(res,j);
+function startMailCell(){
+    var mcell = new mailTreeObj(mkyNet,reset);
+    const mcellReceptor = new mailTreeCellReceptor(mcell,13395);
+    mcell.attachReceptor(mcellReceptor);
+
+    mcell.net.on('mkyReq',(res,j)=>{
+      mcell.handleReq(res,j);
     });
-    scell.net.on('bcastMsg',j =>{
-      scell.handleBCast(j);
+    mcell.net.on('bcastMsg',j =>{
+      mcell.handleBCast(j);
     });
-    scell.net.on('mkyReply', j =>{
-      scell.handleReply(j);
+    mcell.net.on('mkyReply', j =>{
+      mcell.handleReply(j);
     });
-    scell.net.on('xhrFail', j =>{
-      scell.handleXhrError(j);
+    mcell.net.on('xhrFail', j =>{
+      console.log('xhrFail is->',j);
+      mcell.handleXhrError(j);
     });
 }
+

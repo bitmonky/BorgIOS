@@ -103,6 +103,7 @@ class BorgMailer {
     return { key: derivedKey.toString('base64'), salt: salt};
   }
 }
+/*
 bm = new BorgMailer();
 
 const hpass = bm.hardenPassword('1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ');
@@ -125,5 +126,8 @@ console.log(c);
 let d = bm.decrypt(c.data,'04f59404d35e4f48e4f9e49fbc05e7276e03af12730f518a35c62d9beb9d3f76',c.iv,c.salt);
 console.log(c.toString());
 console.log(d.toString());
-
-module.exports.BorgECMail = BorgECMail;
+*/
+module.exports = {
+  BorgECMail,
+  BorgMailer
+};

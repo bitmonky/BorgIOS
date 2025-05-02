@@ -6,6 +6,7 @@ class BorgAccessAPI {
         this.PTC_memRECEPTOR   = "https://172.105.110.34:1335";
         this.PTC_shardRECEPTOR = "https://139.177.195.184:13355";
         this.PTC_ftreeRECEPTOR = "https://139.177.195.184:13381";
+        this.PTC_mailRECEPTOR  = "https://139.177.195.184:13395/newREQ"; 
         this.PTC_maxWordLength = 45;
 
         // Create an Axios instance with an agent that ignores SSL cert verification
@@ -140,7 +141,59 @@ class BorgAccessAPI {
   }
   ptreeMakeSearchKey(j) {
      return require('crypto').createHash('sha256').update(JSON.stringify(j)).digest('hex');
-   }
-}
+  }
+  async peerMailGetMyMsgs(muid, sig) {
+        const req = { req: 'getMyMail', ownMUID: muid, sig: sig };
 
+        try {
+            const response = await axios.post(this.PTC_mailRECEPTOR, { msg: req });
+            return response.data;
+        } catch (error) {
+            console.error("Error fetching mail:", error);
+            return null;
+        }
+  }
+
+  async peerMailSendMsg(toMuid, mail, sig) {
+        const req = { req: 'sendMail', toMUID: toMuid, sig: sig, mail: mail };
+
+        try {
+            const response = await axios.post(this.PTC_mailRECEPTOR, { msg: req });
+            return response.data;
+        } catch (error) {
+            console.error("Error sending mail:", error);
+            return null;
+        }
+    }
+
+  async peerMailGetInboxKey(muid) {
+        const req = { msg: { req: "getInBoxKey", ownMUID: muid } };
+
+        try {
+            const response = await axios.post(this.PTC_mailRECEPTOR, req);
+            return response.data;
+        } catch (error) {
+            console.error("Error retrieving inbox key:", error);
+            return null;
+        }
+    }
+
+  async peerMailRegisterInBox(muid, token, publicKey, sig) {
+        const p = {
+            inboxMUID: muid,
+            nCopies: 3,
+            sig: { ownMUID: muid, signature: sig, token: token, pubKey: publicKey }
+        };
+
+        const req = { msg: { req: "registerInBox", ...p } };
+
+        try {
+            const response = await axios.post(this.PTC_mailRECEPTOR, req);
+            return response.data;
+        } catch (error) {
+            console.error("Error registering inbox:", error);
+            return null;
+        }
+  }
+}
 module.exports.BorgAccessAPI = BorgAccessAPI;

@@ -41,7 +41,22 @@ function calculateHash(txt) {
   const crypto = require('crypto');
   return crypto.createHash('sha256').update(txt).digest('hex');
 }
+function deriveKey(password) {
+    const salt = crypto.randomBytes(16); // Generate a random salt for additional security
+    const iterations = 100000; // More iterations = stronger security
+    const keyLength = 32; // AES-256 requires a 256-bit key (32 bytes)
+    const digest = 'sha256'; // Hashing algorithm used in PBKDF2
 
+    const derivedKey = crypto.pbkdf2Sync(password, salt, iterations, keyLength, digest);
+    return { key: derivedKey.toString('hex'), salt: salt.toString('hex') };
+}
+
+// Example usage
+const bitcoinAddress = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"; // Example Bitcoin address
+const derived = deriveKey(bitcoinAddress);
+
+console.log("Derived Key:", derived.key);
+console.log("Salt:", derived.salt);
 /*********************************************
 PeerMail Receptor Node: listens on port 1335
 ==============================================
@@ -113,7 +128,7 @@ class peerMailToken{
 }; 
 
 class mailTreeCellReceptor{
-  constructor(peerTree,recPort=1335){
+  constructor(peerTree,recPort){
     this.peer = peerTree;
     this.port = recPort;
     this.allow = ["127.0.0.1"];
@@ -166,15 +181,19 @@ class mailTreeCellReceptor{
 	      }	 
 	      res.setHeader('Content-Type', 'application/json');
               res.writeHead(200);
+              if (j.msg.req == 'getInBoxKey'){
+                 this.reqInBoxKey(j.msn,res);
+                 return;
+              }
               if (j.msg.req == 'registerInBox'){
                 this.reqRegisterInBox(j.msg,res);
                 return;
               }
-              if (j.msg.req == 'storeMail'){
+              if (j.msg.req == 'sendMail'){
                 this.reqStoreMail(j.msg,res);
                 return;
 	      }	      
-              if (j.msg.req == 'requestMail'){
+              if (j.msg.req == 'getMyMail'){
                 this.reqRetrieveMail(j.msg,res);
                 return;
               }
@@ -244,34 +263,46 @@ class mailTreeCellReceptor{
     }
     return decodeURIComponent(str);
   }
+  async reqInBoxKey(j,res){
+    const pubKey = await this.peer.receptorReqInBoxKey(j);
+    if (pubKey){
+      res.end(JSON.stringify({result:true,pubKey:pubKey}));
+      return;
+    }
+    res.end(JSON.stringify({result:false}));
+  }
   async reqRegisterInBox(j,res){
-      var IPs = await this.peer.receptorReqNodeList(j);
-      if (IPs.length == 0){
-        res.end('{"result":false,"nRecs":0,"repo":"No Nodes Available"}');
+    const isRegistered = await this.peer.receptorReqInBoxKey({ownMUID:j.ownMUID});
+    if (isRegistered){
+      res.end(JSON.stringify({result:true}));
+    }
+    var IPs = await this.peer.receptorReqNodeList(j);
+    if (IPs.length == 0){
+      res.end('{"result":false,"nRecs":0,"repo":"No Nodes Available"}');
+      return;
+    }
+    var n = 0;
+    var hosts = [];
+    var nStored = 0;
+    for (var IP of IPs){
+      try {
+        var qres = await this.peer.receptorReqRegisterInBox(j,IP);
+        if (qres){
+          nStored = nStored +1;
+          hosts.push({host:qres.remMUID,ip:qres.remIp});
+        }
+      }
+      catch(err) {
+        console.log('repo storage failed on:',IP);
+      }
+      if (n==IPs.length -1){
+        console.log('{"result":"repoOK","nStored":'+nStored+',"request":'+JSON.stringify(j)+',"hosts":'+JSON.stringify(hosts)+'}');
+        res.end('{"result":true,"nStored":'+nStored+'}');
         return;
       }
-      var n = 0;
-      var hosts = [];
-      var nStored = 0;
-      for (var IP of IPs){
-        try {
-          var qres = await this.peer.receptorReqRegisterInBox(j,IP);
-          if (qres){
-            nStored = nStored +1;
-            hosts.push({host:qres.remMUID,ip:qres.remIp});
-          }
-        }
-        catch(err) {
-          console.log('repo storage failed on:',IP);
-        }
-        if (n==IPs.length -1){
-          console.log('{"result":"repoOK","nStored":'+nStored+',"repo":'+JSON.stringify(j)+',"hosts":'+JSON.stringify(hosts)+'}');
-          resolve('OK');
-          return;
-        }
-        n = n + 1;
-      }
-      return;
+      n = n + 1;
+    }   
+    return;
   } 
   async reqRegisterInbox(j, res) {
     try {
@@ -379,10 +410,16 @@ class mailTreeCellReceptor{
 End Receptor Code
 ==============================
 */
+var dba = null
+try {dba =  fs.readFileSync('dbconf');}
+catch {console.log('database config file `dbconf` NOT Found.');}
+try {dba = JSON.parse(dba);}
+catch {console.log('Error parsing `dbconf` file');}
+
 var con = mysql.createConnection({
   host:"127.0.0.1",
-  user: "peerMailDBA",
-  password: "018296a02451566afcec290b0e578c86f835",
+  user: dba.user,
+  password: dba.pass,
   database: "mailTree",
   dateStrings: "date",
   multipleStatements: true,
@@ -628,6 +665,9 @@ class mailTreeObj {
           var qres = {req : 'helloBack', mNodeID : this.net.peerMUID };
           this.net.sendReply(j.remIp,qres);
         }
+        if (j.msg.req == 'sendInBoxKey'){
+          this.doSendInBoxKey(j.msg,r.remIp);
+        }
         if (j.msg.req == 'sendMail'){
           this.doSendMailToOwner(j.msg,j.remIp);
         }
@@ -679,12 +719,39 @@ class mailTreeObj {
     const publicKey = ec.keyFromPublic(sig.pubKey,'hex');
     return publicKey.verify(calculateHash(sig.token), sig.signature);
   }
-  doRegisterInBox(j,remIp){
+  doSendInBoxKey(j,remIp){
+     var res = {
+       req : 'sendInBoxKeyResult',
+       result : false
+     }
+     if (this.isValidSig(j.sig)){
+       //*store the public key and reply true
+       const SQL = `select msubPubKey from mailTree.mailSubscriber where msubMUID = '${j.ownMUID}'`;
+       con.query(SQL , (err, result,fields)=>{
+         if (err){
+           console.log(err);
+           result.msg = err;
+         }
+         else {
+           if (result.length > 0){
+             res.result = true;
+             res.publicKey = result[0].msubPubKey;
+           }
+         }
+         this.net.sendReply(remIp,JSON.stringify(res));
+       });
+     }
+     else {
+        res.msg = 'invalid signature mailBox not created';
+        this.net.sendReply(remIp,JSON.stringify(res));
+     }
+   }
+   doRegisterInBox(j,remIp){
      var res = {
        req : 'registerInBoxResult',
        result : false
      }
-     if (this.isValidSig(j.sig){
+     if (this.isValidSig(j.sig)){
        //*store the public key and reply true
        const SQL = `insert into mailTree.mailSubscriber (msubMUID,msubPubKey) values ('${j.sig.ownMUID}','${j.sig.pubKey}')`;
        con.query(SQL , (err, result,fields)=>{
@@ -702,7 +769,7 @@ class mailTreeObj {
         res.msg = 'invalid signature mailBox not created';
         this.net.sendReply(remIp,JSON.stringify(res));
      }  
- }
+  }
   doSendMailToOwner(j,remIp){
      //console.log('mail request from: ',remIp);
      //console.log('here is the req..',j);
@@ -847,6 +914,30 @@ class mailTreeObj {
          }
        }
      });
+  }
+  receptorReqInBoxKey(j){
+    return new Promise( (resolve,reject)=>{
+      const gtime = setTimeout( ()=>{
+        console.log('Request User InBoxKey Request Timeout:',j);
+        resolve(null);
+      },1000);
+
+      const bcast = {
+        to   : 'mailCells',
+        req  : 'sendInBoxKey',
+        MUID : j.ownMUID
+      }
+      this.net.broadcast(req);
+      this.net.once('mkyReply', r =>{
+        //console.log('mkyReply is:',r);
+        if (r.req == 'sendInBoxKeyResult'){
+          if (r.result === true){
+            clearTimeout(gtime);
+            resolve(r.publicKey);
+          } 
+        }
+      });
+    });
   }
   receptorReqRegisterInBox(j,toIp){
     return new Promise( (resolve,reject)=>{
