@@ -189,6 +189,9 @@ class ftreeFileMgrCellReceptor{
     });
     bserver.listen(this.port);
     console.log('ftreeFileMgr fMgr Receptor running on port:'+this.port);
+    //this.doLocalHealthCheck();
+    //this.doBeginLocalFolderHealthCheck();
+    //this.doBeginLocalFileMgrHealthCheck();
     this.doRepoHealthCheck();
   }
   processRequest(j,res){
@@ -268,6 +271,158 @@ class ftreeFileMgrCellReceptor{
       this.doRepoHealthCheck();
     },repoHealthCheckInterval*1000);
   }
+  mergRepo(results){
+    const mergedResults = results.reduce((acc, { result }) => {
+      if (!acc.some(r => r.repoID_master === result.repoID_master)) {
+        acc.push(result);
+      }
+      return acc;
+    },[]);
+    if (Array.isArray(mergedResults[0])) {
+      return mergedResults[0];
+    }
+    return [];
+  }
+  async doLocalHealthCheck(){
+    console.log('Starting Repo Local Health Checks .:');
+    var offset = 0;
+    var limit  = 50;
+    var results = await this.peer.receptorReqReadMyRemoteRepos(this.shardToken.shardOwnMUID,limit,offset);
+    console.log('nonmerg',results);
+    results = this.mergRepo(results);
+    console.log('MERGEDG',results);
+    while (results.length > 0){
+      offset = offset + limit;
+      this.doReBuildLocalRepo(results);
+      results = await this.peer.receptorReqReadMyRemoteRepos(this.shardToken.shardOwnMUID,limit,offset);
+      results = this.mergRepo(results);
+    }
+    const dotime = setTimeout( ()=>{
+      this.doLocalHealthCheck();
+    },1*60*1000);
+    return;
+
+    var myRepos  = await this.doReadMyRepoList();
+    if (myRepos) {
+      for (const rec of myRepos) {
+        console.log('repoHealthCkc .:', rec.repoName);
+        const j = {
+          repo: {
+            data   : { repoCopies: availTranNodes },
+            name   : rec.repoName,
+            from   : rec.repoOwner,
+            repoID_master : rec.repoID_master
+          },
+        };
+
+        const IPs = await this.peer.getActiveRepoList(j);
+        console.log('getActiveRepoList::result .:', IPs);
+        const cloned  = await this.hckReqCloneRepo(j,IPs);
+        const folders = await this.doFolderHealthCheck(j);
+        const files   = await this.doFileHealthCheck(j);
+        const shards  = await this.doShardHealthCheck(j);
+      }
+    }
+    const gtime = setTimeout( ()=>{
+      this.doRepoHealthCheck();
+    },repoHealthCheckInterval*1000);
+  }
+  mergRepoFolders(results) {
+    // Reduce results to merge unique entries based on repoID_master
+    const mergedResults = results.reduce((acc, { result }) => {
+        if (!acc.some(r => r.repoID_master === result.repoID_master && r.rfoldID_master === result.rfoldID_master)) {
+            acc.push(result);
+        }
+        return acc;
+    }, []);
+
+    // Return the merged data properly
+    if (Array.isArray(mergedResults[0])) {
+        return mergedResults[0];
+    }
+
+    return [];
+  }
+  async doBeginLocalFolderHealthCheck(){
+     const repos = await this.doReadMyRepoList();
+     for (const repo of repos){
+       await this.doLocalFolderHealthCheck(repo.repoID_master);
+     }
+    // Schedule next health check after 1 minute
+    setTimeout(() => this.doBeginLocalFolderHealthCheck(), 60 * 1000);
+  }
+  doLocalFolderHealthCheck(repoID_master) {
+    return new Promise(async(resolve,reject) => {
+      console.log('Starting Repo Folder Local Health Checks .:');
+
+      let offset = 0;
+      const limit = 50;
+
+      while (true) {
+          // Fetch paginated remote folder data
+          let results = await this.peer.receptorReqReadMyRemoteFolders(repoID_master, limit, offset);
+          results = this.mergRepoFolders(results);
+
+          // If no more records, break the loop
+          if (results.length === 0) break;
+
+          // Process the current batch
+          this.doReBuildLocalRepoFolders(results);
+
+          // Move to the next batch
+          offset += limit;
+      }
+      resolve(true);
+    });
+  }
+  mergRepoFileMgr(results) {
+    // Reduce results to merge unique entries based on repoID_master,smgrID_master
+    const mergedResults = results.reduce((acc, { result }) => {
+        if (!acc.some(r => r.repoID_master === result.repoID_master && r.smgrID_master === result.smgrID_master)) {
+            acc.push(result);
+        }
+        return acc;
+    }, []);
+
+    // Return the merged data properly
+    if (Array.isArray(mergedResults[0])) {
+        return mergedResults[0];
+    }
+
+    return [];
+  }
+  async doBeginLocalFileMgrHealthCheck(){
+     const repos = await this.doReadMyRepoList();
+     for (const repo of repos){
+       await this.doLocalFileMgrHealthCheck(repo.repoID_master);
+     }
+    // Schedule next health check after 1 minute
+    setTimeout(() => this.doBeginLocalFileMgrHealthCheck(), 10 * 60 * 1000);
+  }
+  doLocalFileMgrHealthCheck(repoID_master) {
+    return new Promise(async(resolve,reject) => {
+      console.log('Starting Repo FileMgr Local Health Checks .:');
+
+      let offset = 0;
+      const limit = 50;
+
+      while (true) {
+        // Fetch paginated remote folder data
+        let results = await this.peer.receptorReqReadMyRemoteFileMgr(repoID_master, limit, offset);
+        results = this.mergRepoFileMgr(results);
+
+        // If no more records, break the loop
+        if (results.length === 0) break;
+
+        // Process the current batch
+        this.doReBuildLocalRepoFileMgr(results);
+
+        // Move to the next batch
+        offset += limit;
+      }
+      resolve(true);
+    });
+  }
   hckReqCloneRepo(j,excludeIps){
     return new Promise( async (resolve,reject)=>{
       var maxClones = maxTranCopies;
@@ -332,7 +487,7 @@ class ftreeFileMgrCellReceptor{
             from   : r.repo.from,
             repoID_master : r.repo.repoID_master,
             folder : {
-              fmasterID : rec.rfoldID,
+              fmasterID : rec.rfoldID_master,
               name : rec.rfoldName,
               path : rec.rfoldPath,
               parent : rec.rfoldParentID
@@ -478,23 +633,24 @@ class ftreeFileMgrCellReceptor{
     if (myRepoFiles) {
       for (const rec of myRepoFiles) {
         console.log('repoHealthCkcFiles:', r.repo.name, rec.smgrFileName);
-      
-        const j = {
-          repo: {
-            data: { repoCopies: availTranNodes },
-            name: r.repo.name,
-            from: r.repo.from,
-            repoID_master: r.repo.repoID_master,
-            file: {
-              fileID_master: rec.smgrID_master,
-              name: rec.smgrFileName,
-              data : rec
+        if (rec.smgrID_master !== null) {
+          const j = {
+            repo: {
+              data: { repoCopies: availTranNodes },
+              name: r.repo.name,
+              from: r.repo.from,
+              repoID_master: r.repo.repoID_master,
+              file: {
+                fileID_master: rec.smgrID_master,
+                name: rec.smgrFileName,
+                data : rec
+              }
             }
-          }
-        };
-        const IPs = await this.peer.getActiveRepoFile(j);
-        console.log('getActiveRepoFileList::result:', IPs);
-        const cloned = await this.hckReqCloneRepoFile(j, IPs);
+          };
+          const IPs = await this.peer.getActiveRepoFile(j);
+          console.log('getActiveRepoFileList::result:', IPs);
+          const cloned = await this.hckReqCloneRepoFile(j, IPs);
+        }
       }
     }
   }
@@ -879,6 +1035,34 @@ class ftreeFileMgrCellReceptor{
       });
     });
   }
+  repoFolderExists(masterID,rfoldMasterID){
+    return new Promise((resolve,reject)=>{
+      var SQL = "select count(*)nRec FROM `ftreeFileMgr`.`tblRepoFolder` where repoID_master  = '"+masterID+"' and rfoldID_master = '"+rfoldMasterID+"'";
+      console.log('repoFOLDEREXISTS',SQL);
+      con.query(SQL , (err, result,fields)=>{
+        if (err){
+          console.log(err);
+          resolve(null);
+          return;
+        }
+        resolve(result[0].nRec);
+      });
+    });
+  }
+  repoFileMgrExists(masterID,rfileMgrMasterID){
+    return new Promise((resolve,reject)=>{
+      var SQL = "select count(*)nRec FROM `ftreeFileMgr`.`tblShardFileMgr` where repoID_master  = '"+masterID+"' and smgrID_master = '"+rfileMgrMasterID+"'";
+      console.log('repoFILEMGREXISTS',SQL);
+      con.query(SQL , (err, result,fields)=>{
+        if (err){
+          console.log(err);
+          resolve(null);
+          return;
+        }
+        resolve(result[0].nRec);
+      });
+    });
+  }
   repoFileExists(filename,rname,owner,path){
     return new Promise((resolve,reject)=>{
       var SQL = "select count(*)nRec FROM `ftreeFileMgr`.`tblRepo` "+
@@ -1038,11 +1222,11 @@ class ftreeFileMgrCellReceptor{
       var SQL = "SELECT SubR.rfoldName, SubR.rfoldParentID " + 
       "FROM `ftreeFileMgr`.`tblRepoFolder` R " +
       "INNER JOIN ( " +
-      "SELECT rfoldName, rfoldID,rfoldParentID " +
+      "SELECT rfoldName,rfoldID_master, rfoldParentID " +
       "FROM `ftreeFileMgr`.`tblRepoFolder` " +
       ") AS SubR " +
-      "ON SubR.rfoldID = R.rfoldParentID " +
-      "WHERE R.rfoldID = "+folderID;
+      "ON SubR.rfoldID_master = R.rfoldParentID " +
+      "WHERE R.rfoldID_master = "+folderID;
       console.log(SQL);
       con.query(SQL , async (err, result,fields)=>{
         if (err){
@@ -1102,6 +1286,96 @@ class ftreeFileMgrCellReceptor{
         }
         else {
           resolve(newKeyID);
+        }
+      });
+    });
+  }
+  doReBuildLocalRepo(results){
+     results.forEach((rec) => {
+       this.doInsertRepo(rec);
+     });
+  }  
+  async doInsertRepo(rec){
+    const repo = await this.repoExists(rec.repoName,rec.repoOwner);
+    if (repo){
+      return;
+    }
+    var SQL = `INSERT INTO ftreeFileMgr.tblRepo 
+      (repoID_master,repoName,repoPubKey,repoOwner,repoLastUpdate,repoSignature,repoHash,repoCopies,repoType) 
+      VALUES ('${rec.repoID_master}','${rec.repoName}','${rec.repoPubKey}','${rec.repoOwner}','${rec.repoLastUpdate}','${rec.repoSignature}','${rec.repoHash}',${rec.repoCopies},'Master');`;
+    con.query(SQL , (err, result,fields)=>{
+      if (err){
+        console.log(err);
+        return null;
+      }
+      else {
+        return true;
+      }
+    });
+  }
+  async doReBuildLocalRepoFolders(results) {
+    for (const rec of results) {
+        await this.doInsertRepoFolders(rec);
+    }
+  }
+
+  doInsertRepoFolders(rec) {
+    return new Promise(async (resolve,reject) => {
+      const folderExists = await this.repoFolderExists(rec.repoID_master,rec.rfoldID_master);
+      console.log('folderExists',folderExists);
+      if (folderExists) {
+        resolve(null);
+        return;
+      }
+
+      var SQL = `INSERT INTO ftreeFileMgr.tblRepoFolder 
+        (repoID_master, rfoldID_master, rfoldRepoID, rfoldName, rfoldParentID) 
+        VALUES ('${rec.repoID_master}', ${rec.rfoldID_master}, ${rec.rfoldRepoID}, '${rec.rfoldName}', ${rec.rfoldParentID});`;
+      console.log(SQL);
+      con.query(SQL, (err, result, fields) => {
+        if (err) {
+          console.log('Error inserting folder:', err);
+          resolve(null);
+          return;
+        }
+        else {
+          resolve(true);
+          return;
+        }
+      });
+    });
+  }
+  async doReBuildLocalRepoFileMgr(results) {
+    for (const rec of results) {
+        await this.doInsertRepoFileMgr(rec);
+    }
+  }
+
+  doInsertRepoFileMgr(rec) {
+    return new Promise(async (resolve,reject) => {
+      const fileMgrExists = await this.repoFileMgrExists(rec.repoID_master,rec.smgrID_master);
+      console.log('fileMgrExists',fileMgrExists);
+      if (fileMgrExists) {
+        resolve(null);
+        return;
+      }
+
+    var SQL = `INSERT INTO ftreeFileMgr.tblShardFileMgr 
+      (repoID_master, smgrID_master, smgrRepoID, smgrFileName, smgrCheckSum, smgrDate, smgrExpires, smgrEncrypted, smgrFileType, smgrFileSize, 
+      smgrFVersionNbr, smgrSignature, smgrShardList, smgrFileFolderID, smgrFilePath) 
+      VALUES ('${rec.repoID_master}', ${rec.smgrID_master}, ${rec.smgrRepoID}, '${rec.smgrFileName}', '${rec.smgrCheckSum}',${rec.smgrDate ? `'${rec.smgrDate}'` : 'NULL'}, 
+      ${rec.smgrExpires ? `'${rec.smgrExpires}'` : 'NULL'}, ${rec.smgrEncrypted}, '${rec.smgrFileType}', ${rec.smgrFileSize}, ${rec.smgrFVersionNbr}, '${rec.smgrSignature}', 
+      '${rec.smgrShardList}', ${rec.smgrFileFolderID}, '${rec.smgrFilePath}');`;
+      console.log(SQL);
+      con.query(SQL, (err, result, fields) => {
+        if (err) {
+          console.log('Error inserting folder:', err);
+          resolve(null);
+          return;
+        }
+        else {
+          resolve(true);
+          return;
         }
       });
     });
@@ -1258,15 +1532,26 @@ class ftreeFileMgrCellReceptor{
           resolve(false);
         }
         else {
-          resolve (true);
-        }
+          const sfilID_master = result.insertId;
+          
+          const uSQL = `update ftreeFileMgr.tblShardFiles set sfilID_master = ${sfilID_master} where sfilID = ${result.insertId}`;
+          con.query(uSQL , async (err, result,fields)=>{
+            if (err){
+              console.log(err);
+              resolve(false);
+            }
+            else { 
+              resolve (true);
+            }
+          });
+        }   
       });
     });
   }
-  async insertLocalFileShards(shards,fileID,repoID_master,con){
+  async insertLocalFileShards(shards,fileID,repoID_master,con,sfilID_master){
     var result = false;
     for(let i = 0; i < shards.length; i++) {
-      result = await this.insertLocalFileShard(shards[i],fileID,repoID_master,i,con); 
+      result = await this.insertLocalFileShard(shards[i],fileID,repoID_master,i,con,sfilID_master); 
       if (!result){
         break;
       }      
@@ -1356,23 +1641,36 @@ class ftreeFileMgrCellReceptor{
       // Update *** the smgrFileSize field is now used to store the file pointer for random access.
       f.chunksize = f.chunksize ?? 0;
 
-      var SQL = "INSERT INTO `ftreeFileMgr`.`tblShardFileMgr` (`repoID_master`,`smgrFileName`,`smgrCheckSum`,`smgrDate`,`smgrExpires`,`smgrEncrypted`,"+
-        "`smgrFileType`,`smgrFileSize`,`smgrFVersionNbr`,`smgrSignature`,`smgrShardList`,`smgrFileFolderID`,`smgrFilePath`) "+
-        "VALUES ('"+repoID_master+"','"+f.filename+"','"+f.checksum+"',now(),now(),'"+f.encrypt+"','"+f.ftype+"',"+
-        f.chunksize+",0,'NA','NA',"+repo.folderID+",'"+repo.path+"');"+
-        "SELECT LAST_INSERT_ID() AS newRFileID;";
+      if (await this.repoFileExists(f.filename,repo.name,repo.from,repo.path) > 0){
+        resolve(`Insert File Record Failed ${f.filename}, repo: ${repo.name} path:${repo.path}`);
+        return;
+      }
+      
+      const SQL = `INSERT INTO tblShardFileMgr 
+        (repoID_master, smgrFileName, smgrCheckSum, smgrDate, smgrExpires, smgrEncrypted, 
+        smgrFileType, smgrFileSize, smgrFVersionNbr, smgrSignature, smgrShardList, smgrFileFolderID, smgrFilePath) 
+        VALUES (?, ?, ?, NOW(), NOW(), ?, ?, ?, 0, 'NA', 'NA', ?, ?);
+      `;
+
+      // Parameters to safely pass values
+      const params = [
+        repoID_master,
+        f.filename,
+        f.checksum,
+        f.encrypt,
+        f.ftype,
+        f.chunksize,
+        repo.folderID === 'null' || repo.folderID === undefined ? null : repo.folderID,
+        repo.path
+      ];
       return pool.getConnection((err, con)=>{
         if (err){ return dbConFail(resolve,'InsertLocalRepFile::getConnection Failed');}
-        return con.query(SQL , async (err, result,fields)=>{
+        return con.query(SQL,params, async (err, result,fields)=>{
           if (err){
+            console.log(err,SQL,params);
             return dbFail(con,resolve,'Insert File Record Failed'+SQL);
           }
-          var newRFileID = null;
-          result.forEach((rec,index)=>{
-           if(index === 1){
-             newRFileID = rec[0].newRFileID;
-           }
-          });
+          var newRFileID = result.insertId;
           if (newRFileID){
             newRFileID = await this.updateTableMasterID(newRFileID,'tblShardFileMgr','smgrID');
             if (!newRFileID){
@@ -1699,7 +1997,7 @@ class ftreeFileMgrObj {
     if (con.state === 'disconnected') {
       await con.connect();
     }
-    //console.log('bcast received: ',this.net,j);
+    //console.log('bcast received: ',j);
     if (!j.msg.to) {return;}
     if (j.remIp == this.net.nIp) {console.log('ignoring bcast to self',this.net.nIp);return;} // ignore bcasts to self.
     if (j.msg.to == 'ftreeCells'){
@@ -1709,6 +2007,15 @@ class ftreeFileMgrObj {
         }
         if (j.msg.req == 'sendActiveRepo'){
           this.doSendActiveRepo(j.msg,j.remIp);
+        }
+        if (j.msg.req == 'sendMyRepoList'){
+          this.doSendMyRepoList(j.msg,j.remIp);
+        } 
+        if (j.msg.req == 'sendMyFolderList'){
+          this.doSendMyFolderList(j.msg,j.remIp);
+        }
+        if (j.msg.req == 'sendMyFileMgrList'){
+          this.doSendMyFileMgrList(j.msg,j.remIp);
         }
         if (j.msg.req == 'sendActiveRepoFolder'){
           this.doSendActiveRepoFolder(j.msg,j.remIp);
@@ -1761,6 +2068,82 @@ class ftreeFileMgrObj {
   Remote Peer To Peer Modules (Replies):
   =================================================================================
   */
+   doSendMyRepoList(j,remIp){
+     var SQL = `select * from ftreeFileMgr.tblRepo where repoOwner = '${j.repoOwner}' and repoType = 'Public' limit ${j.limit} offset ${j.offset}`;
+     console.log('doSendMyRepos: '+SQL,j);
+     con.query(SQL , async(err, result,fields)=>{
+       if (err){
+         console.log('error reading repo ',err);
+       }
+       else {
+         var repo = null;
+         if (result.length == 0){
+           console.log('repo Not Found On This Node.');
+           return;
+         }
+         else {
+           var qres = {
+             req    : 'sendMyRepoListResult',
+             result : result
+           }
+           //console.log('sending activeRepoResult :',qres);
+           this.net.sendReply(remIp,qres);
+         }
+       }
+     });
+  }
+  doSendMyFolderList(j, remIp) {
+    var SQL = `SELECT * FROM ftreeFileMgr.tblRepoFolder 
+               WHERE repoID_master = '${j.repoID_master}' 
+               LIMIT ${j.limit} OFFSET ${j.offset}`;
+    
+    console.log('doSendMyFolderList: ' + SQL, j);
+
+    con.query(SQL, async (err, result, fields) => {
+        if (err) {
+            console.log('Error reading folders', err);
+            return;
+        }
+
+        if (result.length === 0) {
+            console.log('Folder Not Found On This Node.');
+            return;
+        }
+
+        var qres = {
+            req: 'sendMyFolderListResult',
+            result: result
+        };
+
+        this.net.sendReply(remIp, qres);
+    });
+  }
+  doSendMyFileMgrList(j, remIp) {
+    var SQL = `SELECT * FROM ftreeFileMgr.tblShardFileMgr
+               WHERE repoID_master = '${j.repoID_master}'
+               LIMIT ${j.limit} OFFSET ${j.offset}`;
+
+    console.log('doSendMyFileMgrList: ' + SQL, j);
+
+    con.query(SQL, async (err, result, fields) => {
+        if (err) {
+            console.log('Error reading folders', err);
+            return;
+        }
+
+        if (result.length === 0) {
+            console.log('Repo FileMgr Not Found On This Node.');
+            return;
+        }
+
+        var qres = {
+            req: 'sendMyFileMgrListResult',
+            result: result
+        };
+
+        this.net.sendReply(remIp, qres);
+    });
+  }
   doSendActiveRepo(j,remIp){
      var SQL = "select * from ftreeFileMgr.tblRepo where repoOwner = '"+j.repo.from+"' and repoName = '"+j.repo.name+"'";
      console.log('doSendActiveRep: '+SQL,j);
@@ -2461,6 +2844,121 @@ class ftreeFileMgrObj {
   }
   verifyActiveRepoShard(r){
     return true;
+  }
+  receptorReqReadMyRemoteRepos(ownMUID,limit,offset){
+    return new Promise( (resolve,reject)=>{
+      var mkyReply = null;
+      const maxIP = this.myPeers.length || 3;
+      var   results = [];
+      const gtime = setTimeout( ()=>{
+        console.log('Send My Remote Repos List Request Timeout:');
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve(results);
+      },2.5*1000);
+
+      const msg = {
+        to        : 'ftreeCells',
+        req       : 'sendMyRepoList',
+        repoOwner : ownMUID,
+        limit     : limit,
+        offset    : offset
+      }
+      console.log(msg);
+      this.net.broadcast(msg);    
+      this.net.on('mkyReply', mkyReply = (r)=>{
+        if (r.req == 'sendMyRepoListResult'){
+          console.log('mkyReply Remote Repo List:',r.remIp);
+          if (results.length <= maxIP){
+            results.push({result:r.result,remIp:r.remIp});
+          }
+          else {
+            clearTimeout(gtime);
+            this.net.removeListener('mkyReply', mkyReply);
+            resolve(results);
+          }
+        }
+      });
+    });
+  }
+  receptorReqReadMyRemoteFolders(repoID_master, limit, offset) {
+    return new Promise((resolve, reject) => {
+        let mkyReply = null;
+        const maxIP = this.myPeers.length || 3;
+        let results = [];
+
+        // Set timeout to handle request failures
+        const gtime = setTimeout(() => {
+            console.log('Send My Remote Folders List Request Timeout:');
+            this.net.removeListener('mkyReply', mkyReply);
+            resolve(results);
+        }, 2.5 * 1000);
+
+        // Prepare and broadcast request message
+        const msg = {
+            to: 'ftreeCells',
+            req: 'sendMyFolderList',
+            repoID_master : repoID_master,
+            limit: limit,
+            offset: offset
+        };
+
+        console.log(msg);
+        this.net.broadcast(msg);
+
+        // Listen for remote responses
+        this.net.on('mkyReply', mkyReply = (r) => {
+            if (r.req === 'sendMyFolderListResult') {
+                console.log('mkyReply Remote Folder List:', r.remIp);
+                if (results.length <= maxIP) {
+                    results.push({ result: r.result, remIp: r.remIp });
+                } else {
+                    clearTimeout(gtime);
+                    this.net.removeListener('mkyReply', mkyReply);
+                    resolve(results);
+                }
+            }
+        });
+    });
+  }
+  receptorReqReadMyRemoteFileMgr(repoID_master, limit, offset) {
+    return new Promise((resolve, reject) => {
+        let mkyReply = null;
+        const maxIP = this.myPeers.length || 3;
+        let results = [];
+
+        // Set timeout to handle request failures
+        const gtime = setTimeout(() => {
+            console.log('Send My Remote FileMgr List Request Timeout:');
+            this.net.removeListener('mkyReply', mkyReply);
+            resolve(results);
+        }, 2.5 * 1000);
+
+        // Prepare and broadcast request message
+        const msg = {
+            to: 'ftreeCells',
+            req: 'sendMyFileMgrList',
+            repoID_master : repoID_master,
+            limit: limit,
+            offset: offset
+        };
+
+        console.log(msg);
+        this.net.broadcast(msg);
+
+        // Listen for remote responses
+        this.net.on('mkyReply', mkyReply = (r) => {
+            if (r.req === 'sendMyFileMgrListResult') {
+                console.log('mkyReply Remote FileMgr List:', r.remIp);
+                if (results.length <= maxIP) {
+                    results.push({ result: r.result, remIp: r.remIp });
+                } else {
+                    clearTimeout(gtime);
+                    this.net.removeListener('mkyReply', mkyReply);
+                    resolve(results);
+                }
+            }
+        });
+    });
   }
   receptorReqNodeList(j,excludeIps=[]){
     return new Promise( (resolve,reject)=>{

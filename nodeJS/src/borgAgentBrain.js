@@ -82,6 +82,29 @@ class BorgAgentBrain {
     this.CHATG.push({msgID:calculateHash(JSON.stringify(j)+Date.now()),type:type,agentReply:j});
     console.log('groupChat: ',{msgID:calculateHash(JSON.stringify(j)+Date.now()),type:type,agentReply:j});
   }
+  mergeRepos(newRepo) {
+    const mergedRepo = {};
+
+    this.REPO.forEach(entry => {
+      mergedRepo[entry.key] = { ...entry };
+    });
+
+    newRepo.forEach(entry => {
+      if (mergedRepo[entry.key]) {
+        mergedRepo[entry.key].lastLine = Math.max(mergedRepo[entry.key].lastLine, entry.lastLine);
+      } else {
+        mergedRepo[entry.key] = { ...entry };
+      }
+    });
+
+    this.REPO = Object.values(mergedRepo);
+  }
+  processSharedDocHistory(j){
+    if (j.REPO && Array.isArray(j.REPO)){
+      this.mergeRepos(j.REPO);
+      console.log('processSharedDocHistory::',this.REPO);
+    } 
+  }
   processHUIChat(j,type='newMsg(HUI)'){
     return new Promise(async(resolve,reject) => {
       this.CHAT = this.trimBuffer(this.CHAT,this.CHATMax);
@@ -803,11 +826,11 @@ class BorgAgentBrain {
 
       try {
         const response = await fetch(url);
-        const file = await response.text();
+        var file = await response.text();
 
         console.log(`fileRetrieved:\n${file.substring(0, 250)}`);
-
-        if (!file.trim() || file.trim() === 'File: Not Found') {
+        file = file.trim();
+        if (!file || file == '' || file.startsWith("FILE_NOTFOUMD.:")) {
           this.respondEr(`Error ${file} - while retrieving file from repo... use the loadCodeRepo protocol to check file location.`, r);
           resolve(false);
           return;
@@ -902,6 +925,8 @@ class BorgAgentBrain {
         // Add new entry
         this.REPO.push(rRepo);
     }
+    // Share this Agents Read History with all online Borg Agents.
+    this.receptor.shareBorgDocHistory(this.REPO);
   }
   serializeRepoReadState() {
     let s = "\nAgent Read History:\nlist of Files you have read and saved memories in the past.";
