@@ -19,8 +19,14 @@ Create PeerTree Network Peer
   if (parm == 'rootReset'){
     reset = true;
   }
-  const mkyNet = new PeerTreeNet(options,'mailCell',13393,13394);
-  mkyNet.nodeType = 'mailCell';
+  const netPort  = 13393;
+  const recpPort = 13395;
+  const monPort  = 13394;
+  const maxChildren = 25;
+  const netName  = 'mailCell';
+
+  const mkyNet = new PeerTreeNet(options,netName,netPort,monPort,maxChildren);
+  mkyNet.nodeType = netName;
 
   main();
 
@@ -30,7 +36,7 @@ async function main(){
 }
 function startMailCell(){
     var mcell = new mailTreeObj(mkyNet,reset);
-    const mcellReceptor = new mailTreeCellReceptor(mcell,13395);
+    const mcellReceptor = new mailTreeCellReceptor(mcell,recpPort);
     mcell.attachReceptor(mcellReceptor);
 
     mcell.net.on('mkyReq',(res,j)=>{

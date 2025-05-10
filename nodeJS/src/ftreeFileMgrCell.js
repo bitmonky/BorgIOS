@@ -29,8 +29,14 @@ Create PeerTree Network Peer
     isRoot == 'root';
     reset = 'rebuild';
   }
-  const peerNet = new PeerTreeNet(options,'shardNet',13351,13341,25);
-  peerNet.nodeType = 'ftreeFileMgrCell';
+  const netPort  = 13351;
+  const recpPort = 13381;
+  const monPort  = 13341;
+  const maxChildren = 25;
+  const netName  = 'ftreeFileMgrCell';
+
+  const peerNet = new PeerTreeNet(options,netName,netPort,monPort,maxChildren);
+  peerNet.nodeType = netName;
 
   if (isRoot == 'reset'){
     isRoot = null;
@@ -45,7 +51,7 @@ async function main(){
 var rBranch = null;
 function startFtreeCell(){
     var scell = new ftreeFileMgrObj(peerNet,reset);
-    const scellReceptor = new ftreeFileMgrCellReceptor(scell,13381);
+    const scellReceptor = new ftreeFileMgrCellReceptor(scell,recpPort);
     scell.attachReceptor(scellReceptor);
     if (rBranch){
       console.log('\nNEW>>>SETTING ftreeCell TO ROOT');

@@ -22,13 +22,6 @@ const express = require('express');
 const app = express();
 const appPort = 8443; // Default port for HTTPS
 
-// Read the SSL/TLS certificates
-/*
-const appOptions = {
-  key: fs.readFileSync('/etc/letsencrypt/live/16zvq6amrcxsz6bcnprshhdtjcel3thits.borgios.net/privkey.pem'),
-  cert: fs.readFileSync('/etc/letsencrypt/live/16zvq6amrcxsz6bcnprshhdtjcel3thits.borgios.net/fullchain.pem'),
-};
-*/
 const {pcrypt}     = require('./peerCrypt');
 const axios        = require('axios');
 
@@ -143,8 +136,7 @@ class borgAgentCellReceptor{
     this.webConsole = app;
     this.connections = [];
     this.getControlFrameDoc();
-    //this.initWebStreamViewer();
-
+ 
     this.brain = new BorgAgentBrain(this);
 
     var bserver = https.createServer(options, (req, res) => {
@@ -375,7 +367,7 @@ class borgAgentCellReceptor{
       req.end();
     });
   }
-  initWebStreamViewer(){
+  initWebStreamViewer(appOptions){
     // Define your `/stream/:id` endpoint
     app.get('/stream/:id', (req, res) => {
       const id = req.params.id;
@@ -622,7 +614,7 @@ class borgAgentObj {
     this.status       = 'starting';
     this.net          = peerTree;
     this.receptor     = null;
-    this.wcon         = new MkyWebConsole(this.net,null,this);
+    this.wcon         = new MkyWebConsole(this.net,null,this,'borgAgentCell');
     this.maxGroupSize = 2;
     this.init();
     this.setNetErrHandle();
@@ -713,11 +705,9 @@ class borgAgentObj {
       return;
     }
     if (r.req == 'helloBack'){
-      this.receptor.brain.BORGO.push({agentID:r.agentID,IP:r.remIp});
-      //console.log('BORGO (borg online):',this.receptor.brain.BORGO);
+      this.receptor.brain.BORGO.push({agentID:r.agentID,IP:r.remIp,specialty:r.specialty});
       return;
     }    
-    //console.log('\n====================\nXXXagentCell reply handler',j);
   }
   handleBCast(j){
     //console.log('bcast received: ',j);
@@ -728,7 +718,7 @@ class borgAgentObj {
     if (!j.msg.to) {return;}
     if (j.msg.to == 'borgAgents'){
       if (j.msg.token == 'hello'){
-        var qres = {req : 'helloBack', agentID : this.net.peerMUID };
+        var qres = {req : 'helloBack', agentID : this.net.peerMUID,specialty:this.receptor.brain.agentSpecialty };
         this.net.sendReply(j.remIp,qres);        
       }
       if (j.msg.req){

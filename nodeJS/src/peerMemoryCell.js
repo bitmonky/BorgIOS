@@ -19,8 +19,15 @@ Create PeerTree Network Peer
   if (parm == 'rootReset'){
     reset = true;
   }
-  const mkyNet = new PeerTreeNet(options);
-  mkyNet.nodeType = 'peerMemoryCell';
+  
+  const netPort  = 1336;
+  const recpPort = 1335;
+  const monPort  = 1339;
+  const maxChildren = 25;
+  const netName  = 'peerMemoryCell';
+
+  const mkyNet = new PeerTreeNet(options,netName,netPort,monPort,maxChildren);
+  mkyNet.nodeType = netName;
 
   main();
 
@@ -30,7 +37,7 @@ async function main(){
 }
 function startMemoryCell(rBranch){
     var mcell = new peerMemoryObj(mkyNet,reset);
-    const mcellReceptor = new peerMemCellReceptor(mcell);
+    const mcellReceptor = new peerMemCellReceptor(mcell,recpPort);
     mcell.attachReceptor(mcellReceptor);
 
     mcell.net.on('mkyReq',(res,j)=>{

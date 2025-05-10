@@ -13,15 +13,28 @@ Create PeerTree Network Peer
 *******************
 */
 
-  var parm = process.argv[3];
-
+  var parm = process.argv[2];
+  console.log('parm',parm);
   var reset = null
   if (parm == 'rootReset'){
     reset = true;
   }
-  const mkyNet = new PeerTreeNet(options,'borgAgentCell',13550,13551,25);
-  mkyNet.nodeType = 'borgAgentCell';
+  const netPort  = 13550;
+  const recpPort = 1396;
+  const monPort  = 13551;
+  const maxChildren = 25;
+  const netName  = 'borgAgentCell';
 
+  const mkyNet = new PeerTreeNet(options,netName,netPort,monPort,maxChildren);
+  mkyNet.nodeType = netName;
+
+  var streamOptions = null;
+  if (parm == 'streamOn'){
+    streamOptions = {
+      key: fs.readFileSync('/etc/letsencrypt/live/16zvq6amrcxsz6bcnprshhdtjcel3thits.borgios.net/privkey.pem'),
+      cert: fs.readFileSync('/etc/letsencrypt/live/16zvq6amrcxsz6bcnprshhdtjcel3thits.borgios.net/fullchain.pem'),
+    };
+  }
   main();
 
 async function main(){
@@ -30,7 +43,12 @@ async function main(){
 }
 function startMemoryCell(rBranch){
     var mcell = new borgAgentObj(mkyNet,reset);
-    const mcellReceptor = new borgAgentCellReceptor(mcell);
+    const mcellReceptor = new borgAgentCellReceptor(mcell,recpPort);
+    console.log('Checking For Borg Stream Option::',streamOptions);
+    if (streamOptions){
+      console.log('Initiate Borg Stream Monitor');
+      mcellReceptor.initWebStreamViewer(streamOptions);
+    }
     mcell.attachReceptor(mcellReceptor);
 
     mcell.net.on('mkyReq',(res,j)=>{
