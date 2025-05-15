@@ -29,14 +29,18 @@ Create PeerTree Network Peer
     isRoot == 'root';
     reset = 'rebuild';
   }
-  const netPort  = 13351;
-  const recpPort = 13381;
-  const monPort  = 13341;
-  const maxChildren = 25;
-  const netName  = 'ftreeFileMgrCell';
 
-  const peerNet = new PeerTreeNet(options,netName,netPort,monPort,maxChildren);
-  peerNet.nodeType = netName;
+  const borg = {
+    netPort  : 13351,
+    recpPort : 13381,
+    monPort  : 13341,
+    maxChildren : 25,
+    netName  : 'ftreeFileMgrCell'
+  }
+
+  const peerNet = new PeerTreeNet(options,borg.netName,borg.netPort,borg.monPort,borg.maxChildren);
+  peerNet.nodeType = borg.netName;
+  peerNet.updatePortalsFile(borg);
 
   if (isRoot == 'reset'){
     isRoot = null;
@@ -51,7 +55,7 @@ async function main(){
 var rBranch = null;
 function startFtreeCell(){
     var scell = new ftreeFileMgrObj(peerNet,reset);
-    const scellReceptor = new ftreeFileMgrCellReceptor(scell,recpPort);
+    const scellReceptor = new ftreeFileMgrCellReceptor(scell,borg.recpPort);
     scell.attachReceptor(scellReceptor);
     if (rBranch){
       console.log('\nNEW>>>SETTING ftreeCell TO ROOT');

@@ -19,14 +19,18 @@ Create PeerTree Network Peer
   if (parm == 'rootReset'){
     reset = true;
   }
-  const netPort  = 13550;
-  const recpPort = 1396;
-  const monPort  = 13551;
-  const maxChildren = 25;
-  const netName  = 'borgAgentCell';
+  const borg = {
+    netPort  : 13550,
+    recpPort : 1396,
+    monPort  : 13551,
+    maxChildren : 25,
+    netName  : 'borgAgentCell'
+  }
 
-  const mkyNet = new PeerTreeNet(options,netName,netPort,monPort,maxChildren);
-  mkyNet.nodeType = netName;
+ 
+  const mkyNet = new PeerTreeNet(options,borg.netName,borg.netPort,borg.monPort,borg.maxChildren);
+  mkyNet.nodeType = borg.netName;
+  mkyNet.updatePortalsFile(borg);
 
   var streamOptions = null;
   if (parm == 'streamOn'){
@@ -43,7 +47,7 @@ async function main(){
 }
 function startMemoryCell(rBranch){
     var mcell = new borgAgentObj(mkyNet,reset);
-    const mcellReceptor = new borgAgentCellReceptor(mcell,recpPort);
+    const mcellReceptor = new borgAgentCellReceptor(mcell,borg.recpPort);
     console.log('Checking For Borg Stream Option::',streamOptions);
     if (streamOptions){
       console.log('Initiate Borg Stream Monitor');
