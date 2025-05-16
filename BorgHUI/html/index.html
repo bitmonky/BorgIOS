@@ -1,1 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
+    <link rel="stylesheet" href="https://web.bitmonky.com/newui/newCSS.php">
+    <link rel="stylesheet" href="https://web.bitmonky.com/newui/styleCSS.php">
+
+    <script src="https://web.bitmonky.com/bitMDis/pWalletJSMPC.php?dbug=on&sport=80&dm=PC"></script>
+
+    <title>BitMonky Coders</title>
+      <!--link
+        rel="stylesheet"
+        href="https://site-assets.fontawesome.com/releases/v6.5.2/css/sharp-solid.css"
+      -->
+    <!-- Google tag (gtag.js) -->
+<link rel="preload" fetchpriority="high" as="image" href="https://image.bitmonky.com/img/digihutBan.webp" type="image/webp">
+<script>
+  var canRunAds = true;
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-L9BBF7ES7Z');
+</script>
+
+  <meta charset="utf-8"/>
+  <title>Learn To Do Business In the Digital Jungle</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="canonical" href='https://www.bitmonky.com/whzon/wzApp.php?UI=new'/>
+  <meta name="description" content="Bitmonky is fun and free community building platform and networking environment. With built in Crypto economy, wallet, and password-free access."/>
+  <meta property="og:title" content="Learn To Do Business In the Digital Jungle"/>
+  <meta property="og:url" content="https://www.bitmonky.com"/>
+  <meta property="og:image" content="https://image.bitmonky.com/img/mainPageOG.png"/>
+  <meta property="og:description" content="Bitmonky is fun and free community building platform and networking environment. With built in Crypto economy, wallet, and password-free access." />
+  
+<!--
+** mscope: 
+** mslocID: 
+** msUID: 
+** cityLocID: 2
+-->
+<style>
+  @keyframes mkyFlash {
+    10% {
+      background: #74a02a;
+    }
+    /* Adding a step in the middle */
+    50% {
+      background: blue;
+    }
+    100% {
+      background: purple;
+    }
+  }
+  html {
+    background-color : #333333;
+    background-image : url("/img/mkyBackTexture3.webp");background-repeat : no-repeat;  } 
+  </style>
+</head>
+<body class="bg-dark" onload="init();">
+    <div class='chatAlert' ID='videoChatWindow' style='position:fixed;border-radius:.5em;display:none;top:25px;left:25px;background:#222222;'><div id='videoChatFrame' style='border:0px;padding:.25em;'></div></div>
+<!--
+//******************************
+// Chat Notification Widget
+//******************************
+-->
+<div class='chatAlert' ID='pvChatAlertSpotCon' style='position:fixed;display:none;top:250px;left:450px;'>
+  <div id='pvChatAlertSpot'></div>
+</div>
+
+<div ID='chatWidget' style='width:35%;display:none;border-radius: .5em;background:#222322;color:white;
+padding:5px 15px 15px 15px;position:fixed;top:1em;left:1em;'>
+  <div ID='chatWidgetHeader' align='right'>
+    <h2>New Mention For You</h2>    <img ID='chatWhoImg' style='float:right;border-radius:50%;margin:.5em .5em 1.5em 1.5em;width:45px;' 
+    src='https://image.bitmonky.com/getMbrImg.php?id=63555'/>
+  </div>
+  <div ID='chatWhoMsg' style=''></div>
+  <div ID='chatWidgetT' style='width:100%;'>
+    <form >  
+    <textarea ID='chatWidgetBox'      placeholder="Type Here To Chat..." style='width:90%;height:7.5em;'></textarea><br/>
+    <input type='hidden' ID='postToChan' value=''/>
+    <button type='button' class='mkyold-button'   onclick='sendMsg(true);'/> Send </button>
+    <button ID='goPrivate' type='button' class='mkyold-button' onclick=''/> Go Private </button>
+    <button ID='goMoreWid' type='button' class='mkyold-button' onclick=''/> More </button>
+    <button type='button'  type='button' class='mkyold-button' style='background:orange' onclick='hideChatWidget();'/>  Hide [^] </button>
+    </form>
+    <p/>
+    <div align='right' style='font-weight:normal;color:white;'>
+      <span style='font-size:smaller;font-wieght:bold;padding:0px 15px 5px 0px;'>We Share The Wealth... When You Share The Word.</span>
+    </div>
+  </div>
+</div>
+    <header style='height:14vh;'>
+      <div ID='mkyCookie' style='display:none;width:100vw;'>
+	<div id="cookiesCondition" class="w-100 d-flex gap-2 justify-content-center align-items-center">
+          <p>BitMonky Uses Tracking Cookies for session managment... To Agree And Continue Click</p>
+            <div class="d-flex gap-2">
+            <button id="accept" type="button">Accept</button>
+            <p ID='ckIfNot'>If not</p>
+            <button id="leaveSite" type="button">Leave Site</button>
+            </div>
+	</div>
+      </div>
+        <div id="mainHeader" class="d-flex bg-dark justify-content-between w-100 bg-danger p-2">
+            <div id="mainHeaderLeft" class="d-flex justify-content-center align-items-center">
+              <div ID='topMenuBut' style='width:4em;height:4em;padding:0.5em;
+		border:1px solid #444444;border-radius:.25em;margin-right:1.5em;'/>
+		    <svg aria-hidden="true" height="100%" viewBox="0 0 15 17" version="1.1" width="100%" data-view-component="true" class="octicon octicon-three-bars Button-visual">
+<path fill="lightGray" d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75ZM1.75 12h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z"></path>
+</svg>
+      </div>
+        <img src="https://www.bitmonky.com/whzon/bitMiner/getFileFromRepo.php?wzID=0&fname=BorgIOS.png&rname=BorgIOS&path=/&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&encrypt=0" style="border-radius:50%;" width="80" height="80" alt="bitmonkey picture">
+        <div id="mainHeaderLeftInfo">
+        <h2><span style='FONT-FAMILY: Impact;font-size:24px;font-weight:normal;color:#8ec634;'>Borg<span style='color:#ffffff;'>IOS.net</span><span style='color:#eb9b52;'></span></span> </h2>
+	<a style='color:darkKhaki;' 
+        href="javascript:wzGetPage('https://www.bitmonky.com/whzon/bitMiner/shardTree.php');">Where Compute Power Grows On Trees</a>
+        <!-- <p>We Accept Dogecoin</p> -->
+      </div>
+      </div>
+	
+  <div class='userNotifyDiv'>
+  <div class='userNotifications'>
+    <div ID="wzBrowser" style='position:absolute;top:50px;left:600px;display:none'></div>
+  </div>
+  </div>
+  <div id="searchField">
+  <div style='display:inline;border:2px solid gray;border-radius:2em;background:#444444;padding:.35em 1em .35em 2em;width:100%;'>
+  <input type="search" ID="sQry" autocomplete="off" onkeypress="checkForEnter(event);"  
+   style="color:lightGray;width:75%;font-size:larger;padding:0em;" 
+   placeholder="Ask The Site Monkey AI"/>
+  <span ID='searchIng' class='searching;'>Scanning Big Brain Memories!</span>
+  <span style='display:inline' ID='searchButton'> <button onclick="doSearch();" type="button">Search</button>
+  <div id="scopeTopBtn" type="button" style='color:lightGray;width:1.5em;display:inline;' 
+   title=" Change Search Scope " onclick="wzGetPage('/whzon/public/selectYourCity.php');">
+  <svg x="0" y="0" class="icon_ae0b42" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" 
+   width="24" height="24" fill="none" viewBox="0 0 24 24">
+   <path  fill="currentColor" d="m12.596 11.596-3.535 3.536a1.5 1.5 0 0 1-2.122 0l-3.535-3.536a6.5 6.5 0 1 1 9.192-9.193 6.5 6.5 0 0 1 0 9.193Zm-1.06-8.132v-.001a5 5 0 1 0-7.072 7.072L8 14.07l3.536-3.534a5 5 0 0 0 0-7.072ZM8 9a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 9Z"></path></svg>
+   </div></span>
+   </div>
+   </div>
+   <div id="mainHeaderRight" class=" d-flex justify-content-center align-items-center">
+   <div id="btn-holders">
+<!--
+   <button id="signup" onclick="wzQuickReg();" type="button">Sign Up</button>
+   <button id="signin" type="button">Sign In</button>
+-->
+   <form id="loginSection">
+   <i id="closeSignin" class="closeSignin">X</i>
+   <label for="email">
+   <input type="email" id="femail" placeholder="Email">
+   </label>
+   <div id="pwdHolder">
+   <label for="pwd">
+   <input type="password"  id="fpassword" placeholder="password">
+   </label>
+   <a id="forgotPwd" href="javascript:wzGetPage('/whzon/mbr/mail/frmRequestPass.php');">Forgot your password?</a>
+   </div>
+   <button type="button" onclick="doNewLogin();" id="login">Login</button>
+   </form>
+   </div>
+   </div>
+   </div>
+   </header>
+   <main style='height:86vh;'>
+        <aside style='height:86vh;'>
+        
+            <button id="exploreBtn" type="button" onclick="wzGetPage('https://www.bitmonky.com/whzon/public/newHomePg.php?wzID=0&UI=new');">
+<svg class="main-menu-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M10.512 1.009a.833.833 0 0 0-1.024 0l-7.5 5.833a.833.833 0 0 0-.321.658v9.167a2.5 2.5 0 0 0 2.5 2.5H15.833a2.5 2.5 0 0 0 2.5-2.5V7.5c0-.257-.118-.5-.321-.658l-7.5-5.833Zm2.821 16.49h2.5a.833.833 0 0 0 .834-.832v-8.76L10 2.723 3.333 7.908v8.759a.833.833 0 0 0 .834.833h2.5V10c0-.46.373-.833.833-.833h5c.46 0 .833.373.833.833v7.5Zm-5 0h3.334v-6.666H8.333V17.5Z"></path></svg>
+            Home</button>
+            <button id="profile" type="button">
+<svg class="linkButtonIcon_cff89e" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24"><path fill="currentColor" d="M13 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" class=""></path><path fill="currentColor" d="M3 5v-.75C3 3.56 3.56 3 4.25 3s1.24.56 1.33 1.25C6.12 8.65 9.46 12 13 12h1a8 8 0 0 1 8 8 2 2 0 0 1-2 2 .21.21 0 0 1-.2-.15 7.65 7.65 0 0 0-1.32-2.3c-.15-.2-.42-.06-.39.17l.25 2c.02.15-.1.28-.25.28H9a2 2 0 0 1-2-2v-2.22c0-1.57-.67-3.05-1.53-4.37A15.85 15.85 0 0 1 3 5Z" class=""></path></svg>
+Chat Room + </button>
+
+<button
+id="inboxBtn" type="button" onclick="wzGetMoshBox();"
+class="icon flat" style="--button-padding: var(--spacing-xl) var(--spacing-sm) var(--spacing-md) var(--spacing-sm); --button-background:
+var(--white); --button-hover-background: var(--fa-yellow); --button-color: var(--fa-navy); --button-hover-color: var(--fa-navy);
+width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-bottom: 0;"><span>
+<i class="fa-solid fa-music fa-fw"></i>
+</span> <span class="icon-name">Mosh Box</span></button>
+
+              <button id="teamBtn" type="button"
+	    onclick="wzGetPage('/whzon/adMgr/joinAsStaff.php?muid=0e6edb9048a21b1e3964fe60823675b9&rfm=webr');">
+<svg x="0" y="0" class="icon_ae0b42" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24"><path fill="currentColor" d="M14.5 8a3 3 0 1 0-2.7-4.3c-.2.4.06.86.44 1.12a5 5 0 0 1 2.14 3.08c.01.06.06.1.12.1ZM18.44 17.27c.15.43.54.73 1 .73h1.06c.83 0 1.5-.67 1.5-1.5a7.5 7.5 0 0 0-6.5-7.43c-.55-.08-.99.38-1.1.92-.06.3-.15.6-.26.87-.23.58-.05 1.3.47 1.63a9.53 9.53 0 0 1 3.83 4.78ZM12.5 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM2 20.5a7.5 7.5 0 0 1 15 0c0 .83-.67 1.5-1.5 1.5a.2.2 0 0 1-.2-.16c-.2-.96-.56-1.87-.88-2.54-.1-.23-.42-.15-.42.1v2.1a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2.1c0-.25-.31-.33-.42-.1-.32.67-.67 1.58-.88 2.54a.2.2 0 0 1-.2.16A1.5 1.5 0 0 1 2 20.5Z" class=""></path></svg>
+            Team</button>
+
+	    <button id="GJEXBtn" type="button"
+            onclick="wzGetPage('/whzon/gold/mrkViewGJEX.php');">
+<svg class="main-menu-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+<g stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+        <path d="m19.167 5-7.917 7.917L7.083 8.75.833 15"></path>
+        <path d="M14.167 5h5v5"></path>
+</g></svg>
+        GJEX Trading</button>
+
+        <button id="scopeBtn" type="button"
+        onclick="wzGetPage('/whzon/public/selectYourCity.php');">
+<svg x="0" y="0" class="icon_ae0b42" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24"><path  fill="currentColor" d="m12.596 11.596-3.535 3.536a1.5 1.5 0 0 1-2.122 0l-3.535-3.536a6.5 6.5 0 1 1 9.192-9.193 6.5 6.5 0 0 1 0 9.193Zm-1.06-8.132v-.001a5 5 0 1 0-7.072 7.072L8 14.07l3.536-3.534a5 5 0 0 0 0-7.072ZM8 9a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 9Z"></path></svg>Scope</button>
+
+<button id="scopeBtn" type="button" onclick="wzGetPage('/whzon/gold/goldMgr.php');"
+class="icon flat" style="--button-padding: var(--spacing-xl) var(--spacing-sm) var(--spacing-md) var(--spacing-sm); --button-background: var(--white); --button-hover-background: var(--fa-yellow); --button-color: var(--fa-navy); --button-hover-color: var(--fa-navy); width: 100%; --button-font-weight: var(--font-weight-normal); --button-margin-bottom: 0;"><span><i class="fa-solid fa-building-columns fa-fw"></i></span> <span class="icon-name">Bank</span></button>
+
+<button
+id="tycoonBtn" type="button" onclick="wzGetPage('/whzon/franMgr/franMgr.php?mode=reRead');"
+class="icon flat" style="--button-padding: var(--spacing-xl) var(--spacing-sm) var(--spacing-md) var(--spacing-sm); --button-background:
+var(--white); --button-hover-background: var(--fa-yellow); --button-color: var(--fa-navy); --button-hover-color: var(--fa-navy);
+width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-bottom: 0;">
+<span><i class="fa-solid fa-sack-dollar fa-fw"></i></span>
+<span class="icon-name">
+Tycoons</span></button>
+
+<button
+id="scopeBtn" type="button" onclick="wzGetPage('/whzon/gold/howToEarnGold.php');"
+class="icon flat" style="--button-padding: var(--spacing-xl) var(--spacing-sm) var(--spacing-md) var(--spacing-sm); --button-background:
+var(--white); --button-hover-background: var(--fa-yellow); --button-color: var(--fa-navy); --button-hover-color: var(--fa-navy);
+width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-bottom: 0;"><span><i class="fa-solid fa-piggy-bank fa-fw"></i></span> <span class="icon-name">Earn</span></button>
+
+
+	</aside>
+	<section style='height:86vh;'>
+        <style>
+
+.container {
+    padding: 1.5em;
+    height: calc(-12vh + 100vh); 
+    width: 100%;
+    margin: 0px;
+    border: 0px;
+    overflow: auto;
+    color: white;
+    scrollbar-width: none; /* Hides scrollbar in Firefox */
+}
+
+.container::-webkit-scrollbar {
+    display: none; /* Hides scrollbar in Chrome, Edge, Safari */
+}
+.container INPUT[type="button"] {
+  display: inline-block;
+  white-space: nowrap;
+  width: auto;
+  margin: 0.5em 0;
+  font-size: 1em;
+  color: white;
+  padding:1px 7px 1px 3px;
+  background-color:#454545;
+  border-radius: .25em;
+  -webkit-border-radius: .25em;
+  -moz-border-radius: .25em;
+  transition: all 300ms ease;
+  border:0;
+  box-shadow:none;
+  text-shadow:none;
+}
+
+
+        </style>
+        <div style="display:none">
+	  <div ID="wzVidViewControl" style="display:none;" ></div>
+        </div>
+        <div class='container'>
+        <div ID="accountInfo" style='width:100%;color:white'></div>
+        <div ID="serviceMenu" style='width:100%;color:white'></div>
+        <div ID="serviceView"></div>
+        </div>
+        <div ID='wzMainLoader'></div>
+        <div ID='wzPageLoading' style='display:none;'>The Site Monkey Is Working!!! Please Hold. </div>
+	<div ID='wzPopContainer' style='display:none;border:0px solid #c0c0c0;position:absolute;'></div>
+        <div ID='wzPopMoshMenu'  style='display:none;border:0px solid #c0c0c0;position:absolute;'></div>
+        <div ID='wzPopNotifications' style='display:none;border:0px solid #e0e0e0;border-radius:0.5em;position:absolute;'></div>
+        <div ID='userAccNotice'></div>
+	<div ID="wzMainTableID" style="display:none;" ></div>
+	<div ID="wzTopControls" style="display:none;" ></div>
+        <div ID='wzPopNotifications' style='display:none;border:0px solid #e0e0e0;border-radius:0.5em;position:absolute;'></div>
+	<div ID='wzPopContainer' style='display:none;border:0px solid #c0c0c0;position:absolute;'></div>
+	<div id="profileHeader" style='padding:0%;'>
+        <div ID='wzNetView' style='display:none;border:0px solid #777777;position:absolute;'></div>
+        <div ID='wzPageContainer' style='display:none;border:0px solid #777777;position:absolute;'></div>
+        <div ID='wzMoshContainer' style='display:none;border:0px solid #777777;position:absolute;background:none;'></div>
+        <div ID='wzPVCContainer' style='display:none;border:0px solid #777777;position:absolute;'></div>
+        <div ID='wzBitMineContainer' style='display:none;border:0px solid #777777;position:absolute;'></div>
+        <div ID='wzVidContainer' style='display:none;border:0px solid #777777;position:absolute;'></div>
+        <div ID='wzVidViewContainer' style='display:none;border:0px solid #777777;position:absolute;'></div>
+        <div ID='pvchatControl' style='display:none;'></div>
+        <span ID='newFrameSpot'>
+        </span> 
+	</div>
+        </section>
+    </main>
+   
+    <span id="chatholder">
+        <a id="chatLink" href="javascript:scrollTopApp();">Guerrilla Coders Inc</a>
+        <img id="chatPhoto" src="https://image.bitmonky.com/getMbrImg.php?mid=0e6edb9048a21b1e3964fe60823675b9" alt="Ai chat" 
+        onclick="showAssist_efc6d1ba446e229536dd1f7f51923d87('virtualG');">
+    </span>
+
+<div style='display:none;'>
+<script async src="https://gsoft.bitmonky.com/whzon/adMgr/srvWebAssistantJS.php?rad=efc6d1ba446e229536dd1f7f51923d87&rep=dc14fd698646636277d080a6a8854e9a&tmode=virtualG&bg=dimGray&color=white&float=botRight&theme=dark"></script>
+  <div ID="gsoftWebCtrl_efc6d1ba446e229536dd1f7f51923d87"></div>
+</div>
+<div ID="gsoftWebAssist_efc6d1ba446e229536dd1f7f51923d87"></div>
+<script src="https://web.bitmonky.com/newui/scriptJS.php"></script>
+
+</body>
+</html>
