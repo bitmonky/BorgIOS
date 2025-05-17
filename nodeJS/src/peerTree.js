@@ -2177,6 +2177,8 @@ class PeerTreeNet extends  EventEmitter {
    }  
    updatePortalsFile(borg){
      var portals = null;
+     borg.activeNodes = this.nodes;
+
      const portalFile = 'keys/borgPortalsList.dat';
      try {
        const data = fs.readFileSync(portalFile, 'utf8');

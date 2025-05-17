@@ -30,12 +30,12 @@ Create PeerTree Network Peer
 
   const mkyNet = new PeerTreeNet(options,borg.netName,borg.netPort,borg.monPort,borg.maxChildren);
   mkyNet.nodeType = borg.netName;
-  mkyNet.updatePortalsFile(borg);
 
   main();
 
 async function main(){
     await mkyNet.netStarted();
+    mkyNet.updatePortalsFile(borg);
     startMemoryCell();
 }
 function startMemoryCell(rBranch){

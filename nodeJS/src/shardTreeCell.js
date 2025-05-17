@@ -40,7 +40,6 @@ Create PeerTree Network Peer
 
   const peerNet = new PeerTreeNet(options,borg.netName,borg.netPort,borg.monPort,borg.maxChildren);
   peerNet.nodeType = borg.netName;
-  peerNet.updatePortalsFile(borg);
 
   if (isRoot == 'reset'){
     isRoot = null;
@@ -50,6 +49,7 @@ Create PeerTree Network Peer
 main();
 async function main(){
   await peerNet.netStarted();
+  peerNet.updatePortalsFile(borg);
   var rootBranch = false;
   if (!isRoot){
     startShardCell(rootBranch);
