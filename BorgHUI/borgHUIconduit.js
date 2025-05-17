@@ -93,10 +93,10 @@ class BorgPortal {
     while (activeNodes.length > 0) {
       // Randomly select an index
       const rnodeIndex = Math.floor(Math.random() * activeNodes.length);
-      let result = `${activeNodes[rnodeIndex]}`;
+      let result = `${activeNodes[rnodeIndex].ip}`;
 
-      if (this.portals[index].recPort) {
-        result += `:${this.portals[index].recPort}`;
+      if (this.portals[index].recpPort) {
+        result += `:${this.portals[index].recpPort}`;
       }
 
       const isConnected = await this.testConnect(result);
