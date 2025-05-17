@@ -1,3 +1,4 @@
+<?php
 class BorgPortal {
     private $pfile;
     private $portals;
