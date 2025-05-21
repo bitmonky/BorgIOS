@@ -78,7 +78,6 @@ class MkyRouting {
    // Search any previously known nodes and request the whoIsRoot response.
    // =====================================================================
    findWhoIsRoot(i=0){
-     this.rootFound = null;
      this.rootMap.clear(); 
      return new Promise( async (resolve,reject)=>{
        var jroot = null;
@@ -123,8 +122,7 @@ class MkyRouting {
              resolve(null);
            }
            else {
-             this.rootFound = j.whoIsRootReply;
-             console.log('this.rootFound',this.rootFound);
+             console.log('this.rootFound',j.whoIsRootReply);
              resolve(j.whoIsRootReply);
            }
            this.net.removeListener('peerTReply', rtListen);
@@ -257,7 +255,6 @@ class MkyRouting {
          var node = {ip : ip,nbr : this.r.lnode+1, pgroup : [],rtab : 'na'}
          this.r.myNodes.push(node);
          this.incCounters();
-         this.updateRootRoutingTable();
          this.r.lastNode = ip;
          this.newNode = clone(this.r);
          this.newNode.leftNode = oldLastNodeIp;
@@ -390,13 +387,6 @@ class MkyRouting {
        this.net.sendMsgCX(nextParent,req);
      });
    }
-   // ***********************************************
-   // update rootRouting table broadcast the update.
-   // ===============================================
-   updateRootRoutingTable(){
-     return;
-     this.bcastRootTableUpdate();
-   }
    // ******************************************************
    // Handles broadcasted requests to join.  
    //   - only the node with and open slot will return true.
@@ -446,18 +436,6 @@ class MkyRouting {
        layer ++;
      }
      return layer-1;
-   }
-   // ***********************************************
-   // Send Message to parent to update their routing
-   // ===============================================
-   sendParentNewRoutes(){
-     if (this.r.myParent){
-       const req = {
-         req  : 'pRouteUpdate',
-         newRoute : this.r.myRoutes
-       }
-       this.net.sendMsgCX(this.r.myParent,req);
-     } 
    }
    // ***********************************************
    // update pgroup routes at request of child node
@@ -552,8 +530,12 @@ class MkyRouting {
        if (!rtab)
          console.log('NETWORK starting... I am new!');
        else 
-         this.net.nodes = rtab;
+         if (Array.isArray(rtab))
+           if (rtab.length > 0)
+             this.net.nodes = rtab;
 
+       console.log(this.net.nodesFile,this.net.nodes);
+       
        let tryfind = 0;
        if (this.net.nodes.length > 0){
          while (tryfind < 10 ){
@@ -577,7 +559,7 @@ class MkyRouting {
            console.log('BUGFIX::',rInfo,rInfo.jroot.maxPeers);
          }
        } 
-       if (this.myIp != jroot){
+       if (this.myIp != jroot && jroot !== null){
          const msg = {
            req : 'joinReq'
          }
@@ -731,15 +713,6 @@ class MkyRouting {
        }
      return true;
    }
-   // *************************************************
-   // Check If Ip is one of the root nodes on the network
-   // =================================================
-   inRootTab(ip){
-     if (ip == this.r.rootNodeIp){
-       return true;
-     }
-     return false;
-   }
    // *******************************************************
    // Check If Ip is in either the root table or my peer group
    // If yes return the node number of the node.
@@ -752,20 +725,13 @@ class MkyRouting {
      if (!this.r.myNodes)
        return false;
 
-     for (var node of this.r.myNodes){
-       if (node.ip == ip)
-         return node.nbr;
-     }
+     if (Array.isArray(this.r.myNodes)) {
+       for (var node of this.r.myNodes){
+         if (node.ip == ip)
+           return node.nbr;
+       }
+     } 
      return false;
-   }
-   // *******************************************************
-   // Swap routing info to replace node
-   // ======================================================
-   swapNodeIps(dip,rip){
-     this.r.myNodes.forEach( node=>{
-       if (node.ip == dip)
-         node.ip = rip;
-     });
    }
    // ******************************************************************
    // checks to see if the node is the parent of the node to be dropped
@@ -777,10 +743,11 @@ class MkyRouting {
        return false;
      }
      // all other nodes check
-     for (var node of this.r.myNodes)
-       if (node.ip == ip)
-         return false;
-  
+     if (Array.isArray(this.r.myNodes)) {
+       for (var node of this.r.myNodes)
+         if (node.ip == ip)
+           return false;
+     }
      console.log('notMyNode::true for ',ip);
      return true;
    }
@@ -789,7 +756,7 @@ class MkyRouting {
    // ================================
    dropLastNode(nodes,nbr){
      console.log('start drop last node',nodes); 
-     if (!nodes)
+     if (!nodes || !Array.isArray(nodes))
        return;
  
      nodes.forEach( (n,index,object)=>{
@@ -804,31 +771,6 @@ class MkyRouting {
          console.log('spliced',nbr);
        }
      });
-   }
-   // ***********************************************
-   // gets the peer group list from root nodes list for 
-   // for the requested ip 
-   // ===============================================
-   getRootNodePeerGroup(ip){
-     if (this.r.rootNodes)
-       for (var node of this.r.rootNodes){
-         if (node.ip == ip){
-           return node.pgroup;
-         }
-       }
-     return [];
-   }
-   // ***********************************************
-   // get peer group list for node in the pgroup list
-   // ===============================================
-   getDropNodePeerGroup(ip){
-     if (this.r.myNodes)
-       for (var node of this.r.myNodes){
-         if (node.ip == ip){
-           return node.pgroup;
-         }
-       }
-     return [];
    }
    // ***********************************************
    // set last node active to root settings
@@ -1200,6 +1142,11 @@ class MkyRouting {
        this.net.sendReplyCX(j.remIp,reply);
        return;
      }
+     if (this.r == 'na'){
+       console.log('CRITICALL:: this.r is na!',);
+       return;
+     }
+
      this.r.lnStatus = 'moving';
 
      // Notify Parent This Node Is Moving and needs to be dropped.
@@ -1859,7 +1806,7 @@ class MkyRouting {
      if (this.myIp == this.r.lastNode && this.r.nodeNbr > 1 && ip == this.r.rootNodeIp ){
        return this.r.rootNodeIp;
      }
-     if (!this.r.myNodes){
+     if (!this.r.myNodes || !Array.isArray(this.r.myNodes)){
        return null;
      }
 
@@ -2174,7 +2121,62 @@ class PeerTreeNet extends  EventEmitter {
       this.svtime       = null;
       this.lastActive   = null;
       this.portals      = portals;
+      this.loginsFile   = `keys/borg-${network}-ReceptorLog.json`;
+      this.logins       = this.loadLoginsFromFile();
    }  
+   verifyLogin(j){
+     console.log('verify:->',j);
+     const tokTime = Number(j.sesTok.replace(j.ownMUID,''));
+     if (isNaN(tokTime)){
+        return {result:false,msg:'Invalid Signature Token'};
+     }
+
+     if (!j.pubKey) {
+       console.log('pubkey is missing',j.pubKey);
+       return {result:false,msg:'Public Key Is Misssing'};
+     }
+
+     if (!j.sig || j.sig.length === 0) {
+       return {result:false,msg:'No signature found'};
+     }
+
+     // Prevent replay attacks
+     const lastAttempt = this.logins.get(j.ownMUID);
+     if (lastAttempt && tokTime <= lastAttempt) {
+       return { result: false, msg: 'Replay attack detected: tokTime must be newer' };
+     }
+
+     // Store the latest timestamp
+     this.logins.set(j.ownMUID, tokTime);
+     this.saveLoginsToFile();
+
+     // check public key matches the remotes address
+     var mkybc = bitcoin.payments.p2pkh({ pubkey: Buffer.from(''+j.pubKey, 'hex') });
+     if (j.ownMUID !== mkybc.address){
+       console.log('remote wallet address does not match publickey',j.ownMUID);
+       return {result:false,msg:'No Address Not Matching Public Key:'+mkybc.address+'-'+j.ownMUID};
+     }
+     const publicKey = ec.keyFromPublic(j.pubKey, 'hex');
+     const msgHash   = calculateHash(j.sesTok);
+     const rj = {
+       result : publicKey.verify(msgHash, j.sig),
+       msg : 'keyVerificationComplete'
+     };
+     return rj;
+   }
+   saveLoginsToFile() {
+     fs.writeFileSync(this.loginsFile, JSON.stringify(Object.fromEntries(this.logins), null, 2));
+     console.log('Logins saved to file.');
+   }   
+   loadLoginsFromFile() {
+     try {
+        const data = fs.readFileSync(this.loginsFile, 'utf-8');
+        return new Map(Object.entries(JSON.parse(data)));
+     } catch (error) {
+        console.warn('No previous logins found or error reading file: new Map created.');
+        return new Map();
+     }
+   }
    updatePortalsFile(borg){
      var portals = null;
      borg.activeNodes = this.nodes;
@@ -2784,10 +2786,12 @@ class PeerTreeNet extends  EventEmitter {
   dropChildRTabs(r){
     if (!r){
       console.log("dropChildRTabs::error .: r is not defined.");
+      r.rootRTab = 'na';
       return r;
     }
     if (!Array.isArray(r.myNodes)) {
       console.log("dropChildRTabs::error .: r.myNodes is not defined or is not an array");
+      r.rootRTab = 'na';
       return r;
     }
     r.myNodes.forEach((node)=>{
@@ -3278,7 +3282,7 @@ class PeerTreeNet extends  EventEmitter {
        }
      });
      this.on('peerTReq',(remIp,j)=>{
-
+       //console.log('peerTReq::::',j);
        var error = null;       
        if (!this.isValidSig(j)){
          error = '400';
@@ -3290,7 +3294,7 @@ class PeerTreeNet extends  EventEmitter {
        this.pushToContacts(j);
 
        if (this.rnet.handleReq(remIp,j)){
-         //console.log('Request Handled By Handler');
+         console.log('Request Handled By Handler');
          return;
        }
 
