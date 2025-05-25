@@ -65,7 +65,8 @@ class MkyRouting {
        nodeNbr    : 0,    // node sequence number 1,2,3 ... n
        nlayer     : 1,    // nlayers in the network 1,2,3 ... n
        lnode      : 1,    // number of the last node in.
-       lnStatus   : 'OK'  // used for routing updates. 'OK' or 'moving'
+       lnStatus   : 'OK', // used for routing updates. 'OK' or 'moving'
+       nextPNbr   : 1
      }
      setTimeout(() => {this.verifyRoot();},60*1000);
      setTimeout(() => {this.scanNodesRight();},65*1000);
@@ -315,9 +316,10 @@ class MkyRouting {
          console.error('PROBLEM!!! oldLastNodeIp::',oldLastNodeIp);
          process.exit();
        }
+       const prevNextParent = this.r.nextParent;
        const oldNextPNbr = this.r.nextPNbr;
        const newNextPNbr = this.getMyParentNbr(this.r.lnode+1);
-       console.error('NextPNbr::',newNextPNbr);
+       console.error('NextPNbr::',oldNextPNbr,newNextPNbr);
 
        if ( this.r.myNodes.length < this.net.maxPeers){
          var node = {ip : ip,nbr : this.r.lnode+1, pgroup : [],rtab : 'na'}
@@ -339,6 +341,7 @@ class MkyRouting {
          console.error('Updating NextParent To: ',this.r.rightNode);
          this.r.nextParent = this.r.rightNode;
        }
+       
        const danglingNode = await this.findWhoHasChild(ip);
        console.error('addNewNode::dangleCheck:',danglingNode,ip);
        if (danglingNode){
@@ -355,8 +358,9 @@ class MkyRouting {
          return;
        }
 
-       var prevNextParent = this.r.nextParent;
-       var nextParent = await this.getNodeIpByNbr(newNextPNbr);
+       //var nextParent = await this.getNodeIpByNbr(newNextPNbr);
+       var nextParent = await this.getNextParent(prevNextParent,oldNextPNbr,newNextPNbr);
+
        if (!nextParent){
          console.error('addNewNode::getNodeIpByNbr:Failed For:',newNextPNbr);
          resolve(false);
@@ -386,6 +390,24 @@ class MkyRouting {
        console.error('NewNODE::lookslike:',this.newNode);
        resolve(true);
        return;
+     });
+   }
+   getNextParent(ip,oldNextPNbr,newNextPNbr){
+     return new Promise(async(resolve,reject) => {
+       console.error('GetNextParent::',ip,oldNextPNbr,newNextPNbr);
+       if (oldNextPNbr == newNextPNbr){
+          resolve(ip);
+          return;
+       }
+       if (ip == this.myIp){
+         console.error('THISISME');
+         resolve(this.r.rightNode);
+         return;
+       }
+       const j = await this.getNodeRight(ip);
+       console.log('SENDNODEDATA::gave',j,ip);
+       if (j) resolve(j.sendNodeDataResult.rtab.rightNode);
+       else resolve(null);
      });
    }
    getMyParentNbr(n){
@@ -865,7 +887,8 @@ class MkyRouting {
        nodeNbr    : 1,
        nlayer     : 1,
        lnode      : 1,
-       lnStatus   : 'OK'
+       lnStatus   : 'OK',
+       nextPNbr   : 1
      }
      this.net.msgQue = [];
      this.net.msgMgr.remove(this.net.rootIp);
@@ -883,9 +906,11 @@ class MkyRouting {
      return new Promise( async (resolve,reject)=>{
        this.dropIps.push(ip);
 
-       const rip = this.myIp;
-       const dropNbr = this.r.lnode;
-       const newLastNodeIp = this.r.leftNode;
+       const rip            = this.myIp;
+       const dropNbr        = this.r.lnode;
+       const newLastNodeIp  = this.r.leftNode;
+       const saveNextParent = this.r.nextParent;
+       const saveNextPNbr   = this.r.nextPNbr;
 
        // Notify Parent This Node Is Moving and needs to be dropped.
        if (ip != this.r.myParent){
@@ -914,9 +939,11 @@ class MkyRouting {
        this.dropLastNode(this.r.myNodes,this.r.lnode);
 
        this.r.lnode--;
-       this.r.lastNode = newLastNodeIp;
-       this.r.rootRTab = 'na';
+       this.r.lastNode   = newLastNodeIp;
+       this.r.rootRTab   = 'na';
        this.r.rootNodeIp = this.myIp;
+       this.r.nextParent = saveNextParent;
+       this.r.nextPNbr   = saveNextPNbr;
 
        console.error('ROOTDROPED::rtab is now:',this.r);
        this.status = 'root';
@@ -2251,7 +2278,7 @@ class PeerTreeNet extends  EventEmitter {
             restart all at the same time;
          */ 
          const rstart = Math.floor(Math.random() * (35000 - 20000 + 1)) + 20000;
-         const rsleep = Math.floor(Math.random() * (25000 - 15000 + 1)) + 15000;
+         const rsleep = Math.floor(Math.random() * (10000 - 500 + 1)) + 500;
          var nstats = null;
          try {
            nstats = fs.statSync(this.nodesFile);
