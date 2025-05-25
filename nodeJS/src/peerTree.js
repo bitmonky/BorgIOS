@@ -83,8 +83,8 @@ class MkyRouting {
          if (j) node = j.sendNodeDataResult; 
          else   node = null;
        }
-       console.error('nodeScanResult::',nodes);
-       console.error('finalNode::',j);
+       //console.error('nodeScanResult::',nodes);
+       //console.error('finalNode::',j);
      }
      setTimeout(() => { this.scanNodesRight();},60*1000);
    }
@@ -1565,7 +1565,7 @@ class MkyRouting {
              reportBy : this.myIp
            }
          } 
-         console.error('here is root',qres);
+         //console.error('here is root',qres);
          this.net.endResCX(remIp,JSON.stringify(qres));
        }
        else {
@@ -1710,7 +1710,7 @@ class MkyRouting {
    // Handle Broadcasts From the network
    // ==================================================
    handleBcast(j){
-     console.error('Broadcast Recieved: ',j);
+     //console.error('Broadcast Recieved: ',j);
      if (j.remIp == this.myIp){
        //console.error('Ingore Broad Cast To Self',j);
        return true;
@@ -1785,7 +1785,7 @@ class MkyRouting {
    // Handle undelivered http request from offline or slow to respond peers
    // ====================================================================
    async handleError(j){
-     console.error('handle error'+this.status,j);
+     //console.error('handle error'+this.status,j);
      if (this.status == 'startup' || this.status == 'offline'){
        console.error('handleError::is in Startup mode:',j.req);
        return true;
@@ -2262,7 +2262,7 @@ class PeerTreeNet extends  EventEmitter {
      } 
      else {
        portals[index] = borg;
-       console.error(`Borg replaced in portals:`, borg);
+       //console.error(`Borg replaced in portals:`, borg);
      }
      try {
       fs.writeFileSync(portalFile, JSON.stringify(portals, null, 2), 'utf8');
@@ -2295,7 +2295,7 @@ class PeerTreeNet extends  EventEmitter {
          catch(e) {console.error('First Access::',this.nodesFile);}
        }
        var nodes = null;
-       console.error("looking for::",this.nodesFile);
+       //console.error("looking for::",this.nodesFile);
        try {
          nodes =  fs.readFileSync(this.nodesFile);
        }
