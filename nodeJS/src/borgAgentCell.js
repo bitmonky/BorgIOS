@@ -8,6 +8,18 @@ const options = {
 const {PeerTreeNet}     = require('./peerTree');
 const {borgAgentObj,borgAgentCellReceptor} = require('./borgAgentObj.js');
 
+process.on('uncaughtException', (err) => {
+    console.error('Unhandled Exception:', err);
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port is already in use. Exiting...`);
+      process.exit(1);
+    }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Promise Rejection:', reason);
+});
+
 /*******************
 Create PeerTree Network Peer
 *******************

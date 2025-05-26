@@ -371,18 +371,37 @@ catch {console.log('database config file `dbconf` NOT Found.');}
 try {dba = JSON.parse(dba);}
 catch {console.log('Error parsing `dbconf` file');}
 
-var con = mysql.createConnection({
-  host:"127.0.0.1",
-  user: dba.user,
-  password: dba.pass,
-  database: "shardTree",
-  dateStrings: "date",
-  multipleStatements: true,
-  supportBigNumbers : true
-});
-con.connect(function(err) {
-  if (err) throw err;
-});
+function createConnection() {
+  const connection = mysql.createConnection({
+    host:"127.0.0.1",
+    user: dba.user,
+    password: dba.pass,
+    database: "shardTree",
+    dateStrings: "date",
+    multipleStatements: true,
+    supportBigNumbers : true
+   });
+  connection.connect((err) => {
+    if (err) {
+      console.error('Error connecting to database:', err);
+      setTimeout(createConnection, 2000); // Retry connection
+    } else {
+      console.log('Connected to database');
+    }
+  });
+
+  connection.on('error', (err) => {
+    console.error('BORG:MySQL Error:', err);
+    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR') {
+      console.log('Reconnecting after fatal error...');
+      createConnection(); // Reconnect after fatal error
+    }
+  });
+
+  return connection;
+}
+
+const con = createConnection();
 
 function getRandomInt(max) {
   return Math.floor(Math.random() * Math.floor(max));
@@ -394,7 +413,7 @@ class shardTreeObj {
     this.status     = 'starting';
     this.net        = peerTree;
     this.receptor   = null;
-    this.wcon       = new MkyWebConsole(this.net,con,this);
+    this.wcon       = new MkyWebConsole(this.net,con,this,'shardTreeCell');
     this.init();
     this.setNetErrHandle();
     this.sayHelloPeerGroup();

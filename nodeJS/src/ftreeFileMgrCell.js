@@ -13,6 +13,19 @@ const options = {
 const {PeerTreeNet}     = require('./peerTree');
 const {ftreeFileMgrObj,ftreeFileMgrCellReceptor} = require('./ftreeFileMgrObj.js');
 
+process.on('uncaughtException', (err) => {
+    console.error('Unhandled Exception:', err);
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port is already in use. Exiting...`);
+      process.exit(1);
+    } 
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Promise Rejection:', reason);
+});
+
+
 /*******************
 Create PeerTree Network Peer
 *******************
@@ -34,7 +47,7 @@ Create PeerTree Network Peer
     netPort  : 13351,
     recpPort : 13381,
     monPort  : 13341,
-    maxChildren : 25,
+    maxChildren : 3,
     netName  : 'ftreeFileMgrCell'
   }
 

@@ -201,6 +201,10 @@ class ftreeFileMgrCellReceptor{
        this.reqCreateRepo(j.msg,res);
        return;
      }
+     if (j.msg.req == 'locateMyMasterRepo'){
+        this.doLocateMyMasterRepo(j.msg,res);
+        return;
+     }
      if (j.msg.req == 'createRepoFolder'){
        this.reqCreateRepoFolder(j.msg,res);
        return;
@@ -244,6 +248,35 @@ class ftreeFileMgrCellReceptor{
 
      res.end('{"netReq":"action '+j.msg.req+' not found"}');
   } 
+  async doLocateMyMasterRepo(j,res){
+     var located = await this.locateMyRepoLocal(j.ownMUID);
+     if (located){
+        res.end(`{"result":true,"ip":"${this.peer.net.rnet.myIp}"}`);
+        return;
+     }
+     located = await this.peer.locateMyMasterRepo(j.ownMUID);
+     if (located){
+       if (located.result){
+         res.end(`{"result":true,"ip":"${located.ip}"}`);
+         return;
+       }
+     } 
+     res.end('{"result":false,"msg":"Master Repo Not Found!"}');
+  }
+  locateMyRepoLocal(muid){
+    return new Promise((resolve,reject)=>{
+      var SQL = `select count(*)as nRes FROM ftreeFileMgr.tblRepo where repoOwner = '${muid}'`;
+      console.log('locateMyRepoLocal .: ',SQL);
+      con.query(SQL , (err, result,fields)=>{
+        if (err){
+          console.log(err);
+          resolve(null);
+          return;
+        }
+        resolve(result[0].nRes);
+      });
+    });
+  }
   async doRepoHealthCheck(){
     console.log('Starting Repo Health Checks .:');
     var myRepos = await this.doReadMyRepoList();
@@ -1787,18 +1820,37 @@ catch {console.log('database config file `dbconf` NOT Found.');}
 try {dba = JSON.parse(dba);}
 catch {console.log('Error parsing `dbconf` file');}
 
-var con = mysql.createConnection({
-  host:"127.0.0.1",
-  user: dba.user,
-  password: dba.pass,
-  database: "ftreeFileMgr",
-  dateStrings: "date",
-  multipleStatements: true,
-  supportBigNumbers : true
-});
-con.connect(function(err) {
-  if (err) throw err;
-});
+function createConnection() {
+  const connection = mysql.createConnection({
+    host:"127.0.0.1",
+    user: dba.user,
+    password: dba.pass,
+    database: "ftreeFileMgr",
+    dateStrings: "date",
+    multipleStatements: true,
+    supportBigNumbers : true
+   });
+  connection.connect((err) => {
+    if (err) {
+      console.error('Error connecting to database:', err);
+      setTimeout(createConnection, 2000); // Retry connection
+    } else {
+      console.log('Connected to database');
+    }
+  });
+
+  connection.on('error', (err) => {
+    console.error('BORG:MySQL Error:', err);
+    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR') {
+      console.log('Reconnecting after fatal error...');
+      createConnection(); // Reconnect after fatal error
+    }
+  });
+
+  return connection;
+}
+
+const con = createConnection();
 
 var mysqlp = require('mysql2');
 var pool  = mysqlp.createPool({
@@ -1811,6 +1863,17 @@ var pool  = mysqlp.createPool({
   multipleStatements: true,
   supportBigNumbers : true
 });
+
+pool.on('connection', (connection) => {
+  connection.on('error', (err) => {
+    console.error('BORG:POOL:Connection error:', err);
+    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR') {
+      console.log('Removing faulty connection...');
+      connection.destroy(); // Remove bad connection
+    }
+  });
+});
+
 function dbConFail(resolve,msg){
   console.log(msg);
   return resolve({result:false,msg:'dbERROR : '+msg});
@@ -2017,6 +2080,9 @@ class ftreeFileMgrObj {
         if (j.msg.req == 'sendMyFileMgrList'){
           this.doSendMyFileMgrList(j.msg,j.remIp);
         }
+        if (j.msg.req == 'sendMyMasterRIP'){
+          this.doSendMyMasterRIP(j.msg,j.remIp);
+        }
         if (j.msg.req == 'sendActiveRepoFolder'){
           this.doSendActiveRepoFolder(j.msg,j.remIp);
         }
@@ -2068,6 +2134,19 @@ class ftreeFileMgrObj {
   Remote Peer To Peer Modules (Replies):
   =================================================================================
   */
+   async doSendMyMasterRIP(j,remIp){
+     const result = await this.receptor.locateMyRepoLocal(j.owner);
+     if (result) {
+       var qres = {
+         req : 'sendMyMasterRIPResult',
+         result : true,
+         ip : this.net.rnet.myIp
+       }
+       this.net.sendReply(remIp,qres); 
+       return;    
+     } 
+     this.net.sendReply(remIp,{req:'sendMyMasterRIPResult',result:false});
+   }
    doSendMyRepoList(j,remIp){
      var SQL = `select * from ftreeFileMgr.tblRepo where repoOwner = '${j.repoOwner}' and repoType = 'Public' limit ${j.limit} offset ${j.offset}`;
      console.log('doSendMyRepos: '+SQL,j);
@@ -2729,6 +2808,31 @@ class ftreeFileMgrObj {
      }
      return false;
   }	  
+  locateMyMasterRepo(muid){
+    return new Promise( (resolve,reject)=>{
+      var mkyReply = null;
+      const gtime = setTimeout( ()=>{
+        console.log('locateMyMasterRepo Request Timeout:');
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve(null);
+      },1.5*1000);
+
+      var req = {
+        to   : 'ftreeCells',
+        req  : 'sendMyMasterRIP',
+        owner : muid
+      }
+
+      this.net.broadcast(req);
+      this.net.on('mkyReply', mkyReply = (r)=>{
+        if (r.req == 'sendMyMasterRIPResult'){
+          resolve(r);
+        }
+        clearTimeout(gtime);
+        this.net.removeListener('mkyReply', mkyReply);
+      });
+    });
+  }
   getActiveRepoFolder(j){
     return new Promise( (resolve,reject)=>{
       var mkyReply = null;

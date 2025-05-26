@@ -164,12 +164,11 @@ class peerMemToken{
     } 
 }; 
 
-const recPort = 1335;
-
 class peerMemCellReceptor{
-  constructor(peerTree){
+  constructor(peerTree,inRecPort){
+    this.recPort = inRecPort;
     this.peer = peerTree;
-    console.log('ATTACHING - cellReceptor on port'+recPort);
+    console.log('ATTACHING - cellReceptor on port'+this.recPort);
     this.results = ['empty'];
     this.searches = [];
     const options = {
@@ -233,8 +232,8 @@ class peerMemCellReceptor{
       }
     });
   
-    bserver.listen(recPort);
-    console.log('peerTree Memory Receptor running on port:'+recPort);
+    bserver.listen(this.recPort);
+    console.log('peerTree Memory Receptor running on port:'+this.recPort);
   }
   processRequest(j,res){
     console.log(j);
@@ -423,28 +422,58 @@ catch {console.log('database config file `dbconf` NOT Found.');}
 try {dba = JSON.parse(dba);}
 catch {console.log('Error parsing `dbconf` file');}
 
-var con = mysql.createConnection({
-  host:"127.0.0.1",
-  user: "username",
-  password: dba.pass,
-  database: "peerBrain",
-  dateStrings: "date",
-  multipleStatements: true,
-  supportBigNumbers : true
-});
-con.connect(function(err) {
-  if (err) throw err;
-});
+function createConnection() {
+  const connection = mysql.createConnection({
+    host:"127.0.0.1",
+    user: dba.user,
+    password: dba.pass,
+    database: "peerBrain",
+    dateStrings: "date",
+    multipleStatements: true,
+    supportBigNumbers : true
+   });
+  connection.connect((err) => {
+    if (err) {
+      console.error('Error connecting to database:', err);
+      setTimeout(createConnection, 2000); // Retry connection
+    } else {
+      console.log('Connected to database');
+    }
+  });
+
+  connection.on('error', (err) => {
+    console.error('BORG:MySQL Error:', err);
+    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR') {
+      console.log('Reconnecting after fatal error...');
+      createConnection(); // Reconnect after fatal error
+    }
+  });
+
+  return connection;
+}
+
+const con = createConnection();
+
 var mysqlp = require('mysql2');
 var pool  = mysqlp.createPool({
   connectionLimit : 100,
   host            : '127.0.0.1',
-  user: "username",
+  user: dba.user,
   password: dba.pass,
   database: "peerBrain",
   dateStrings     : "date",
   multipleStatements: true,
   supportBigNumbers : true
+});
+
+pool.on('connection', (connection) => {
+  connection.on('error', (err) => {
+    console.error('BORG:POOL:Connection error:', err);
+    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR') {
+      console.log('Removing faulty connection...');
+      connection.destroy(); // Remove bad connection
+    }
+  });
 });
 
 function dbConFail(resolve,msg){
@@ -1016,6 +1045,7 @@ class peerMemoryObj {
     const mUID = m.from;
     var SQL = "select count(*)nMem from peerBrain.peerMemoryCell ";
     SQL += "where pmcMownerID = '"+mUID+"' and pmcMemObjID = '"+m.memID+"' and pmcMemObjType='"+m.memType+"' ";
+    console.log(SQL);
     con.query(SQL , async(err, result,fields)=>{
       if (err){
         console.log(err);

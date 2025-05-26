@@ -72,7 +72,7 @@ class MkyRouting {
      setTimeout(() => {this.scanNodesRight();},65*1000);
    }
    async scanNodesRight(){
-     console.log('START:: node scan',this.myIp,this.r.rootNodeIp);
+     console.error('START:: node scan',this.myIp,this.r.rootNodeIp);
      if (this.myIp == this.r.rootNodeIp){
        const nodes = [];
        var  node = {ip : this.myIp,rtab:this.r};
@@ -405,7 +405,7 @@ class MkyRouting {
          return;
        }
        const j = await this.getNodeRight(ip);
-       console.log('SENDNODEDATA::gave',j,ip);
+       console.error('SENDNODEDATA::gave',j,ip);
        if (j) resolve(j.sendNodeDataResult.rtab.rightNode);
        else resolve(null);
      });
@@ -1369,7 +1369,7 @@ class MkyRouting {
    // ===============================================
 
    respondToIpByNbrRequest(j,toIp){
-     console.log('RespondToIpByNbr::',j,toIp);  
+     console.error('RespondToIpByNbr::',j,toIp);  
      if (this.r.nodeNbr == j.peerSendIp)
        this.net.sendMsgCX(toIp,{responseSendIp : this.myIp});
    }
@@ -1651,7 +1651,7 @@ class MkyRouting {
        var myLeft = j.newNode.leftNode;
        if (myLeft == this.myIp){
          myLeft = await this.getNodeIpByNbr(j.newNode.lnode - 1);
-         console.log('MyLeft Is ::: ',myLeft);
+         console.error('MyLeft Is ::: ',myLeft);
        } 
        this.net.sendMsgCX(j.newNode.leftNode,{req : "addMeToYourRight", ip : this.myIp,nbr : j.newNode.lnode});
        const addMeRight = await this.resultAddMeRight();
@@ -2415,6 +2415,21 @@ class PeerTreeNet extends  EventEmitter {
    }
    startServer(){
      this.server = https.createServer(this.options, (req, res) => {
+       req.on('error', (err) => {
+         if (err.code === 'ECONNRESET') {
+           console.error('Connection reset by peer');
+         } else {
+           console.error('BORG:Request error:', err);
+         }
+       });
+
+       res.on('error', (err) => {
+         if (err.code === 'ECONNRESET') {
+           console.error('Connection reset error on response');
+         } else {
+           console.error('BORG:Response error:', err);
+         }
+       });
        this.remIp = req.connection.remoteAddress ||
        req.socket.remoteAddress ||
        req.connection.socket.remoteAddress;
@@ -3366,7 +3381,7 @@ class PeerTreeNet extends  EventEmitter {
        this.pushToContacts(j);
 
        if (this.rnet.handleReq(remIp,j)){
-         console.error('Request Handled By Handler');
+         console.error('Request Handled By Handler',j);
          return;
        }
        if (j.gping == 'hello'){

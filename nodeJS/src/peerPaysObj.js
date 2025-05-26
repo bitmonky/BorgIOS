@@ -331,18 +331,37 @@ catch {console.log('database config file `dbconf` NOT Found.');}
 try {dba = JSON.parse(dba);}
 catch {console.log('Error parsing `dbconf` file');}
 
-var con = mysql.createConnection({
-  host:"127.0.0.1",
-  user: dba.user,
-  password: dba.pass,
-  database: "peerPay",
-  dateStrings: "date",
-  multipleStatements: true,
-  supportBigNumbers : true
-});
-con.connect(function(err) {
-  if (err) throw err;
-});
+function createConnection() {
+  const connection = mysql.createConnection({
+    host:"127.0.0.1",
+    user: dba.user,
+    password: dba.pass,
+    database: "peerPay",
+    dateStrings: "date",
+    multipleStatements: true,
+    supportBigNumbers : true
+   });
+  connection.connect((err) => {
+    if (err) {
+      console.error('Error connecting to database:', err);
+      setTimeout(createConnection, 2000); // Retry connection
+    } else {
+      console.log('Connected to database');
+    }
+  });
+
+  connection.on('error', (err) => {
+    console.error('BORG:MySQL Error:', err);
+    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR') {
+      console.log('Reconnecting after fatal error...');
+      createConnection(); // Reconnect after fatal error
+    }
+  });
+
+  return connection;
+}
+
+const con = createConnection();
 
 var mysqlp = require('mysql2');
 var pool  = mysqlp.createPool({
@@ -355,6 +374,17 @@ var pool  = mysqlp.createPool({
   multipleStatements: true,
   supportBigNumbers : true
 });
+
+pool.on('connection', (connection) => {
+  connection.on('error', (err) => {
+    console.error('BORG:POOL:Connection error:', err);
+    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR') {
+      console.log('Removing faulty connection...');
+      connection.destroy(); // Remove bad connection
+    }
+  });
+});
+
 function dbConFail(resolve,msg){
   console.log(msg);
   return resolve({result:false,msg:'dbERROR : '+msg});
