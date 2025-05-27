@@ -415,6 +415,7 @@ try {dba =  fs.readFileSync('dbconf');}
 catch {console.log('database config file `dbconf` NOT Found.');}
 try {dba = JSON.parse(dba);}
 catch {console.log('Error parsing `dbconf` file');}
+let con = createConnection();
 
 function createConnection() {
   const connection = mysql.createConnection({
@@ -425,7 +426,7 @@ function createConnection() {
     dateStrings: "date",
     multipleStatements: true,
     supportBigNumbers : true
-   });
+  });
   connection.connect((err) => {
     if (err) {
       console.error('Error connecting to database:', err);
@@ -437,16 +438,27 @@ function createConnection() {
 
   connection.on('error', (err) => {
     console.error('BORG:MySQL Error:', err);
-    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR') {
+    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' || err.code === 'ECONNRESET') {
       console.log('Reconnecting after fatal error...');
-      createConnection(); // Reconnect after fatal error
+      connection.destroy();
+      con = createConnection(); // Reconnect after fatal error
     }
   });
 
   return connection;
 }
 
-const con = createConnection();
+function heartbeat() {
+  con.ping((err) => {
+    if (err) {
+      console.error('BORG::mySQL::Heartbeat failed, attempting to reconnect...', err);
+      con.destroy();
+      con = createConnection();
+    }
+  });
+}
+setInterval(heartbeat, 15000);
+console.log('Heartbeat system initialized.');
 
 function getRandomInt(max) {
   return Math.floor(Math.random() * Math.floor(max));
