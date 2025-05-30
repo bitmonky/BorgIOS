@@ -16,6 +16,28 @@ const maxPacket = 300000000;
 
 process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 
+/* Server Response CODES:
+200 'OK'
+errors:
+
+501  Timeout msg was not handled - retry
+522 NetREQ   - Node Busy retry;
+552 netREPLY - Node Busy retry;
+
+413  netREQ/netReply To much data msg rejected - Fatal
+520 netREQ   Fatal, malformed JSON in msg
+521 netREQ   Fatal, no msg wrapper
+550 netREPLY Fatal, malformed JSON in msg
+551 netREPLY Fatal, no msg wrapper
+
+Send Msg Error CODES:
+
+xTime  - retry (server may be busy or disconected);
+xError - retry server failed to respond
+*/
+const srvFatal = [413,520,521,550,551];
+const srvBusy  = [501,522,552,'xTime','xError'];
+
 function clone(obj){
   return JSON.parse(JSON.stringify(obj));
 }
@@ -47,7 +69,6 @@ class MkyRouting {
      this.eTime      = null;
      this.status     = 'startup'
      this.startJoin  = null;
-     this.joinTime   = null;
      this.joinQue    = [];
      this.dropIps    = [];
      this.rootMap    = new Map();
@@ -158,8 +179,8 @@ class MkyRouting {
      this.rootMap.clear(); 
      return new Promise( async (resolve,reject)=>{
        var jroot = null;
-       while ( i < this.net.nodes.length){
-         const tryIp = this.net.nodes[i++].ip;  
+       while ( i < this.net.PTnodes.length){
+         const tryIp = this.net.PTnodes[i++].ip;  
          if (tryIp != this.myIp){
            jroot = await this.whoIsRoot(tryIp);
            if (jroot){
@@ -480,45 +501,6 @@ class MkyRouting {
        this.net.sendMsgCX(nextParent,req);
      });
    }
-   // ******************************************************
-   // Handles broadcasted requests to join.  
-   //   - only the node with and open slot will return true.
-   // ====================================================== 
-   addNewNodeBCast(ip,rUpdate){
-     console.error('Add by BROADCAST '+ip,rUpdate);
-     this.r.mylayer = this.getMyLayer(this.net.maxPeers,this.r.nodeNbr);
-     this.r.nlayer  = this.getMyLayer(this.net.maxPeers,this.r.lnode+1);
-
-     if (this.myIp != this.r.lastNode){
-       this.r.rootRTab = 'na';
-     }
-     if (this.startJoin){
-       this.startJoin = false;
-       clearTimeout(this.joinTime);
-     }
-     if (this.inMyNodesList(ip)){
-       console.error('inMyNodesList true');
-       return false;
-     }
-
-     if (ip == this.myIp){
-       console.error('hey this is me:',this.status);
-       return false;
-     }
-
-     if (rUpdate)
-       this.r.rootNodeIp = rUpdate;
-
-     this.r.lastNode = ip;
-     this.incCounters();
-
-     // Remove New Node Ip from dropped nodes list;
-     let newNodex = this.dropIps.indexOf(ip);
-     if (newNodex !== -1) {
-       this.dropIps.splice(newNodex, 1);
-     }  
-     return false;
-   }
    getMyLayer(maxPeers,nodeNbr){
      let start = 1;
      let end   = 1;
@@ -622,16 +604,16 @@ class MkyRouting {
        var   jroot = null;
        var   rInfo = null;
        if (!rtab) 
-         console.error('NETWORK starting... I am new!', this.net.nodes);
+         console.error('NETWORK starting... I am new!', this.net.PTnodes);
        else 
          if (Array.isArray(rtab))
            if (rtab.length > 0)
-             this.net.nodes = rtab;
+             this.net.PTnodes = rtab;
 
-       console.error(this.net.nodesFile,this.net.nodes);
+       console.error(this.net.nodesFile,this.net.PTnodes);
        
        let tryfind = 0;
-       if (this.net.nodes.length > 0){
+       if (this.net.PTnodes.length > 0){
          while (tryfind < 10 ){
 	   const rmap = await this.findWhoIsRoot();
            rInfo = this.getMaxRoot();
@@ -1417,7 +1399,7 @@ class MkyRouting {
 
      // Set A timeout for the join operation.
 
-     this.joinTime = setTimeout( ()=>{
+     const joinTime = setTimeout( ()=>{
        console.error('join timeount',remIp);
        this.net.endResCX(remIp,'{"addResult":"timedOut"}');
        this.restoreState(saveState);
@@ -1451,7 +1433,7 @@ class MkyRouting {
          this.restoreState(saveState);
        }
        this.startJoin = false;
-       clearTimeout(this.joinTime);
+       clearTimeout(joinTime);
 
      }
      else {
@@ -1742,10 +1724,6 @@ class MkyRouting {
        this.responseWhoHasNodeIp(j.remIp,j.msg.whoHasNodeIp);	     
        return true;
      }
-     if (j.msg.newNode){
-       this.addNewNodeBCast(j.msg.newNode,j.msg.rootUpdate);
-       return true;
-     }
      if (j.msg.simReplaceNode){
        console.error('got simReplaceNode',j.msg.simReplaceNode);
        this.simReplaceNode(j.msg.simReplaceNode);
@@ -1808,7 +1786,20 @@ class MkyRouting {
    // Handle undelivered http request from offline or slow to respond peers
    // ====================================================================
    async handleError(j){
-     //console.error('handle error'+this.status,j);
+     console.error('handle error'+this.status,j);
+
+     if (!j.hasOwnProperty('xhrError')) {
+       console.error('FATAL_MSG_ERROR::XhrCodeNotSet',j);
+       return;
+     }
+     if (srvFatal.includes(j.xhrError)) {
+       console.error('FATAL_MSG_ERROR::',j);
+       return;
+     } 
+     if (!srvBusy.includes(j.xhrError)) {
+       console.log('FATAL_MSG_ERROR::InvalidXhrCode',j);
+     }
+
      if (this.status == 'startup' || this.status == 'offline'){
        console.error('handleError::is in Startup mode:',j.req);
        return true;
@@ -1825,7 +1816,7 @@ class MkyRouting {
      }
      if (!this.err){ //this.node.isError(j.toHost)){
        this.net.incErrorsCnt(j.toHost);
-       if (this.net.getNodesErrorCnt(j.toHost) > 0){
+       if (this.net.getNodesErrorCnt(j.toHost) > 5){
          console.error('handleError::Err Count Exceeded',j.toHost);
       
          const myStat = await this.net.checkInternet();
@@ -1920,7 +1911,7 @@ class MkyRouting {
 //
 class gPowQue {
    constructor(){
-     this.nodes = [];
+     this.POWnodes = [];
    }
    push(ip,work,diff){
      var node = {
@@ -1929,14 +1920,14 @@ class gPowQue {
        diff : diff
      }
      if (this.inList(ip) === null) {
-       this.nodes.push(node);
+       this.POWnodes.push(node);
      }
      return this.pop();
    }
    remove(ip){
      var breakFor = {};
      try {
-       this.nodes.forEach( (n, index, object)=>{
+       this.POWnodes.forEach( (n, index, object)=>{
          if (n.ip == ip){
            object.splice(index,1)
            console.error("Job IP Removed:",ip);
@@ -1949,7 +1940,7 @@ class gPowQue {
      var isIn = null;
      var breakFor = {};
      try {
-       this.nodes.forEach( (n)=>{
+       this.POWnodes.forEach( (n)=>{
          if (n.ip == ip){
            isIn = n;
            throw breakFor;
@@ -1960,11 +1951,11 @@ class gPowQue {
      return isIn;
    }
    pop(){
-     return this.nodes.pop();
+     return this.POWnodes.pop();
    }
    list(){
     //console.error('Network MsgQue Status: ');
-     this.nodes.forEach( (n)=>{
+     this.POWnodes.forEach( (n)=>{
       //console.error(n);
      });
    }
@@ -2191,7 +2182,7 @@ class PeerTreeNet extends  EventEmitter {
       this.port     = port;
       this.wmon     = wmon;
       this.options  = options;
-      this.nodes    = [];
+      this.PTnodes  = [];
       this.msgQue   = [];
       this.rQue     = [];
       this.msgMgr   = new MkyMsgQMgr();
@@ -2266,7 +2257,7 @@ class PeerTreeNet extends  EventEmitter {
    }
    updatePortalsFile(borg){
      var portals = null;
-     borg.activeNodes = this.nodes;
+     borg.activeNodes = this.PTnodes;
 
      const portalFile = 'keys/borgPortalsList.dat';
      try {
@@ -2336,22 +2327,22 @@ class PeerTreeNet extends  EventEmitter {
 
    }
    tryNodeIp(){
-     const max = this.nodes.length;
+     const max = this.PTnodes.length;
      if(!max)
        return null;
      const n = Math.floor(Math.random() * Math.floor(max));
-     return this.nodes[n].ip;
+     return this.PTnodes[n].ip;
    }
    setUpNetwork(){
      return new Promise( async (resolve,reject)=>{
        this.initHandlers();
        this.nodesFile = 'keys/myNodeList-'+this.port+'-'+this.nodeType+'.net';
-       this.nodes = await this.readNodeFile();
+       this.PTnodes = await this.readNodeFile();
     
        this.nIp = null;
        this.nIp = await(this.netIp());
 
-       if (this.nodes.length == 0){
+       if (this.PTnodes.length == 0){
          console.error('this.nodesFile is empty starting as root');
          this.isRoot = true;
          this.rootIp = this.nIp;
@@ -2463,11 +2454,10 @@ class PeerTreeNet extends  EventEmitter {
        res.setHeader('Connection', 'close');
        this.svtime = setTimeout( ()=>{
          if (1==2 && !this.resHandled){
-           console.error('server response timeout:'+this.remIp+req.url,jSaver);
+           console.error('Server Response Timeout:'+this.remIp+req.url,jSaver);
            res.setHeader('Content-Type', 'application/json');
            res.statusCode = 501;
            res.end('{"netPOST":"FAIL","type":"NotSet","Error":"server timeout"}');
-           //process.exit();
            this.resHandled = true;
          }
        },2500); 
@@ -2508,16 +2498,22 @@ class PeerTreeNet extends  EventEmitter {
                var j = null;
                try {
                  //console.time('Time Taken');
-                 j = JSON.parse(body);
-                 jSaver = j;
-                 if (j.hasOwnProperty('msg') === false) throw 'invalid netREQ no msg body found';
+                 try {j = JSON.parse(body);jSaver = j;}
+                 catch(err) {
+                   throw {error:520,msg:'Invalid JSON Req'};
+                   console.error(err);
+                   jSaver = body;
+                 } 
+                 if (j.hasOwnProperty('msg') === false) 
+                   throw {error:521,msg:'invalid netREQ no msg body found'};
+
                  if(this.rnet.status != 'online' && this.rnet.status != 'root'){
-                   throw 'req mode is offline only :: joins can be accepted';
+                   throw {error:522,msg:'req mode is offline only :: joins can be accepted'};
                  }
   	         if (!j.msg.remIp) j.msg.remIp = this.remIp;
                  this.resHandled = true;
                  clearTimeout(this.svtime);
-                 //if (j.msg.ping){console.error('PING:::',j.msg.remIp);}
+                 
                  if (j.msg.hasOwnProperty('PNETCOREX') === false){
                    this.emit('mkyReq',this.remIp,j.msg);
 		 } 
@@ -2529,12 +2525,12 @@ class PeerTreeNet extends  EventEmitter {
                  //console.timeEnd('Time Taken');
                }
                catch (err) {
-                 if (err != 'req mode is offline only :: joins can be accepted'){
+                 if (err.error != 522){
 	           console.error('POST netREQ Error: ',err);
                    console.error('POST msg was ->',body);
                  }
                  clearTimeout(this.svtime);
-                 res.statusCode = 502;
+                 res.statusCode = err.error;
                  res.end('{"netPOST":"FAIL","type":"netREQ","Error":"'+err+'","data":"'+body+'"}');
                  this.resHandled = true;
 	       }
@@ -2565,8 +2561,14 @@ class PeerTreeNet extends  EventEmitter {
                  res.setHeader('Content-Type', 'application/json');
                  var j = null;
                  try {
-                   j = JSON.parse(body);
-                   if (j.hasOwnProperty('msg') === false) throw 'invalid netREPLY no msg body found';
+                   try {j = JSON.parse(body);}
+                   catch(err) {
+                     throw {error:550,msg:"netREPLY JSON error"};
+                     console.error(error);
+                   }
+                  
+                   if (j.hasOwnProperty('msg') === false) 
+                     throw {error:551,msg:'invalid netREPLY no msg body found'};
 
                    // if offline mode check for addResults only.
                    if(this.rnet.status != 'online' && this.rnet.status != 'root'){
@@ -2574,10 +2576,11 @@ class PeerTreeNet extends  EventEmitter {
                         || j.msg.hasOwnProperty('resultAddMeRight') 
                         || j.msg.hasOwnProperty('whoIsRootReply'))){
                        console.error('NETReply::Offline Reject:',this.rnet.status,j);
-                       throw 'mode is offline only addResult,resultAddMeRight, or whoIsRootReply can be accepted';
+                       throw {error:552,msg:'mode is offline only addResult,resultAddMeRight, or whoIsRootReply can be accepted'};
                      }
                    }
                    if (!j.msg.remIp) j.msg.remIp = this.remIp;
+
                    if (j.msg.hasOwnProperty('PNETCOREX') === false){
 		     this.emit('mkyReply',j.msg);
 	 	   }
@@ -2590,10 +2593,12 @@ class PeerTreeNet extends  EventEmitter {
                  }
                  catch(err) {
                    clearTimeout(this.svtime);
-                   res.statusCode = 505;
+                   res.statusCode = err.error;
                    res.end('{"netPOST":"FAIL","type":"netREPLY","Error":"'+err+'","data":"'+body+'"}');
-                   console.error('POST netREPLY Error: ',err);
-                   console.error('POST msg was ->',j);
+                   if (err.error != 552){
+                     console.error('POST netREPLY Error: ',err);
+                     console.error('POST msg was ->',j);
+                   }
                  } 
                });
              }
@@ -2954,16 +2959,14 @@ class PeerTreeNet extends  EventEmitter {
   async setNodeBackToStartup(msg='noMsg'){
     console.error('Node Appears offline ' + msg,this.rnet.r);
     this.rnet.status = 'offline';
+    this.resetErrorsCntAll();
+
     this.coldStart = false;
     console.error('Setting Status', this.rnet.status);
-    //await sleep(15*1000);
-    //console.error('Setting Status To:', this.rnet.status);
-    //this.rnet.status = 'tryJoining';
     this.rnet.newNode    = null;
     this.rnet.err        = null;
     this.rnet.eTime      = null;
     this.rnet.startJoin  = null;
-    this.rnet.joinTime   = null;
     this.rnet.joinQue    = [];
     this.dropIps         = [];
     this.rootMap         = new Map();
@@ -3112,7 +3115,7 @@ class PeerTreeNet extends  EventEmitter {
       },500);
   }
   queMsg(msg){
-     //console.error('Msg Log Counter: ',this.msgMgr.count(msg.toHost));
+     console.error('Msg Log Counter: ',this.msgMgr.count(msg));
      if (this.msgMgr.count(msg.toHost) < 20){
        //console.error('pushing msg:',msg);
        this.msgQue.push(msg);
@@ -3288,14 +3291,14 @@ class PeerTreeNet extends  EventEmitter {
   }
 
   removeNode(ip){
-     this.nodes.forEach( (n, index, object)=>{
+     this.PTnodes.forEach( (n, index, object)=>{
        if (n.ip == ip){
          object.splice(index,1)
        }
      });
      const remip = {ip : ip}
      //console.error('Removed non responsive network node : ',remip);
-     const myNodes = this.nodes;
+     const myNodes = this.PTnodes;
      return;
      fs.writeFile(this.nodesFile, JSON.stringify(myNodes), function (err) {
        if (err) throw err;
@@ -3303,19 +3306,24 @@ class PeerTreeNet extends  EventEmitter {
      });
   }
   getNodesErrorCnt(ip){
-     for (var node of this.nodes)
+     for (var node of this.PTnodes)
        if (ip == node.ip)
          return node.errors;
      return null;
   }
   resetErrorsCnt(ip){
-     this.nodes.forEach( node=>{
+     this.PTnodes.forEach( node=>{
        if (node.ip == ip)
          node.errors = 0;
      });
   }
+  resetErrorsCntAll(){
+     this.PTnodes.forEach( node=>{
+       node.errors = 0;
+     });
+  }
   incErrorsCnt(ip){
-     this.nodes.forEach( (node)=>{
+     this.PTnodes.forEach( (node)=>{
        if (node.ip == ip)
          node.errors++;
      });
@@ -3325,7 +3333,7 @@ class PeerTreeNet extends  EventEmitter {
   attempting to rejoin.
   */
   markWhoIsRoot(j){
-    for (var node of this.nodes){
+    for (var node of this.PTnodes){
       if (this.ip == this.rnet.r.rootNodeIp){
         node.isRoot = true;
       }
@@ -3340,7 +3348,7 @@ class PeerTreeNet extends  EventEmitter {
   }
   async pushToContacts(j){
     const isRoot = this.markWhoIsRoot(j);
-    for (var node of this.nodes){
+    for (var node of this.PTnodes){
        if (node.ip == j.remIp){
          return;
        }
@@ -3348,8 +3356,8 @@ class PeerTreeNet extends  EventEmitter {
 
      const newip = {ip : j.remIp,errors : 0,date : Date.now(),pKey : j.remPublicKey, isRoot : isRoot }
      console.error('New Network Node Joined: ',newip);
-     this.nodes.push(newip);
-     const myNodes = this.nodes;
+     this.PTnodes.push(newip);
+     const myNodes = this.PTnodes;
      fs.writeFile(this.nodesFile, JSON.stringify(myNodes), function (err) {
        if (err) throw err;
          console.error('node list saved to disk!',myNodes);
