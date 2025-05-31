@@ -943,6 +943,7 @@ class MkyRouting {
        this.r.rootNodeIp = this.myIp;
        this.net.msgQue = [];
        this.net.msgMgr.remove(this.net.rootIp);
+       this.net.resetErrorsCntAll();
 
        if (this.r.rightNode){
          console.error('Sending To:',this.r.rightNode,{req : "addMeToYourLeft", ip : this.myIp});
@@ -1716,6 +1717,10 @@ class MkyRouting {
    // ==================================================
    handleBcast(j){
      //console.error('Broadcast Recieved: ',j);
+     if (j.msg.newNode){
+       this.addNewNodeBCast(j.msg.newNode,j.msg.rootUpdate);
+       return true;
+     }
      if (j.remIp == this.myIp){
        //console.error('Ingore Broad Cast To Self',j);
        return true;
@@ -1846,7 +1851,9 @@ class MkyRouting {
            if (notifyRRes != 'OK'){
              trys++;
              console.error('Root Response was:',notifyRRes,' Trys:',trys);
-             await sleep(1500);
+             if (notifyRRes != 'OK' && notifyRRes != 'IsRoot' && notifyRRes != 'IAmRoot'){
+               await sleep(1500);
+             }
            } 
          }
          if (notifyRRes === null){
@@ -1885,6 +1892,29 @@ class MkyRouting {
        return true;
      }
      console.error('handleError::InDrop Mode:',j.toHost);
+     return false;
+   }
+   addNewNodeBCast(ip,rUpdate){
+     console.log('Add by BROADCAST '+ip,rUpdate);
+     if (this.startJoin){
+       this.startJoin = false;
+       clearTimeout(this.joinTime);
+     }
+     if (this.inMyNodesList(ip)){
+       console.log('inMyNodesList true');
+       return false;
+     }
+
+     if (ip == this.myIp){
+       console.log('hey this is me');
+       return false;
+     }
+
+     if (rUpdate)
+       this.r.rootNodes = rUpdate;
+
+     this.r.lastNode = ip;
+     this.incCounters();
      return false;
    }
    // ****************************************
