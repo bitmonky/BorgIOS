@@ -1,5 +1,13 @@
 const fs = require('fs');
 
+// Create a writable stream for errors
+const errorLogStream = fs.createWriteStream('borgAgentErrors.log', { flags: 'a' });
+
+// Override console.error to write to the file
+console.error = function (...args) {
+    errorLogStream.write(args.join(' ') + '\n');
+};
+
 const options = {
   key: fs.readFileSync('keys/privkey.pem'),
   cert: fs.readFileSync('keys/fullchain.pem')
@@ -77,7 +85,7 @@ function startMemoryCell(rBranch){
       mcell.handleReply(j);
     });
     mcell.net.on('xhrFail', j =>{
-      console.log('xhrFail is->',j);
+      console.error('xhrFail is->',j);
       mcell.handleXhrError(j);
     });
 }

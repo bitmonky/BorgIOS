@@ -12,6 +12,8 @@ const STATE_DIR = '/peerTree/keys/';
 const STATE_FILE = path.join(STATE_DIR, 'current.borgstate');
 const SHUTDOWN_CODE_FILE = path.join(STATE_DIR, '.shutdown.code');
 
+const BORG_masterRepo = 'BorgIOS.net';
+const BORG_appPath    = 'src'; 
 
 const algorithm = 'aes256';
 const MKYC_portDeepSeek = 13581;
@@ -67,8 +69,16 @@ class BorgAgentBrain {
     this.tryRestoreState();
     this.registerShutDown();
     this.activateBrain();
+    this.startRepoReader();
+  }
+  startRepoReader(){
+    this.doFetchCodeRepo(null);
+    setTimeout(() => {
+      this.startRepoReader();
+    },60*60*1000);
   }
   async activateBrain(){
+    this.csys.checkForCoreEngineer();
     this.buildPrompt();
     const agentRes = await this.receptor.sendOAIPrompt(this.core);
     if (agentRes){
@@ -392,7 +402,7 @@ class BorgAgentBrain {
     tempStr += "\nEnd RepDocumentReader: \n";
 
     tempStr += "\nShort Term Memory Buffer:\n";
-    tempStr += "You can store temporary memories to help keep track of your currect work flow... They will exist until you remove them. Once removed they can not be retrieved.";
+    tempStr += "You can store temporary memories to help keep track of your current work flow... They will exist until you remove them. Once removed they can not be retrieved.";
     tempStr += this.serializeShortTermMemory();
     tempStr += "\nEnd ShortTermMemory: \n";
  
@@ -642,7 +652,10 @@ class BorgAgentBrain {
         console.log('EndSession Requested');
         break;
       default:
-        this.respondEr('API error - Invalid Agent Request ... please try again', req);
+        const res = await this.csys.handleBorgResponse(req);
+        if (!res){
+          this.respondEr('API error - Invalid Agent Request ... please try again', req);
+        } 
     }
     resolve(true);
     });
@@ -993,19 +1006,52 @@ class BorgAgentBrain {
       const response = await fetch(url);   //this.borg.ftreeGetMyRepos('1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ');
       const rCode = await response.text();
 
-      if (rCode == '') {
-        this.respondEr('Error Fetching Repositories... no repositories found.',r);
+      if (rCode == ''){
+        if (r) {this.respondEr('Error Fetching Repositories... no repositories found.',r);}
         resolve(false);
         return;
       }
+      this.loadREPO(rCode);
       this.REPOR = "\n"+rCode+this.serializeRepoReadState();
       //console.log('REPOCODE result: ',this.REPOR);
-
-      this.respondToBorg(r,"OK Repository Loaded","to read a file use fetchRepoFile protocol.");
+      if (r){
+        this.respondToBorg(r,"OK Repository Loaded","to read a file use fetchRepoFile protocol.");
+      }
       resolve(true);
     });
   }
-  
+  loadREPO(rstr) {
+    const fileLines = rstr.split("\n");
+    fileLines.forEach((line) => {
+      if (line.startsWith(`{"rname`)){
+        try {
+          const r = JSON.parse(line);
+ 
+          const key = crypto.createHash('sha256')
+              .update(r.rname + r.filename + r.folderID)
+              .digest('hex');
+
+          const rRepo = {
+            rname: r.rname,
+            path: r.path,
+            filename: r.filename,
+            folderID: r.folderID,
+            lastLine: null,
+            nLines: null,
+            key: key
+          };
+
+          // Check if the key already exists in REPO
+          const index = this.REPO.findIndex(repo => repo.key === key);
+
+          if (index === -1) {
+            this.REPO.push(rRepo);
+          }
+        } catch(err) {console.log({jsonEr:err});}
+      }
+    });
+  }
+ 
   trackRepoState(r, start, end, n) {
     const key = crypto.createHash('sha256')
                       .update(r.rname + r.filename + r.folderID)
@@ -1035,7 +1081,7 @@ class BorgAgentBrain {
     this.receptor.shareBorgDocHistory(this.REPO);
   }
   serializeRepoReadState() {
-    let s = "\nAgent Shared Read History:\nlist of files read by ALL agents...  Stores memories should be available for files that have been read regardless of wich agent performed the read.";
+    let s = "\nAgent Shared Read History:\nlist of files read by ALL agents...  Stored memories should be available for files that have been read regardless of wich agent performed the read.";
 
     if (this.REPO.length === 0) {
       s += "\nNo Files Read.";
@@ -1043,8 +1089,14 @@ class BorgAgentBrain {
     }
 
     this.REPO.forEach(r => {
-      const file = `${r.rname}::${r.path}/${r.filename}`;
-      s += `\n${file} - lines [1] - [${r.lastLine}] of [${r.nLines}] Read.`;
+      console.log('checking core apps',{repo:r.rname,path:r.path,file:r.filename});
+      if (r.rname == BORG_masterRepo && r.path == BORG_appPath && r.filename.includes('Cell.js')){
+        this.csys.addCoreApp(r.filename);
+      }
+      if (r.nLines !== null){
+        const file = `${r.rname}::${r.path}/${r.filename}`;
+        s += `\n${file} - lines [1] - [${r.lastLine}] of [${r.nLines}] Read.`;
+      }
     });
 
     return s;
@@ -1058,7 +1110,7 @@ class BorgAgentBrain {
 
     const state = this.REPO.find(entry => entry.key === key);
 
-    if (state) {
+    if (state && state.nLines !== null) {
       if (state.lastLine >= state.nLines) {
           return `You have read all ${state.nLines} of file - ${file}`;
       }
@@ -1406,6 +1458,8 @@ class BorgAgentBrain {
     ${this.agentPrompt}
     End Overview:
     `;
+    core += this.csys.getCoreSystemsReport();
+
     return core;
   }
 
@@ -1491,6 +1545,9 @@ class BorgAgentBrain {
       `;
     tempStr += more;
 
+    if (this.agentSpecialty == 'Core Systems Engineer'){
+      tempStr += this.csys.getCoreSysProtocols();
+    }
     tempStr += "\n\nEnd of Mnemosyne Protocol Section:\n";
     if (isChat){
       return tempStr;
@@ -1520,6 +1577,7 @@ class BorgAgentBrain {
         SYSR: this.sysResponse,
         SPEC: this.agentSpecialty,
         SHORTM: this.SHORTM,
+        CORAP: this.csys.coreApps,
         meta: {
             shutdown_code: shutdownCode,
             timestamp: Date.now(),
@@ -1574,7 +1632,7 @@ class BorgAgentBrain {
 
         const compressed = fs.readFileSync(STATE_FILE);
         const state = JSON.parse(zlib.gunzipSync(compressed));
-        console.log(state);
+        //console.log(state);
         const checkHash = crypto.createHash('sha3-256').update(JSON.stringify({
             agentPrompt: state.agentPrompt,
             protocol: state.protocol,
@@ -1607,7 +1665,9 @@ class BorgAgentBrain {
         this.REPOR = state.REPOR || "";
         this.sysResponse = this.trimBuffer(state.SYSR,this.sysResMax);
         this.agentSpecialty = state.SPEC;
-        this.SHORTM = state.SHORTM
+        this.SHORTM = state.SHORTM;
+        this.csys.coreApps = state.CORAP || [];
+
         // Refresh security code
         fs.writeFileSync(SHUTDOWN_CODE_FILE, crypto.randomBytes(32).toString('hex'));
         return true;
