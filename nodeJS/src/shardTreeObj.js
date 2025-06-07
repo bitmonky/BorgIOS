@@ -637,7 +637,7 @@ class shardTreeObj {
          else {
            sownID = result[0].sownID;
            var fsdat = null;
-	   const fname = ftreeRoot+sownID+'-'+j.shard.hash+'.srd'; 
+	   const fname = ftreeRoot+sownID+'-'+j.shard.hashID+'.srd'; 
            try {
              fsdat =  fs.readFileSync(fname);
 	     var qres = {
@@ -753,13 +753,13 @@ class shardTreeObj {
          else {
            sownID = result[0].sownID;
            var fsdat = null;
-           const fname = ftreeRoot+sownID+'-'+j.shard.hash+'.srd';
+           const fname = ftreeRoot+sownID+'-'+j.shard.hashID+'.srd';
            fs.unlink(fname, (err)=>{
              if (err) {
                console.log('shard delete file not found:',fname);
              }
 	     else {
-               SQL = "delete from shardTree.shards where shardOwnerID = "+sownID+" and shardHash='"+j.shard.hash+"'";
+               SQL = `delete from shardTree.shards where shardOwnerID = ${sownID} and shardHash='${j.shard.hash}' and shardHashID = '${j.shard.hashID}' `;
                con.query(SQL , async(err, result,fields)=>{
                  if (err){
                     console.log('db shards delete shard error',err);
@@ -923,7 +923,7 @@ class shardTreeObj {
       });
     });
   }
-  createInvoiceRec(sownID,hash,sig){
+  createInvoiceRec(sownID,hash,sig,hashID){
     var invSig = {
        token : sig.token,
        sig   : sig.signature
@@ -932,6 +932,7 @@ class shardTreeObj {
     var values = {
       shardOwnerID : sownID,
       shardHash    : hash,
+      shardHashID  : hashID,
       shardDate    : new Date(),
       shardExpire  : null,
       shardOwnSignature : JSON.stringify(invSig)
@@ -981,22 +982,50 @@ class shardTreeObj {
         else {
           if (result[0].nRec > 0){
 	    console.log("Shard Record exists");
-            this.net.endRes(remIp,'{"shardStoreRes":false,"error":"Shard Record exists"}');
+            const shardf = ftreeRoot+sownID+'-'+j.shard.hashID+'.srd';
+            var fres = false;
+            var er   = '{"shardStoreRes":false,"error":"Shard Data File Not Found"}';
+            fs.stat(shardf, (err, stats) => {
+              if (err) { 
+                console.error("File does not exist or can't be accessed.");
+              } else if (stats.size > 0) {
+                fres = true;
+                er   = "File exists and is not empty.";
+              } 
+              else {
+                fs.unlink(shardf, (err) => {
+                  if (err) {
+                    console.error("Error deleting orphined shard file:",shardf, err);
+                  }
+                });
+              }
+            });
+            if (!fres){
+              this.deleteShardOrphinRecord("DELETE FROM `shardTree`.`shards` WHERE shardOwnerID = "+sownID+" and shardHash = '"+j.shard.hash+"'");
+            }
+            this.net.endRes(remIp,`{"shardStoreRes":${fres},"msg":"${er}"}`);
             return;
 	  }
         }
-        fs.writeFile(ftreeRoot+sownID+'-'+j.shard.hash+'.srd', j.shard.data, (err)=> {
+        fs.writeFile(ftreeRoot+sownID+'-'+j.shard.hashID+'.srd', j.shard.data, (err)=> {
           if (err) {
             console.log('error writing srootTree:', err);
             this.net.endRes(remIp,'{"shardStoreRes":false,"error":"'+err+'"}');
 	  }
 	  else {
-	    this.createInvoiceRec(sownID,j.shard.hash,j.shard.signature);
+	    this.createInvoiceRec(sownID,j.shard.hash,j.shard.signature,j.shard.hashID);
             this.net.endRes(remIp,'{"shardStoreRes":true,"shardStorHash":"' + j.shard.hash + '"}');
             console.log('{"shardStoreRes":true,"shardStorHash":"' + j.shard.hash + '"}',remIp);
 	  }
         });
       });
+    });
+  }
+  deleteShardOrphinRecord(SQL){
+    con.query(SQL , async(err, result,fields)=>{
+      if (err){
+        console.log(err);
+      }
     });
   }
 };	  

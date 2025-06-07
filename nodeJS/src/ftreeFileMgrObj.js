@@ -993,7 +993,7 @@ class ftreeFileMgrCellReceptor{
       }
       var outpath = j.repo.path
       if(outpath === null){outpath = '/';}
-      var SQL = "select sfilShardHash shardID ,sfilNCopies as nStored,sfilCheckSum as fposition FROM `ftreeFileMgr`.`tblRepo` " +
+      var SQL = "select sfilShardHash shardID,sfilShardID shardHID,sfilNCopies as nStored,sfilCheckSum as fposition FROM `ftreeFileMgr`.`tblRepo` " +
         "inner join `ftreeFileMgr`.`tblShardFileMgr` on  `tblRepo`.`repoID_master` = `tblShardFileMgr`.`repoID_master` " +
         "inner join `ftreeFileMgr`.`tblShardFiles` on sfilFileMgrID = smgrID_master " +
         "where `tblRepo`.`repoID_master` = '"+repoID_master+"' and smgrFileName = '"+j.repo.file+"' and smgrFilePath = '"+outpath+"' " +
@@ -1116,7 +1116,7 @@ class ftreeFileMgrCellReceptor{
       var hstr = repo.ownerMUID+repo.name;
       var SQL = "select smgrID, concat(smgrFileName,smgrCheckSum,smgrDate,smgrExpires,smgrEncrypted,smgrFileType,smgrFileSize,"+
           "smgrFVersionNbr,smgrSignature,smgrShardList,smgrFileFolderID,smgrFilePath) hstr, "+
-          "concat(sfilCheckSum,sfilShardHash,sfilNCopies,sfilDate,sfilExpires,sfilEncrypted,sfilShardNbr) sfilStr "+
+          "concat(sfilCheckSum,sfilShardHash,sfilNCopies,sfilDate,sfilExpires,sfilEncrypted,sfilShardID) sfilStr "+
           "FROM `ftreeFileMgr`.`tblShardFileMgr`"+
           "inner join  `ftreeFileMgr`.`tblShardFiles` on sfilFileMgrID = smgrID "+
           "where smgrRepoID = '"+repoID_master+"'";
@@ -1556,8 +1556,8 @@ class ftreeFileMgrCellReceptor{
       console.log('InsertLocalFileShard::',s);
       s.startPos = s.startPos ?? 0;
       var SQL = "INSERT INTO `ftreeFileMgr`.`tblShardFiles` (`repoID_master`,`sfilFileMgrID`,`sfilCheckSum`,`sfilShardHash`,`sfilNCopies`,`sfilDate`,"+
-        "`sfilExpires`, `sfilEncrypted`, `sfilShardNbr`) VALUES "+
-        "('"+repoID_master+"',"+fileID+",'"+s.startPos+"','"+s.shardID+"',"+s.nStored+",now(),now(),0,"+shardNbr+")";
+        "`sfilExpires`, `sfilEncrypted`,`sfilShardID`) VALUES "+
+        "('"+repoID_master+"',"+fileID+",'"+s.startPos+"','"+s.shardID+"',"+s.nStored+",now(),now(),0,'"+s.shardHID+"')";
       con.query(SQL , async (err, result,fields)=>{
         if (err){
           console.log(err);
@@ -1566,7 +1566,6 @@ class ftreeFileMgrCellReceptor{
         }
         else {
           const sfilID_master = result.insertId;
-          
           const uSQL = `update ftreeFileMgr.tblShardFiles set sfilID_master = ${sfilID_master} where sfilID = ${result.insertId}`;
           con.query(uSQL , async (err, result,fields)=>{
             if (err){

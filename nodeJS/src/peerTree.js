@@ -1638,7 +1638,7 @@ class MkyRouting {
        if ( j.addResult == 'Node Not Added'
          || j.addResult == 'timedOut'){
          this.joinReqFails ++;
-         console.log('JOINREQFAILS is now::',this.joinReqFails);
+         console.error('JOINREQFAILS is now::',this.joinReqFails);
          if (this.joinReqFails > 1 && 1 == 2)
            this.becomeRoot();
          else
@@ -1802,7 +1802,7 @@ class MkyRouting {
        return;
      } 
      if (!srvBusy.includes(j.xhrError)) {
-       console.log('FATAL_MSG_ERROR::InvalidXhrCode',j);
+       console.error('FATAL_MSG_ERROR::InvalidXhrCode',j);
      }
 
      if (this.status == 'startup' || this.status == 'offline'){
@@ -1895,18 +1895,18 @@ class MkyRouting {
      return false;
    }
    addNewNodeBCast(ip,rUpdate){
-     console.log('Add by BROADCAST '+ip,rUpdate);
+     console.error('Add by BROADCAST '+ip,rUpdate);
      if (this.startJoin){
        this.startJoin = false;
        clearTimeout(this.joinTime);
      }
      if (this.inMyNodesList(ip)){
-       console.log('inMyNodesList true');
+       console.error('inMyNodesList true');
        return false;
      }
 
      if (ip == this.myIp){
-       console.log('hey this is me');
+       console.error('hey this is me');
        return false;
      }
 
@@ -3443,7 +3443,7 @@ class PeerTreeNet extends  EventEmitter {
        this.pushToContacts(j);
 
        if (this.rnet.handleReq(remIp,j)){
-         console.error('Request Handled By Handler',j);
+         //console.error('Request Handled By Handler',j);
          return;
        }
        if (j.gping == 'hello'){
