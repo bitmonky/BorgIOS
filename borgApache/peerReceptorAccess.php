@@ -706,7 +706,7 @@ function fastDeleteShardsMultyTry($mbrMUID,$fmap,$maxConections=25,$maxTrys=25,$
    echo "Message From Borg .: \nFile $fname Deleted";
    return 0;
 }
-function fastDeleteFileShards($muid,$fmap,$maxConcurrentRequests = 20,$sTracker=[]) {
+function fastDeleteFileShards($muid,$fmap,$maxConcurrentRequests = 20,&$sTracker) {
 
    $j = new stdClass;
    $j->ownerID   = $muid;
@@ -790,7 +790,8 @@ function fastDeleteFileShards($muid,$fmap,$maxConcurrentRequests = 20,$sTracker=
 
     return $i;
 }
-function processRemoteDelResults($res,$fmap,$sTracker){
+function processRemoteDelResults($res,$fmap,&$sTracker){
+   gfbug("BORG:::processRemoteDel::res: $res");  
    $r = json_decode($res);
    if (!$r){
      return;
@@ -798,6 +799,7 @@ function processRemoteDelResults($res,$fmap,$sTracker){
 
    if ($r->result==1){
      if (!in_array($r->shardID, $sTracker)) {
+       gfbug("BORG::sTracker:push $r->shardID");    
        array_push($sTracker,$r->shardID);
      }
    }
