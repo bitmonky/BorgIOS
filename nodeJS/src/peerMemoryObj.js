@@ -791,6 +791,15 @@ class peerMemoryObj {
        limit = j.qry.qryLimit;
        orderBy += ' '+limit;
      }
+
+     if (!j.qry.isPrivate){
+       j.qry.isPrivate = ' is null ';
+     } 
+     else if (j.qry.isPrivate){
+       j.qry.isPrivate = ' = 1 ';
+     }
+     else {j.qry.isPrivate = ' is null ';}
+
      var SQLr = "SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';";
      SQLr += "select pmcMownerID,pmcMemObjID,pmcMemObjNWords,count(*) nMatches,";
      SQLr += "sum(pmcWordWeight) + 1.0/(1.0 + TIMESTAMPDIFF(hour,pmcMemTime,now())) score ";
@@ -798,7 +807,12 @@ class peerMemoryObj {
      if (scope.join){
        SQLr += scope.join;
      }	     
-     SQLr += "where pmcMownerID = '"+j.qry.ownerID+"' "+scope.search + qtype+" and (";
+     if (j.qry.ownerID === 'publicAll') {
+       SQLr += `where pmcIsPrivate is null ${scope.search + qtype} and (`;
+     }
+     else {
+       SQLr += `where pmcMownerID = '${j.qry.ownerID}' and pmcIsPrivate ${j.qry.isPrivate} ${scope.search + qtype} and (`;
+     }
      var SQL = SQLr;
      var n = 1;
      var or = 'or ';
