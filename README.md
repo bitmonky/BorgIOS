@@ -128,3 +128,12 @@ BorgIOS is a revolutionary distributed computing platform that creates a peer-to
 ## Current Status
 
 BorgIOS is currently in advanced testing phase with a geographically distributed test network spanning Asia, Europe, USA, and Canada. The system has been validated across multiple continental boundaries with all core systems operational including PeerTree communication, distributed file storage, and blockchain-based economic layer.
+
+<div align='center'>
+
+![Support](https://img.shields.io/badge/support-financing-green.svg)
+
+
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/petergs6)
+
+</div>
