@@ -609,6 +609,7 @@ class peerPaysObj {
   doSendUserBalance(j,remIp){
      var qres = {
         req : 'sendUserBalanceRes',
+        user : j.user,
         result : false,
         balance : null
      }
@@ -730,6 +731,16 @@ class peerPaysObj {
         // 3. Get Transantion User Current Balances
         const bFrom = await this.receptorReqUserBalance(j);
         const bTo   = await this.receptorReqUserBalance(j,j.trans.payment.to);
+
+        if (bFrom.confirms == 0 || bTo.confirms == 0){
+          console.log('Transaction Rejected Reason - NOCONF.');
+          this.net.sendReply(remIp, {
+            req: 'makeUserTransRes',
+            status: 'error',
+            message: 'NOCONF'
+          });
+          return;
+        }
 
         j.trans.payment.frBalance = bFrom.balance - j.trans.payment.amount;
         j.trans.payment.toBalance = Number(bTo.balance)   + Number(j.trans.payment.amount);
@@ -1022,8 +1033,8 @@ class peerPaysObj {
     return new Promise( (resolve,reject)=>{
       var mkyReply = null;
       var bal = {
-         balance : 0,
-         time    : 0,
+         balance  : 0,
+         time     : 0,
          confirms : 0
       }
       const gtime = setTimeout( ()=>{
@@ -1048,7 +1059,7 @@ class peerPaysObj {
 
       this.net.on('mkyReply',mkyReply = (r) =>{
         console.log('Got Response:: ', r,'bal::',bal);
-        if (r.req == 'sendUserBalanceRes' && r.result ){
+        if (r.req == 'sendUserBalanceRes' && reqAdr == r.user && r.result ){
           bal.balance = this.extractBalance(r.balance,reqAdr);
           if (r.balance.pledUinixTime > bal.time) {
              bal.confirms = 1;
