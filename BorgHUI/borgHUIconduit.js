@@ -66,7 +66,9 @@ class BorgPortal {
     }
   }
   testConnect(url) {
-    return new Promise((resolve) => {
+     url = `https://${url}`;
+     console.log('trying url',url);
+     return new Promise((resolve) => {
       const options = {
         method: 'HEAD',
         agent: new https.Agent({ rejectUnauthorized: false }) 
@@ -182,7 +184,7 @@ class bitMonkyWSrv {
     this.recPort = 1385;
     this.readConfigFile();
     this.portal = new BorgPortal();
-    this.webPortal = await this.portal.selectPortal('borgApache');
+    this.webPortal = await this.portal.selectPortal('borgApacheCell');
     console.log('USINGING WEB PORTAL',this.webPortal);
    
     this.srv = webCon.createServer( async (req, res) => {
@@ -618,7 +620,8 @@ class bitMonkyWallet{
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': data.length
-        } 
+        }, 
+        rejectUnauthorized: false
       }
       const req = https.request(options, res => {
         var body = '';
