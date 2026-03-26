@@ -197,52 +197,26 @@ class ftreeFileMgrCellReceptor{
   processRequest(j,res){
      res.setHeader('Content-Type', 'application/json');
      res.writeHead(200);
-     if (j.msg.req == 'createRepo'){
-       this.reqCreateRepo(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'locateMyMasterRepo'){
-        this.doLocateMyMasterRepo(j.msg,res);
-        return;
-     }
-     if (j.msg.req == 'createRepoFolder'){
-       this.reqCreateRepoFolder(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'deleteRepoFolder'){
-       this.reqDeleteRepoFolder(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'getMyRepoFilePath'){
-       this.reqMyRepoFilePath(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'getMyRepoList'){
-       this.reqReadMyRepoList(res);
-       return;
-     }
-     if (j.msg.req == 'getMyRepoFiles'){
-       this.reqReadMyRepoFiles(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'getRepoFileData'){
-       this.reqGetRepoFileData(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'insertRSfile'){
-       this.reqInsertRSfile(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'deleteRSfile'){
-       this.reqDeleteRSfile(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'requestShard'){
-       this.reqRetrieveShard(j.msg,res);
-       return;
-     }
-     if (j.msg.req == 'deleteShard'){
-       this.reqDeleteRSfile(j.msg,res);
+
+     const handlers = {
+       createRepo          : this.reqCreateRepo,
+       locateMyMasterRepo  : this.doLocateMyMasterRepo,
+       createRepoFolder    : this.reqCreateRepoFolder,
+       deleteRepoFolder    : this.reqDeleteRepoFolder,
+       getMyRepoFilePath   : this.reqMyRepoFilePath,
+       getMyRepoList       : this.reqReadMyRepoList,
+       getMyRepoFiles      : this.reqReadMyRepoFiles,
+       getRepoFileData     : this.reqGetRepoFileData,
+       insertRSfile        : this.reqInsertRSfile,
+       deleteRSfile        : this.reqDeleteRSfile,
+       requestShard        : this.reqRetrieveShard,
+       deleteShard         : this.reqDeleteRSfile
+     };
+
+     const fn = handlers[j.msg.req];
+
+     if (fn) {
+       fn.call(this, j.msg, res);
        return;
      }
 
@@ -895,7 +869,7 @@ class ftreeFileMgrCellReceptor{
     }
     return;
   }
-  async reqReadMyRepoList(res){
+  async reqReadMyRepoList(j,res){
     const result = {
       result  : true,
       list    : await this.doReadMyRepoList()
