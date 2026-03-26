@@ -201,6 +201,7 @@ class ftreeFileMgrCellReceptor{
      const handlers = {
        createRepo          : this.reqCreateRepo,
        locateMyMasterRepo  : this.doLocateMyMasterRepo,
+       selectEndPoints     : this.doSelectEndPoints,
        createRepoFolder    : this.reqCreateRepoFolder,
        deleteRepoFolder    : this.reqDeleteRepoFolder,
        getMyRepoFilePath   : this.reqMyRepoFilePath,
@@ -237,9 +238,14 @@ class ftreeFileMgrCellReceptor{
      } 
      res.end('{"result":false,"msg":"Master Repo Not Found!"}');
   }
+  async doSelectEndPoints(j,res){
+    let IPs = await this.peer.receptorReqNodeList(j);
+    IPs = IPs.map(IP => `https://${IP}:${this.port}`);
+    res.end(`{"result":"listOK","useReceptors":${JSON.stringify(IPs)}}`);
+  }
   locateMyRepoLocal(muid){
     return new Promise((resolve,reject)=>{
-      var SQL = `select count(*)as nRes FROM ftreeFileMgr.tblRepo where repoOwner = '${muid}'`;
+      var SQL = `select count(*)as nRes FROM ftreeFileMgr.tblRepo where repoOwner = '${muid}' and repoType = 'Master' `;
       console.log('locateMyRepoLocal .: ',SQL);
       con.query(SQL , (err, result,fields)=>{
         if (err){
@@ -2121,17 +2127,19 @@ class ftreeFileMgrObj {
   =================================================================================
   */
    async doSendMyMasterRIP(j,remIp){
+     console.log(`doSendMyMasterRIP():: req-> `,j);
      const result = await this.receptor.locateMyRepoLocal(j.owner);
      if (result) {
        var qres = {
-         req : 'sendMyMasterRIPResult',
+         req    : 'sendMyMasterRIPResult',
+         reqId  : j.reqId,
          result : true,
-         ip : this.net.rnet.myIp
+         ip     : this.net.rnet.myIp
        }
        this.net.sendReply(remIp,qres); 
        return;    
      } 
-     this.net.sendReply(remIp,{req:'sendMyMasterRIPResult',result:false});
+     //this.net.sendReply(remIp,{req:'sendMyMasterRIPResult',reqId:j.reqId,result:false});
    }
    doSendMyRepoList(j,remIp){
      var SQL = `select * from ftreeFileMgr.tblRepo where repoOwner = '${j.repoOwner}' and repoType = 'Public' limit ${j.limit} offset ${j.offset}`;
@@ -2798,20 +2806,23 @@ class ftreeFileMgrObj {
     return new Promise( (resolve,reject)=>{
       var mkyReply = null;
       const gtime = setTimeout( ()=>{
-        console.log('locateMyMasterRepo Request Timeout:');
+        console.log('locateMyMasterRepo():: Request Timeout:');
         this.net.removeListener('mkyReply', mkyReply);
         resolve(null);
       },1.5*1000);
 
+      const reqId = crypto.randomUUID();
       var req = {
-        to   : 'ftreeCells',
-        req  : 'sendMyMasterRIP',
+        to    : 'ftreeCells',
+        req   : 'sendMyMasterRIP',
+        reqId : reqId,
         owner : muid
       }
 
       this.net.broadcast(req);
       this.net.on('mkyReply', mkyReply = (r)=>{
-        if (r.req == 'sendMyMasterRIPResult'){
+        console.log(`locateMyMasterRepo():: heard reply: `, r);
+        if (r.req == 'sendMyMasterRIPResult' && r.reqId == reqId){
           resolve(r);
         }
         clearTimeout(gtime);
