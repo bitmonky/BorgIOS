@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://web.bitmonky.com/newui/newCSS.php">
     <link rel="stylesheet" href="https://web.bitmonky.com/newui/styleCSS.php">
 
-    <script src="https://web.bitmonky.com/bitMDis/pWalletJSMPC.php?dbug=on&sport=80&dm=PC"></script>
+    <script src="https://<BORG_PORTAL>/bitMDis/pWalletJSMPC.php?dbug=on&sport=80&dm=PC"></script>
 
     <title>BitMonky Coders</title>
       <!--link
@@ -59,9 +59,44 @@
   html {
     background-color : #333333;
     background-image : url("/img/mkyBackTexture3.webp");background-repeat : no-repeat;  } 
-  </style>
+  body {
+    margin:0;
+    padding:0;
+    background-color : #222222;
+    background-image: url("https://web.bitmonky.com/whzon/bitMiner/getFileFromRepo.php?wzID=0&fname=BorgSpaceIconPC.png&rname=myRepo&path=%2F&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&folderID=&encrypt=0");
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-attachment: fixed;
+
+    /* This creates the glow animation */
+    animation: borgGlow 6s ease-in-out infinite;
+  }
+
+  @keyframes borgGlow {
+    0%   { filter: brightness(0.89); }
+    50%  { filter: brightness(1.15); }
+    100% { filter: brightness(0.89); }
+  }
+.infoCardClear {
+    background: rgba(0, 0, 0, 0.35) !important; /* dark glass */
+    border-radius: 10px;
+}
+section {
+    background: transparent !important;
+}
+aside {
+    background: rgba(0, 0, 0, 0.35) !important; /* dark glass */
+    border-radius: 10px;
+}
+.searchBlender {
+  background: rgba(0, 0, 0, 0.35) !important;
+  color:#888888;
+}
+
+ </style>
 </head>
-<body class="bg-dark" onload="init();">
+<body onload="init();">
     <div class='chatAlert' ID='videoChatWindow' style='position:fixed;border-radius:.5em;display:none;top:25px;left:25px;background:#222222;'><div id='videoChatFrame' style='border:0px;padding:.25em;'></div></div>
 <!--
 //******************************
@@ -94,7 +129,7 @@ padding:5px 15px 15px 15px;position:fixed;top:1em;left:1em;'>
     </div>
   </div>
 </div>
-    <header style='height:14vh;'>
+    <header style='height:12vh;margin-bottom:2em;padding:0;'>
       <div ID='mkyCookie' style='display:none;width:100vw;'>
 	<div id="cookiesCondition" class="w-100 d-flex gap-2 justify-content-center align-items-center">
           <p>BitMonky Uses Tracking Cookies for session managment... To Agree And Continue Click</p>
@@ -105,7 +140,7 @@ padding:5px 15px 15px 15px;position:fixed;top:1em;left:1em;'>
             </div>
 	</div>
       </div>
-        <div id="mainHeader" class="d-flex bg-dark justify-content-between w-100 bg-danger p-2">
+        <div id="mainHeader" class="d-flex bg-dark justify-content-between w-100 bg-danger p-2" style="height:14vh;background: rgba(0, 0, 0, 0.35)  !important; border:0;">
             <div id="mainHeaderLeft" class="d-flex justify-content-center align-items-center">
               <div ID='topMenuBut' style='width:4em;height:4em;padding:0.5em;
 		border:1px solid #444444;border-radius:.25em;margin-right:1.5em;'/>
@@ -115,9 +150,9 @@ padding:5px 15px 15px 15px;position:fixed;top:1em;left:1em;'>
       </div>
         <img src="https://www.bitmonky.com/whzon/bitMiner/getFileFromRepo.php?wzID=0&fname=BorgIOS.png&rname=BorgIOS&path=/&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&encrypt=0" style="border-radius:50%;" width="80" height="80" alt="bitmonkey picture">
         <div id="mainHeaderLeftInfo">
-        <h2><span style='FONT-FAMILY: Impact;font-size:24px;font-weight:normal;color:#8ec634;'>Borg<span style='color:#ffffff;'>IOS.net</span><span style='color:#eb9b52;'></span></span> </h2>
+        <h2><span style='FONT-FAMILY: Impact;font-size:24px;font-weight:normal;color:#8ec634;'>Borg<span style='color:#ffffff;'> Space</span><span style='color:#eb9b52;'></span></span> </h2>
 	<a style='color:darkKhaki;' 
-        href="javascript:wzGetPage('https://www.bitmonky.com/whzon/bitMiner/shardTree.php');">Where Compute Power Grows On Trees</a>
+        href="javascript:wzGetPage('https://www.bitmonky.com/whzon/bitMiner/shardTree.php');">Many Minds, One Space, No Limits</a>
         <!-- <p>We Accept Dogecoin</p> -->
       </div>
       </div>
@@ -128,12 +163,12 @@ padding:5px 15px 15px 15px;position:fixed;top:1em;left:1em;'>
   </div>
   </div>
   <div id="searchField">
-  <div style='display:inline;border:2px solid gray;border-radius:2em;background:#444444;padding:.35em 1em .35em 2em;width:100%;'>
+  <div class="searchBlender" style='display:inline;border:0px solid gray;border-radius:2em;padding:.35em 1em .35em 2em;width:100%;'>
   <input type="search" ID="sQry" autocomplete="off" onkeypress="checkForEnter(event);"  
-   style="color:lightGray;width:75%;font-size:larger;padding:0em;" 
+   style="background:transparent;color:lightGray;width:75%;font-size:larger;padding:0em;" 
    placeholder="Ask The Site Monkey AI"/>
   <span ID='searchIng' class='searching;'>Scanning Big Brain Memories!</span>
-  <span style='display:inline' ID='searchButton'> <button onclick="doSearch();" type="button">Search</button>
+  <span style='display:inline' ID='searchButton'> <button onclick="doSearch();" style="background: rgba(0, 0, 0, 0.25);" type="button">Search</button>
   <div id="scopeTopBtn" type="button" style='color:lightGray;width:1.5em;display:inline;' 
    title=" Change Search Scope " onclick="wzGetPage('/whzon/public/selectYourCity.php');">
   <svg x="0" y="0" class="icon_ae0b42" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" 
@@ -165,8 +200,8 @@ padding:5px 15px 15px 15px;position:fixed;top:1em;left:1em;'>
    </div>
    </div>
    </header>
-   <main style='height:86vh;'>
-        <aside style='height:86vh;'>
+   <main style='height:calc(86vh);'>
+        <aside style='margin-left:0.5em;'>
         
             <button id="exploreBtn" type="button" onclick="wzGetPage('https://www.bitmonky.com/whzon/public/newHomePg.php?wzID=0&UI=new');">
 <svg class="main-menu-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M10.512 1.009a.833.833 0 0 0-1.024 0l-7.5 5.833a.833.833 0 0 0-.321.658v9.167a2.5 2.5 0 0 0 2.5 2.5H15.833a2.5 2.5 0 0 0 2.5-2.5V7.5c0-.257-.118-.5-.321-.658l-7.5-5.833Zm2.821 16.49h2.5a.833.833 0 0 0 .834-.832v-8.76L10 2.723 3.333 7.908v8.759a.833.833 0 0 0 .834.833h2.5V10c0-.46.373-.833.833-.833h5c.46 0 .833.373.833.833v7.5Zm-5 0h3.334v-6.666H8.333V17.5Z"></path></svg>
@@ -225,12 +260,15 @@ width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-b
         <style>
 
 .container {
-    padding: 1.5em;
-    height: calc(-12vh + 100vh); 
+    padding: 0em 1.5em 0em 1.5em;
+    height: 84vh; 
     width: 100%;
+    max-width:100%;
     margin: 0px;
     border: 0px;
     overflow: auto;
+    background : transparent !important;
+    border 0;
     color: white;
     scrollbar-width: none; /* Hides scrollbar in Firefox */
 }
@@ -238,8 +276,17 @@ width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-b
 .container::-webkit-scrollbar {
     display: none; /* Hides scrollbar in Chrome, Edge, Safari */
 }
+.container INPUT[type="text"] {
+  background: rgba(0, 0, 0, 0.35) !important;
+  color:#888888;
+}
+.container INPUT[type="FILE"] {
+  background: rgba(0, 0, 0, 0.35) !important;
+  color:#888888;
+}
 .container INPUT[type="button"] {
   display: inline-block;
+  background: rgba(0, 0, 0, 0.35) !important;
   white-space: nowrap;
   width: auto;
   margin: 0.5em 0;
@@ -291,12 +338,6 @@ width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-b
         </section>
     </main>
    
-    <span id="chatholder">
-        <a id="chatLink" href="javascript:scrollTopApp();">Guerrilla Coders Inc</a>
-        <img id="chatPhoto" src="https://image.bitmonky.com/getMbrImg.php?mid=0e6edb9048a21b1e3964fe60823675b9" alt="Ai chat" 
-        onclick="showAssist_efc6d1ba446e229536dd1f7f51923d87('virtualG');">
-    </span>
-
 <div style='display:none;'>
 <script async src="https://gsoft.bitmonky.com/whzon/adMgr/srvWebAssistantJS.php?rad=efc6d1ba446e229536dd1f7f51923d87&rep=dc14fd698646636277d080a6a8854e9a&tmode=virtualG&bg=dimGray&color=white&float=botRight&theme=dark"></script>
   <div ID="gsoftWebCtrl_efc6d1ba446e229536dd1f7f51923d87"></div>
