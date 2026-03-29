@@ -85,6 +85,42 @@ class BorgPortal {
 
   async selectPortal(netName) {
     const index = this.portals.findIndex(portal => portal.netName === netName);
+    console.log('INDEX', index, netName);
+
+    if (index === -1) {
+      return { host: 'web.bitmonky.com', port: 443 };
+    }
+
+    let activeNodes = [...this.portals[index].activeNodes]; // Copy active nodes
+
+    while (activeNodes.length > 0) {
+      // Randomly select an index
+      const rnodeIndex = Math.floor(Math.random() * activeNodes.length);
+      const node = activeNodes[rnodeIndex];
+
+      const host = node.ip;
+      const port = this.portals[index].recpPort || 443;
+
+      const target = `${host}:${port}`;
+
+      const isConnected = await this.testConnect(target);
+
+      if (isConnected) {
+        console.log(`Successful HTTPS connection: ${target}`);
+        return { host, port };
+      }
+
+      console.log(`Failed HTTPS check: ${target}, removing and retrying...`);
+      activeNodes.splice(rnodeIndex, 1);
+    }
+
+    // If no nodes worked, fall back
+    return { host: 'web.bitmonky.com', port: 443 };
+  }
+
+/*
+  async selectPortal(netName) {
+    const index = this.portals.findIndex(portal => portal.netName === netName);
     console.log('INDEX',index,netName);
     if (index === -1) {
       return 'web.bitmonky.com';
@@ -114,6 +150,7 @@ class BorgPortal {
     console.log("No available portals responded successfully.");
     return 'web.bitmonky.com';
   }
+*/
 }
 class mkyRSAMail {
   constructor(pPhrase,keys=null){
@@ -163,13 +200,19 @@ class mkyRSAMail {
   }
 };
 
-function urldecode(msg){
-  msg = msg.replace(/\+/g,' ');
+function urldecode(msg) {
+  // If it's not a string, return it unchanged
+  if (typeof msg !== 'string') {
+    return msg;
+  }
+
+  msg = msg.replace(/\+/g, ' ');
   msg = decodeURI(msg);
-  msg = msg.replace(/%3A/g,':');
-  msg = msg.replace(/%2C/g,',');
-  msg = msg.replace(/%2F/g,'/');  
-  msg = msg.replace(/\\%2F/g,'/');
+  msg = msg.replace(/%3A/gi, ':');
+  msg = msg.replace(/%2C/gi, ',');
+  msg = msg.replace(/%2F/gi, '/');
+  msg = msg.replace(/\\%2F/gi, '/');
+
   return msg;
 }
 
@@ -184,7 +227,8 @@ class bitMonkyWSrv {
     this.recPort = 1385;
     this.readConfigFile();
     this.portal = new BorgPortal();
-    this.webPortal = await this.portal.selectPortal('borgApacheCell');
+    const wp  = await this.portal.selectPortal('borgApacheCell');
+    this.webPortal = `${wp.host}:${wp.port}`;
     console.log('USINGING WEB PORTAL',this.webPortal);
    
     this.srv = webCon.createServer( async (req, res) => {
@@ -337,6 +381,10 @@ class bitMonkyWSrv {
             this.Wallet.doRsaDecodeMsg(j,res);
             return;
          }
+         if (j.req  == 'startBorgBrowser'){
+            this.startBorgBrowser(res);
+            return;
+         }  
          this.wallet.doMakeReq(j.req,res,j.parms,j.service);
          return;
        } 
@@ -346,6 +394,43 @@ class bitMonkyWSrv {
        //console.log("json parse error:",err);
        res.end("JSON PARSE Errors: \n\n"+msg+"\n\n"+err);
      }
+  }
+  async startBorgBrowser(res, msg) {
+    try {
+      const wp = await this.portal.selectPortal('borgApacheCell');
+
+      const service = {
+        endPoint : '/bitMDis/pWalletJSMPC.php?dbug=on&sport=80&dm=PC',
+        host     : wp.host,
+        port     : wp.port,
+        raw      : true
+      };
+
+      const stok = this.wallet.ownMUID+Date.now();
+      var msg = {
+        Address : this.wallet.ownMUID,
+        sesTok  : stok,
+        pubKey  : this.wallet.publicKey,
+        sesSig  : this.wallet.signMsg(stok),
+        action  : 'na',
+        parms   : null
+      }
+
+      const result = await this.wallet.sendPostRequest(msg, null, service);
+
+      if (result && result !== '') {
+        res.writeHead(200, { "Content-Type": "application/javascript" });
+        res.end(result);
+      } else {
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end("No Code For Borg Humane Interface Found.\n");
+      }
+    }
+    catch (err) {
+      console.log("startBorgBrowser error:", err);
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Internal Error Loading Borg Browser");
+    }
   }
   readConfigFile(){
      var conf = null;
@@ -585,86 +670,106 @@ class bitMonkyWallet{
       }          
    }
    sendPostRequest(msg,wres=null,service=null,redirectCount=0){
-      const MAX_REDIRECTS = 5; // Limit the number of redirects
+     return new Promise((resolve) => { 
+       const MAX_REDIRECTS = 5; // Limit the number of redirects
 
-      if (redirectCount > 0 ) {
-        console.log('REDIRECT::',redirectCount,service);
-      }
-      if (redirectCount > MAX_REDIRECTS) {
-        console.log("Maximum redirects reached. Aborting request.");
-        return;
-      }
+       if (redirectCount > 0 ) {
+         console.log('REDIRECT::',redirectCount,service);
+       }
+       if (redirectCount > MAX_REDIRECTS) {
+         console.log("Maximum redirects reached. Aborting request.");
+         resolve(null);
+         return;
+       }
 
 
-      if (service === null){
-        service = {
-          endPoint : '/whzon/gold/netWalletAPI.php',
-          host     : 'web.bitmonky.com',
-          port     : ''
-        }
-      }
-      console.log('ServiceInfo:/n/n',service);
-      const https = require('https');
+       if (service === null){
+         service = {
+           endPoint : '/whzon/gold/netWalletAPI.php',
+           host     : 'web.bitmonky.com',
+           port     : ''
+         }
+       }
+       console.log('ServiceInfo:/n/n',service);
+       const https = require('https');
 
-      const data = JSON.stringify(msg);
-      const agent = new https.Agent({
-        rejectUnauthorized: false 
-      });
+       const data = JSON.stringify(msg);
+       const agent = new https.Agent({
+         rejectUnauthorized: false 
+       });
+       console.log('Service::: ',service);
+       const options = {
+         hostname : urldecode(service.host),
+         port     : urldecode(service.port),
+         path     : urldecode(service.endPoint),
+         method   :'POST',
+         agent    : agent,
+         headers: {
+           'Content-Type': 'application/json',
+           'Content-Length': data.length
+         }, 
+         rejectUnauthorized: false
+       }
+       const req = https.request(options, res => {
+         var body = '';
 
-      const options = {
-        hostname : urldecode(service.host),
-        port     : urldecode(service.port),
-        path     : urldecode(service.endPoint),
-        method   :'POST',
-        agent    : agent,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': data.length
-        }, 
-        rejectUnauthorized: false
-      }
-      const req = https.request(options, res => {
-        var body = '';
+         res.on('data', (chunk)=>{
+           body = body + chunk;
+         });
 
-        res.on('data', (chunk)=>{
-          body = body + chunk;
-        });
+         res.on('end',async ()=>{
+           if (res.statusCode === 302) {
+             const redirectUrl = res.headers.location;
+             if (redirectUrl) {
+               const parsedUrl = new URL(redirectUrl);
+               const newService = {
+                 endPoint: parsedUrl.pathname + parsedUrl.search, 
+                 host: parsedUrl.hostname,
+                 port: parsedUrl.port || '' 
+               };
 
-        res.on('end',()=>{
-          if (res.statusCode === 302) {
-            const redirectUrl = res.headers.location;
-            if (redirectUrl) {
-              const parsedUrl = new URL(redirectUrl);
-              const newService = {
-                endPoint: parsedUrl.pathname + parsedUrl.search, 
-                host: parsedUrl.hostname,
-                port: parsedUrl.port || '' 
-              };
+               console.log(`Redirecting to: ${redirectUrl}`);
+               await this.sendPostRequest(msg, wres, newService, redirectCount + 1);
+             } 
+             else {
+               console.log('Redirect response received, but no location header provided.');
+               resolve(nul);
+               return;
+             }
+           }
+           else if (res.statusCode != 200) {
+             console.log("Api call failed with response code " + res.statusCode);
+             resolve(null);
+             return;
+           } 
+	   else {
+             console.log('API Response:->',body);
+             // Only treat raw mode as true if explicitly set to true
+             if (service.raw === true) {
+               resolve(body);
+               return;
+             }
+             if (service.raw) {
+               resolve(body);
+             }
+             try {
+               this.handleResponse(JSON.parse(body),wres);
+               resolve(true);
+             }
+             catch(err) {
+               resolve(null);
+               console.log(err);
+             }
+           }
+         });
+       });
+       req.on('error', error => {
+          console.log(error);
+       });
 
-              console.log(`Redirecting to: ${redirectUrl}`);
-              this.sendPostRequest(msg, wres, newService, redirectCount + 1);
-            } else {
-              console.log('Redirect response received, but no location header provided.');
-            }
-          }
-          else if (res.statusCode != 200) {
-            console.log("Api call failed with response code " + res.statusCode);
-          } 
-	  else {
-            console.log('API Response:->',body);
-            try {
-              this.handleResponse(JSON.parse(body),wres);
-            }
-            catch(err) {console.log(err);}
-          }
-        });
-      });
-      req.on('error', error => {
-         console.log(error);
-      });
-
-      req.write(data);
-      req.end();
+       req.write(data);
+       req.end();
+     });
    } 
 };
 
