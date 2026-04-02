@@ -12,6 +12,7 @@ const EC      = require('elliptic').ec;
 const ec      = new EC('secp256k1');
 const bitcoin = require('bitcoinjs-lib');
 const crypto  = require('crypto');
+const mime    = require('mime-types');
 const ALGO    = "aes-256-cbc"
 const port    = 80;
 const wfile   = 'keys/myBMGPWallet.key';
@@ -34,7 +35,9 @@ function sanitizeFilename(filename) {
   }*/
   return safeFilename;
 }
-
+function isImageMime(mime) {
+  return typeof mime === "string" && mime.startsWith("image/");
+}
 function isSafePath(userPath) {
   const safePath = path.normalize(userPath);
 
@@ -118,39 +121,6 @@ class BorgPortal {
     return { host: 'web.bitmonky.com', port: 443 };
   }
 
-/*
-  async selectPortal(netName) {
-    const index = this.portals.findIndex(portal => portal.netName === netName);
-    console.log('INDEX',index,netName);
-    if (index === -1) {
-      return 'web.bitmonky.com';
-    }     
-
-    let activeNodes = [...this.portals[index].activeNodes]; // Copy active nodes
-
-    while (activeNodes.length > 0) {
-      // Randomly select an index
-      const rnodeIndex = Math.floor(Math.random() * activeNodes.length);
-      let result = `${activeNodes[rnodeIndex].ip}`;
-
-      if (this.portals[index].recpPort) {
-        result += `:${this.portals[index].recpPort}`;
-      }
-
-      const isConnected = await this.testConnect(result);
-      if (isConnected) {
-        console.log(`Successful HTTPS connection: ${result}`);
-        return result;
-      }
-
-      console.log(`Failed HTTPS check: ${result}, removing and retrying...`);
-      activeNodes.splice(rnodeIndex, 1); 
-    }
-
-    console.log("No available portals responded successfully.");
-    return 'web.bitmonky.com';
-  }
-*/
 }
 class mkyRSAMail {
   constructor(pPhrase,keys=null){
@@ -284,14 +254,15 @@ class bitMonkyWSrv {
        });
      }
      else {
+
        if (req.url.indexOf('/netREQ/msg=') == 0){
-          res.writeHead(200);
           var msg = req.url.replace('/netREQ/msg=','');
           msg = urldecode(msg);
-          this.handleRequest(msg,res);
+          this.handleRequest(msg,res,req);
         }
         else {
-          if (req.url.indexOf('/netREQ') == 0){
+
+        if (req.url.indexOf('/netREQ') == 0){
             if (req.method == 'POST') {
               var body = '';
               req.on('data', (data)=>{
@@ -304,7 +275,7 @@ class bitMonkyWSrv {
                 }
               });
               req.on('end', ()=>{
-                handleRequest(body,res);
+                handleRequest(body,res,req);
               });
             }	
           }
@@ -345,12 +316,12 @@ class bitMonkyWSrv {
     this.srv.listen(port,'localhost');
     console.log('bitMonky Wallet Server running at http://localhost:'+port);
   }
-  handleRequest(msg,res){
+  handleRequest(msg,res,req){
      var j = null;
           
      try {
        j = JSON.parse(msg);
-       console.log(j);
+       console.log(`handleRequest():: values:`,j);
        if (j.PIN != 'TEST_PIN_2x49fg16'){ //this.wallet.walletCipher){
          j.req    = 'repPINFail';
          j.result = true;
@@ -385,6 +356,10 @@ class bitMonkyWSrv {
             this.startBorgBrowser(res);
             return;
          }  
+         if (j.req  == 'getFileFromRepo'){
+            this.getFileFromRepo(req,j, res);
+            return;
+         }
          this.wallet.doMakeReq(j.req,res,j.parms,j.service);
          return;
        } 
@@ -395,6 +370,176 @@ class bitMonkyWSrv {
        res.end("JSON PARSE Errors: \n\n"+msg+"\n\n"+err);
      }
   }
+async doCheckSumLookup(msg, service,checksum) {
+  try {
+    // Build new service object without shadowing the argument
+    const lookupService = {
+      endPoint: service.endPoint + (service.endPoint.includes("?") ? "&" : "?") + "checksumOnly=true&checksum=" + checksum,
+      host: service.host,
+      port: service.port,
+      raw: true
+    };
+
+    console.log("doCheckSumLookup():: lookupService =", lookupService);
+
+    // Perform checksum-only request
+    let j = await this.wallet.sendPostRequest(msg, null, lookupService);
+    return JSON.parse(j);
+  }
+  catch (err) {
+    console.log("doCheckSumLookup():: failed:", msg, service, err);
+    return null;
+  }
+}
+async getFileFromRepo(req, msg, res) {
+  try {
+    const wp = await this.portal.selectPortal('borgApacheCell');
+
+    const service = {
+      endPoint: msg.url,
+      host: wp.host,
+      port: wp.port,
+      raw: true
+    };
+
+    console.log('getFileFromRepo():: ', service, msg);
+
+    // -----------------------------------
+    // MIME TYPE DETECTION
+    //-------------------------------------
+    let mimeType = msg.mime;
+
+    var fileName = null;
+    if (!mimeType) {
+      const parsed = url.parse(msg.url, true);
+      fileName = parsed.query.fname;
+      mimeType = mime.lookup(fileName) || "application/octet-stream";
+    }
+    console.log(`getFileFromRepo():: mimeType is;`,mimeType);
+    // Do Checksum Check To See If File has changed
+    // -----------------------------------
+    // CHECKSUM LOOKUP
+    // -----------------------------------
+    const clientETag = req.headers['if-none-match'];
+    const cleanETag = clientETag ? clientETag.replace(/"/g, "") : null;
+
+
+    let remCheckSumOK = await this.doCheckSumLookup(msg,service,cleanETag);
+
+    // Hard failure: network error, invalid JSON, PHP crash
+    if (!remCheckSumOK) {
+      console.log(`getFileFromRepo():: remCheckSumLookup failed`, remCheckSumOK);
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      return res.end(`Checksum Lookup Failed\n`);
+    }
+
+    // Soft failure: checksum mismatch (file changed)
+    if (remCheckSumOK.result === false) {
+      console.log(`getFileFromRepo():: checksum mismatch, fetching new file`, remCheckSumOK);
+      // DO NOT RETURN — continue to fetch file
+    }
+    
+    // -----------------------------------
+    // BROWSER CACHE VALIDATION (ETag)
+    //-------------------------------------
+
+    if (cleanETag  && cleanETag === remCheckSumOK.checkSum) {
+      // Browser already has this exact version
+      res.writeHead(304);
+      return res.end();
+    }
+
+    // Cache Not Useable Fetch file bytes from repo
+    const result = await this.wallet.sendPostRequest(msg, null, service);
+   
+    if (result === null) {
+      console.log(`getFileFromRepo():: failed `);
+      if (isImageMime(mimeType)){
+        res.writeHead(500, { "Content-Type": mimeType });
+        res.end('');
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      return res.end("Get File Failed... No File Found At url.\n");
+    }
+    // Try to parse JSON only if result is text-like
+    let j = null;
+    try {
+      const text = Buffer.isBuffer(result) ? result.toString() : result;
+      j = JSON.parse(text);
+    } 
+    catch (e) {
+      // Not JSON — expected for binary files
+    }
+
+    if (j && j.result === false) {
+      console.log(`getFileFromRepo():: failed on: `, j);
+
+      if (isImageMime(mimeType)) {
+        res.writeHead(500, { "Content-Type": mimeType });
+        res.end('');
+        return;
+      }
+
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      return res.end(`Get File Failed... details: ${JSON.stringify(j)}\n`);
+    }
+    
+    console.log("CLIENT FIRST 20 BYTES:", new Uint8Array(result).slice(0, 20));
+    console.log("CLIENT LAST 20 BYTES:", new Uint8Array(result).slice(-20));
+    console.log("getFileFromRepo():: First 20 bytes:", result.slice(0, 20));
+    console.log("LAST 20 BYTES:", result.slice(result.length - 20));
+
+
+    // -----------------------------------
+    // FILE INFO
+    //-------------------------------------
+    const fcheckSum = msg.checkSum || msg.fcheckSum || null;
+    const fname     = fileName || null;
+    const fileSize  = Buffer.isBuffer(result)
+      ? result.length
+      : Buffer.byteLength(result);
+
+    console.log(`getFileFromRepo():: FILE INFO:`,fcheckSum,fname,fileSize);
+    // -----------------------------------
+    // BUILD RESPONSE HEADERS
+    //-------------------------------------
+    const headers = {
+      "Content-Type": mimeType,
+      "Content-Length": fileSize,
+      "Accept-Ranges": "bytes"
+    };
+
+    if (fcheckSum) {
+      headers["ETag"] = `"${fcheckSum}"`;
+    }
+
+    if (fname) {
+      headers["Content-Disposition"] = `inline; filename="${fname}"`;
+    }
+    
+    console.log(`getFileFromRepo():: Headers:`,headers);
+    // -----------------------------------
+    // SEND FILE
+    //-------------------------------------
+    console.log("Transfer-Encoding BEFORE:", res.getHeader("Transfer-Encoding"));
+    res.writeHead(200, headers);
+    console.log("Transfer-Encoding AFTER:", res.getHeader("Transfer-Encoding"));
+
+    if (Buffer.isBuffer(result)) {
+      console.log(`getFileFromRepo():: response is buffer:`);
+      res.end(result);
+    } else {
+      console.log(`getFileFromRepo():: response is NOT buffer: converting`);
+      res.end(Buffer.from(result));
+    }
+
+  } catch (err) {
+    console.log("getFileFromRepo error:", err);
+    res.writeHead(500, { "Content-Type": "text/plain" });
+    res.end("Internal Error Loading Borg Browser");
+  }
+}
   async startBorgBrowser(res, msg) {
     try {
       const wp = await this.portal.selectPortal('borgApacheCell');
@@ -690,34 +835,43 @@ class bitMonkyWallet{
            port     : ''
          }
        }
-       console.log('ServiceInfo:/n/n',service);
+       console.log('sendPostRequest():: sending msg :',msg,service);
        const https = require('https');
 
        const data = JSON.stringify(msg);
        const agent = new https.Agent({
          rejectUnauthorized: false 
        });
-       console.log('Service::: ',service);
+       //console.log('Service::: ',service);
+       const headers = {};
+
+       if (service.raw === true) {
+         // Do NOT set JSON headers
+         headers['Content-Type'] = 'text/plain';
+         headers['Content-Length'] = Buffer.byteLength(data);
+       } else {
+         // JSON mode
+         headers['Content-Type'] = 'application/json';
+         headers['Content-Length'] = Buffer.byteLength(data);
+       }
+
+
        const options = {
          hostname : urldecode(service.host),
          port     : urldecode(service.port),
-         path     : urldecode(service.endPoint),
+         path     : encodeURI(service.endPoint),
          method   :'POST',
          agent    : agent,
-         headers: {
-           'Content-Type': 'application/json',
-           'Content-Length': data.length
-         }, 
-         rejectUnauthorized: false
+         headers  : headers,
        }
        const req = https.request(options, res => {
-         var body = '';
-
+         let chunks = [];
          res.on('data', (chunk)=>{
-           body = body + chunk;
+            chunks.push(chunk);
          });
 
          res.on('end',async ()=>{
+           const body = Buffer.concat(chunks);
            if (res.statusCode === 302) {
              const redirectUrl = res.headers.location;
              if (redirectUrl) {
@@ -743,14 +897,11 @@ class bitMonkyWallet{
              return;
            } 
 	   else {
-             console.log('API Response:->',body);
+             //console.log('API Response:->',body);
              // Only treat raw mode as true if explicitly set to true
              if (service.raw === true) {
                resolve(body);
                return;
-             }
-             if (service.raw) {
-               resolve(body);
              }
              try {
                this.handleResponse(JSON.parse(body),wres);
