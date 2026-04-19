@@ -1,3 +1,4 @@
+  
 /****************************
 BitMonky Wallet Server
 ****************************
@@ -212,6 +213,7 @@ class bitMonkyWSrv {
      
      if (req.method === 'POST' && pathname === '/storeRepoFileOnTree.php') {
        console.log('Got repoUploadFile.php req!');
+
        upload.single('photo')(req, res, (err) => {
          if (err) {
            res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -221,37 +223,51 @@ class bitMonkyWSrv {
 
          const { originalname, mimetype, path: tmpname, size, error } = req.file;
          console.log(req.file);
-         if (size > 0 && size < 200000000 && !error) {
-           const contents = fs.readFileSync(tmpname);
-           const hash = crypto.createHash('sha256').update(contents).digest('hex');
-           const fholder = `${hash}.tmp`;
-           const targetDir = 'uploads/';
-           const targetFile = path.join(targetDir, fholder);
 
-           fs.rename(tmpname, targetFile, (err) => {
-             if (err) {
-               res.writeHead(500, { 'Content-Type': 'application/json' });
-               res.end(JSON.stringify({ result: false, data: 'File Move Failed' }));
-             } else {
-               //res.writeHead(200, { 'Content-Type': 'application/json' });
-               //res.end(JSON.stringify({ result: false, data: 'File Upload Failed' })); 
-	       //return; 
-               const j = {
-                 req : 'uploadUserFile',
-                 fileName : originalname,
-                 filePath : targetFile,
-                 mimeType : mimetype, 
-                 remoteUrl : `${this.webPortal}/whzon/bitMiner/storeRepoFileOnTree.php`
-               }
-               this.wallet.doUploadFile(j, res);
-             } 
-           });
-         }
-	 else {
-           res.writeHead(400, { 'Content-Type': 'application/json' });
-           res.end(JSON.stringify({ result: false, data: 'Invalid File' }));
-         }
-       });
+         if (size > 0 && size < 200000000 && !error) {
+
+           // --- STREAMING HASH FUNCTION ---
+           const hashFileStream = (filePath) => {
+             return new Promise((resolve, reject) => {
+               const hash = crypto.createHash('sha256');
+               const stream = fs.createReadStream(filePath);
+
+               stream.on('data', chunk => hash.update(chunk));
+               stream.on('end', () => resolve(hash.digest('hex')));
+               stream.on('error', reject);
+             });
+           };
+
+           // --- USE STREAMING HASH ---
+           hashFileStream(tmpname)
+           .then(hash => {
+              const fholder = `${hash}.tmp`;
+              const targetDir = 'uploads/';
+              const targetFile = path.join(targetDir, fholder);
+
+              fs.rename(tmpname, targetFile, (err) => {
+                if (err) {
+                  res.writeHead(500, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({ result: false, data: 'File Move Failed' }));
+                } else {
+                  const j = {
+                    req: 'uploadUserFile',
+                    fileName: originalname,
+                    filePath: targetFile,
+                    mimeType: mimetype,
+                    remoteUrl: `${this.webPortal}/whzon/bitMiner/storeRepoFileOnTree.php`
+                  };
+                  this.wallet.doUploadFile(j, res);
+                }
+              });
+            })
+            .catch(err => {
+              console.error('Hashing failed:', err);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ result: false, data: 'Hashing Failed' }));
+            });
+          }
+        });
      }
      else {
 
@@ -927,4 +943,3 @@ class bitMonkyWallet{
 const myWallet = new bitMonkyWSrv();
 
 module.exports.bitMonkyWSrv = bitMonkyWSrv;
-
