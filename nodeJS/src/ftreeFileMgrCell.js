@@ -51,13 +51,14 @@ Create PeerTree Network Peer
     
 main();
 async function main(){
+  const scell = new ftreeFileMgrObj(peerNet,reset);
   await peerNet.netStarted();
   peerNet.updatePortalsFile(borg);
-  startFtreeCell();
+  startFtreeCell(scell);
 }
 var rBranch = null;
-function startFtreeCell(){
-    var scell = new ftreeFileMgrObj(peerNet,reset);
+function startFtreeCell(scell){
+    scell.startCell();
     const scellReceptor = new ftreeFileMgrCellReceptor(scell,borg.recpPort);
     scell.attachReceptor(scellReceptor);
     if (rBranch){

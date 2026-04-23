@@ -279,7 +279,7 @@ class peerPaysCellReceptor{
       }
       console.log('n is:',n,'length:: ',IPs.length);
       if (n==IPs.length -1){
-        await this.reqConfirmUserTrans(IPs,j);
+        await this.reqConfirmUserTrans(IPs,j);  // notify hosts it is safe to set the confirmation status for the the txID
         res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":'+j.trans.payment.tx+',"hosts":'+JSON.stringify(hosts)+'}');
         return;
       }
@@ -316,8 +316,9 @@ class peerPaysCellReceptor{
   async reqUserTransactions(j,res){
     const tranList = await this.peer.receptorReqUserTransactions(j);
     const result = {
-      result : true,
-      transactions : tranList
+      result       : tranList.result,
+      transactions : Array.from(tranList.transactions.values()),
+      warnings     : tranList.warnings
     }
     res.end(JSON.stringify(result));
   }};
@@ -423,6 +424,8 @@ class peerPaysObj {
     this.net        = peerTree;
     this.receptor   = null;
     this.wcon       = new MkyWebConsole(this.net,con,this,'peerPaysCell');
+  }
+  startCell(){
     this.myPeers    = [];
     this.init();
   
@@ -554,7 +557,7 @@ class peerPaysObj {
   }
   handleBCast(j){
     //console.log('bcast received: ',j);
-    if (j.remIp == this.net.nIp) {console.log('ignoring bcast to self',this.net.nIp);return;} // ignore bcasts to self.
+    if (j.remIp == this.net.nIp) {return;} // ignore bcasts to self.
     if (!j.msg.to) {return;}
     if (j.msg.to == 'peerPayCells'){
       if (j.msg.req){
@@ -566,14 +569,14 @@ class peerPaysObj {
         }
         if (j.msg.req == 'sendNodeList'){
           console.log('DOPOW xxxx',j.remIp);
-          this.doPow(j.msg,j.remIp);
+          this.doPow(j.msg,j.remIp,j.msg.reqId);
         }
         if (j.msg.req == 'hello'){
           this.doReplyHelloBack(j.remIp);
         }
         if (j.msg.req == 'stopNodeGenIP'){
           console.log('DOPOW stopNodeGenIP-XX Received:',j.remIp);
-          this.doPowStop(j.remIp);
+          this.doPowStop(j.remIp,j.msg.reqId);
         }
       }
     } 
@@ -608,9 +611,10 @@ class peerPaysObj {
   */
   doSendUserBalance(j,remIp){
      var qres = {
-        req : 'sendUserBalanceRes',
-        user : j.user,
-        result : false,
+        req     : 'sendUserBalanceRes',
+        reqId   : j.reqId,
+        user    : j.user,
+        result  : false,
         balance : null
      }
      var SQL = `SELECT pledToAdr,pledFromAdr,pledToBalance,pledFrBalance, pledUnixTime from pLedger  
@@ -622,7 +626,6 @@ class peerPaysObj {
          qres.msg = 'Database Error:: '+ err;
        }
        else {
-         var repo = null;
          if (result.length == 0){
            console.log('User Not Found On This Node.');
            qres.msg = 'User Not Found On This Node';
@@ -638,8 +641,9 @@ class peerPaysObj {
   }
   doSendUserTransactions(j,remIp){
      var qres = {
-        req : 'sendUserTransactionRes',
-        result : false,
+        req          : 'sendUserTransactionRes',
+        reqId        : j.reqId,
+        result       : false,
         transactions : null
      }
      var SQL = `SELECT * from pLedger
@@ -675,15 +679,17 @@ class peerPaysObj {
       if (err) {
         console.log('Error confirming transaction: ', err);
         this.net.sendReply(remIp, {
-          req: 'confirmUserTransRes',
-          status: 'error',
-          message: 'Database error'
+          req     : 'confirmUserTransRes',
+          txId    : j.trans.payment.tx,
+          status  : 'error',
+          message : 'Database error'
         });
         return;
       }
       this.net.sendReply(remIp, {
-        req: 'confirmUserTransRes',
-        status: 'success'
+        req    : 'confirmUserTransRes',
+        txId   : j.trans.payment.tx,
+        status : 'success'
       });
     });
   }
@@ -693,9 +699,10 @@ class peerPaysObj {
     if (!isSignatureValid) {
         console.log('Invalid signature. Transaction rejected.');
         this.net.sendReply(remIp, {
-            req: 'makeUserTransRes', 
-            status: 'error',
-            message: 'Invalid signature'
+            req     : 'makeUserTransRes', 
+            reqId   : j.reqId,
+            status  : 'error',
+            message : 'Invalid signature'
         });
         return;
     }
@@ -711,8 +718,9 @@ class peerPaysObj {
         if (err) {
             console.log('Error checking for duplicate transaction: ', err);
             this.net.sendReply(remIp, {
-                req: 'makeUserTransRes',
-                status: 'error',
+                req    : 'makeUserTransRes',
+                reqId  : j.reqId,
+                statusv: 'error',
                 message: 'Database error'
             });
             return;
@@ -721,8 +729,9 @@ class peerPaysObj {
         if (result[0].count > 0) {
             console.log('Transaction already exists. Duplicate rejected.');
             this.net.sendReply(remIp, {
-                req: 'makeUserTransRes',
-                status: 'error',
+                req    : 'makeUserTransRes',
+                reqId  : j.reqId,
+                status : 'error',
                 message: 'Duplicate transaction'
             });
             return;
@@ -735,22 +744,24 @@ class peerPaysObj {
         if (bFrom.confirms == 0 || bTo.confirms == 0){
           console.log('Transaction Rejected Reason - NOCONF.');
           this.net.sendReply(remIp, {
-            req: 'makeUserTransRes',
-            status: 'error',
-            message: 'NOCONF'
+            req     : 'makeUserTransRes',
+            reqId   : j.reqId,
+            status  : 'error',
+            message : 'NOCONF'
           });
           return;
         }
 
         j.trans.payment.frBalance = bFrom.balance - j.trans.payment.amount;
-        j.trans.payment.toBalance = Number(bTo.balance)   + Number(j.trans.payment.amount);
+        j.trans.payment.toBalance = Number(bTo.balance) + Number(j.trans.payment.amount);
         
         if (j.trans.payment.frBalance < 0){
             console.log('Transaction Rejected Reason - NSF.');
             this.net.sendReply(remIp, {
-                req: 'makeUserTransRes',
-                status: 'error',
-                message: 'NSF'
+                req     : 'makeUserTransRes',
+                reqId   : j.reqId,
+                status  : 'error',
+                message : 'NSF'
             });
             return;
         }
@@ -796,16 +807,18 @@ class peerPaysObj {
         if (err) {
             console.log('Error inserting into pLedger: ', err);
             this.net.sendReply(remIp, {
-                req: 'makeUserTransRes',
-                status: 'error',
-                message: 'Database error'
+                req     : 'makeUserTransRes',
+                reqId   : j.reqId,
+                status  : 'error',
+                message : 'Database error'
             });
         } else {
             console.log('Transaction inserted successfully:', result);
             this.net.sendReply(remIp, {
-                req: 'makeUserTransRes',
-                status: 'success',
-                insertedId: result.insertId
+                req        : 'makeUserTransRes',
+                reqId      : j.reqId,
+                status     : 'success',
+                insertedId : result.insertId
             });
         }
     });
@@ -823,10 +836,11 @@ class peerPaysObj {
   Local Node BroadCasts:
   =======================================================================
   */
-  receptorReqStopIPGen(work){
+  receptorReqStopIPGen(work,reqId){
     var req = {
-      to : 'peerPayCells',
-      req : 'stopNodeGenIP',
+      to    : 'peerPayCells',
+      req   : 'stopNodeGenIP',
+      reqId : reqId,
       work  : work
     }
     this.net.broadcast(req);
@@ -888,22 +902,24 @@ class peerPaysObj {
         resolve(IPs);
       },17*1000);
 
+      const reqId = crypto.randomUUID();
       var req = {
-        to : 'peerPayCells',
-        req : 'sendNodeList',
+        to    : 'peerPayCells',
+        req   : 'sendNodeList',
+        reqId : reqId,
         nodes : maxIP,
         work  : crypto.randomBytes(20).toString('hex') 
       }
 
       this.net.broadcast(req);
       this.net.on('mkyReply', mkyReply = (r)=>{
-        if (r.req == 'pNodeListGenIP'){
+        if (r.req == 'pNodeListGenIP' && r.reqId == reqId){
           console.log('mkyReply NodeGen is:',r);
           if (IPs.length < maxIP){
             IPs.push(r.remIp);
           }
           else {
-            this.receptorReqStopIPGen(req.work);
+            this.receptorReqStopIPGen(req.work,reqId);
             clearTimeout(gtime);
             this.net.removeListener('mkyReply', mkyReply);
             resolve(IPs);
@@ -967,7 +983,8 @@ class peerPaysObj {
   receptorReqMakeUserTrans(j,toIp){
     console.log('receptorReqMakeUserTrans',j);
     return new Promise( (resolve,reject)=>{
-      var mkyReply = null;
+     const reqId      = crypto.randomUUID();
+     var mkyReply = null;
       const gtime = setTimeout( ()=>{
         console.log('PeerPay MakeUserTrans Request Timeout:');
         this.net.removeListener('mkyReply', mkyReply);
@@ -975,9 +992,10 @@ class peerPaysObj {
       },20000);
 
       var req = {
-        to   : 'peerPayCells',
-        req  : 'makeUserTrans',
-        user : j.userUID,
+        to    : 'peerPayCells',
+        req   : 'makeUserTrans',
+        reqId : reqId,
+        user  : j.userUID,
         trans : j.trans
       }
 
@@ -987,8 +1005,8 @@ class peerPaysObj {
       // Handle bcast replies;
 
       this.net.on('mkyReply',mkyReply = (r) =>{
-        console.log('Got Response:: ', r);
-        if (r.req == 'makeUserTransRes' && r.remIp == toIp){
+        console.log('receptorReqMakeUserTrans():: Got Response:: ', r);
+        if (r.req == 'makeUserTransRes' && r.reqId == reqId && r.remIp == toIp){
           clearTimeout(gtime);
           this.net.removeListener('mkyReply', mkyReply);
           resolve(r);
@@ -1007,9 +1025,9 @@ class peerPaysObj {
       },5000);
 
       var req = {
-        to   : 'peerPayCells',
-        req  : 'confirmUserTrans',
-        user : j.userUID,
+        to    : 'peerPayCells',
+        req   : 'confirmUserTrans',
+        user  : j.userUID,
         trans : j.trans
       }
 
@@ -1019,8 +1037,8 @@ class peerPaysObj {
       // Handle bcast replies;
 
       this.net.on('mkyReply',mkyReply = (r) =>{
-        console.log('Got Response:: ', r);
-        if (r.req == 'confirmUserTransRes' && r.remIp == toIp){
+        console.log('receptorReqConfirmUserTrans():: Got Response:: ', r);
+        if (r.req == 'confirmUserTransRes' && r.txId == j.trans.payment.tx && r.remIp == toIp){
           clearTimeout(gtime);
           this.net.removeListener('mkyReply', mkyReply);
           resolve(r);
@@ -1031,9 +1049,11 @@ class peerPaysObj {
   receptorReqUserBalance(j,adrTo=null){
     console.log('receptorReqUserBalance',j,'adrTo:',adrTo);
     return new Promise( (resolve,reject)=>{
-      var mkyReply = null;
-      var bal = {
-         balance  : 0,
+       const reqId      = crypto.randomUUID();
+       var   curBalance = 0;
+       var mkyReply = null;
+       var bal = {
+         balance  : curBalance,
          time     : 0,
          confirms : 0
       }
@@ -1042,14 +1062,16 @@ class peerPaysObj {
         this.net.removeListener('mkyReply', mkyReply);
         resolve(bal);
       },3000);
+
       var reqAdr = j.userUID ?? j.user;
       if (adrTo) {
         reqAdr = adrTo;
       } 
       var req = {
-        to   : 'peerPayCells',
-        req  : 'sendUserBalance',
-        user : reqAdr
+        to    : 'peerPayCells',
+        req   : 'sendUserBalance',
+        reqId : reqId,
+        user  : reqAdr
       }
 
       //console.log('bcasting request: ',req);
@@ -1058,16 +1080,39 @@ class peerPaysObj {
       // Handle bcast replies;
 
       this.net.on('mkyReply',mkyReply = (r) =>{
-        console.log('Got Response:: ', r,'bal::',bal);
-        if (r.req == 'sendUserBalanceRes' && reqAdr == r.user && r.result ){
-          bal.balance = this.extractBalance(r.balance,reqAdr);
-          if (r.balance.pledUinixTime > bal.time) {
+        if (r.req == 'sendUserBalanceRes' && reqId == r.reqId && reqAdr == r.user && r.result ){
+          console.log('receptorReqUserBalance():: Got Response:: ', r,'bal::',bal);
+          let inBalance = this.extractBalance(r.balance,reqAdr);
+          if (bal.time === 0 ){  // first response
              bal.confirms = 1;
+             bal.balance  = inBalance;
+          }
+          else if (r.balance.pledUnixTime > bal.time) {  // higher timestamp found use this one.
+             bal.confirms = 1;
+             bal.balance  = inBalance;
+          }
+          else if (r.balance.pledUnixTime === bal.time) {
+             if (inBalance != curBalance) {  // Error!!! all balances for same timestamp should be the same!
+                console.log(`Balance coruption encountered!`,req,r);
+                // throw error here.
+                clearTimeout(gtime);
+                this.net.removeListener('mkyReply', mkyReply);
+                bal.balance  = 0;
+                bal.confirms = 0;
+                bal.error    = 'CORUPTBALANCE';
+                resolve(bal);
+                return;
+             }
+             else {
+               bal.confirms += 1;
+               bal.balance = inBalance;
+             }
           }
           else {
-             bal.confirms += 1;
+            return;
           }
-          bal.time = r.balance.pledUnixTime;
+          curBalance = inBalance;
+          bal.time   = r.balance.pledUnixTime;
 
           var maxConf = maxTranCopies;
           if (availTranNodes < maxTranCopies){
@@ -1082,71 +1127,84 @@ class peerPaysObj {
       });
     });
   }
+  receptorReqUserTransactions(j) {
+    return new Promise((resolve) => {
 
-  receptorReqUserTransactions(j){
-    //console.log('receptorReqUserTransactions',j);
-    return new Promise( (resolve,reject)=>{
-      var mkyReply = null;
-      var uTrans = {
-        result : false,
-        transactions: []
-      }
-      const gtime = setTimeout( ()=>{
+      const uTrans = {
+        result       : false,
+        transactions : new Map(),   // key: pledTx, value: transaction object
+        warnings     : false
+      };
+
+      const reqId = crypto.randomUUID();
+
+      const gtime = setTimeout(() => {
         console.log('PeerPay GetUserTransaction Request Timeout:');
         this.net.removeListener('mkyReply', mkyReply);
         resolve(uTrans);
-      },20000);
-      var reqAdr = j.userUID ?? j.user;
-      var req = {
-        to   : 'peerPayCells',
-        req  : 'sendUserTransactions',
-        user : reqAdr
-      }
+      }, 20000);
 
-      //console.log('bcasting request: ',req);
+      const reqAdr = j.userUID ?? j.user;
+
+      const req = {
+        to    : 'peerPayCells',
+        req   : 'sendUserTransactions',
+        reqId : reqId,
+        user  : reqAdr
+      };
+
       this.net.broadcast(req);
 
-      // Handle bcast replies;
-      var nres = 0;
-      this.net.on('mkyReply',mkyReply = (r) =>{
-        //console.log('Got Response::nodes: ',availTranNodes, r);
-        if (r.req == 'sendUserTransactionRes' && r.result ){
+      let nres = 0;
+
+      const mkyReply = (r) => {
+        if (r.req === 'sendUserTransactionRes' && r.reqId === reqId && r.result) {
+
           nres += 1;
-          for (let trans of r.transactions){
-            if (!this.isInTList(uTrans.transactions,trans.pledTx)) {
-               trans.confirms = 1;
-               uTrans.transactions.push(trans);
-            }
-            else {
-               this.incrementConfirms(uTrans.transactions,trans.pledTx);
+
+          for (const trans of r.transactions) {
+            const key = trans.pledTx;
+
+            if (!uTrans.transactions.has(key)) {
+              // First time seeing this transaction
+              trans.confirms = 1;
+              uTrans.transactions.set(key,trans);
+
+            } else {
+              // Already have a transaction with this pledTx
+              const existing = uTrans.transactions.get(key);
+
+              if (this.transactionsMatch(existing, trans)) {
+                // Safe to increment confirms
+                existing.confirms += 1;
+              } else {
+                console.error('receptorReqUserTransactions():: Transaction mismatch for pledTx:', key, 'Existing:', existing,'Incoming:', trans);
+                uTrans.warnings = true;
+              }
             }
           }
-          //console.log('nres::',nres,'availNodes::',availTranNodes);
-          if (nres >= availTranNodes){
+
+          if (nres >= availTranNodes) {
             clearTimeout(gtime);
             this.net.removeListener('mkyReply', mkyReply);
+            uTrans.result = true;
             resolve(uTrans);
-            return;
           }
         }
-      });
+      };
+
+      this.net.on('mkyReply', mkyReply);
     });
   }
-  incrementConfirms(trans,tx){
-    for (let t of trans){
-      if (t.pledTx === tx){
-        t.confirms += 1;
-        return;
-      }
-    }
-  }
-  isInTList(trans,tx){
-    for (let t of trans){
-      if (t.pledTx === tx){
-        return true;
-      }
-    }
-    return false;
+
+  transactionsMatch(a, b) {
+    return (
+      a.pledAmount    === b.pledAmount &&
+      a.pledFromAdr   === b.pledFromAdr &&
+      a.pledToAdr     === b.pledToAdr &&
+      a.pledUnixTime  === b.pledUnixTime &&
+      a.pledTxStatus  === b.pledTxStatus
+    );
   }
 };
 function sleep(ms){
