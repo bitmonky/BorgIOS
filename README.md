@@ -1,6 +1,8 @@
 # BorgIOS
 **Borg Internet OS - A Peer-to-Peer Autonomous Network Operating System for Distributed Cloud Compute**
 
+![main](images/borgGit.jpg)
+
 ## Overview
 
 BorgIOS is a revolutionary distributed computing platform that creates a peer-to-peer autonomous network where nodes contribute computational resources and storage in exchange for network currency. The system operates as a completely decentralized cloud computing environment with built-in economic incentives and security-first architecture.
