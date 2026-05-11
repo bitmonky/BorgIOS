@@ -37,6 +37,7 @@ cd /peerTree
 # Download PeerTree core libs
 # ---------------------------------------------------------
 curl https://admin.bitmonky.com/bitMDis/peerTree.js          -o peerTree.js
+curl https://admin.bitmonky.com/bitMDis/DStreamMgrObj.js     -o DStreamMgrObj.js
 curl https://admin.bitmonky.com/bitMDis/peerCrypt.js         -o peerCrypt.js
 curl https://admin.bitmonky.com/bitMDis/addslashes.js        -o addslashes.js
 curl https://admin.bitmonky.com/bitMDis/mkyDatef.js          -o mkyDatef.js
@@ -48,6 +49,7 @@ curl https://admin.bitmonky.com/bitMDis/bitWebMoniter.js     -o bitWebMoniter.js
 # ---------------------------------------------------------
 curl https://admin.bitmonky.com/bitMDis/btraderOrganObj.js   -o btraderOrganObj.js
 curl https://admin.bitmonky.com/bitMDis/btraderOrganCell.js  -o btraderOrganCell.js
+curl https://admin.bitmonky.com/bitMDis/btraderDB.js         -o btraderDB.js
 curl https://admin.bitmonky.com/bitMDis/pstartBTraderCell.sh -o pstartBTraderCell.sh
 
 chmod 774 pstartBTr*.sh
@@ -111,6 +113,7 @@ echo "{\"user\":\"${USERID}\",\"pass\":\"${PASSWDDB}\"}" > btraderdbconf
 mysql -e "DROP DATABASE IF EXISTS ${DBNAME};"
 mysql -e "CREATE DATABASE ${DBNAME};"
 
+mysql -e "DROP USER IF EXISTS '${USERID}'@'localhost';"
 mysql -e "CREATE USER '${USERID}'@'localhost' IDENTIFIED BY '${PASSWDDB}';"
 mysql -e "GRANT ALL PRIVILEGES ON ${DBNAME}.* TO '${USERID}'@'localhost';"
 mysql -e "FLUSH PRIVILEGES;"
