@@ -1,139 +1,359 @@
 # BorgIOS
-**Borg Internet OS - A Peer-to-Peer Autonomous Network Operating System for Distributed Cloud Compute**
+### Borg Internet Operating System
+**A self-organizing, self-healing, self-funding distributed network where your USB stick is your identity and the network is your computer.**
 
 ![main](images/borgGit.jpg)
 
-## Overview
+---
 
-BorgIOS is a revolutionary distributed computing platform that creates a peer-to-peer autonomous network where nodes contribute computational resources and storage in exchange for network currency. The system operates as a completely decentralized cloud computing environment with built-in economic incentives and security-first architecture.
+## What Is BorgIOS?
 
-## Core Architecture
+BorgIOS is a peer-to-peer network operating system built from the ground up on a single principle: **the network owns itself**.
 
-### Autonomous Node Management
-- **Total Network Control**: Nodes joining the network surrender root access to the autonomous system
-- **Unified Software Environment**: All nodes run identical, network-managed software stacks
-- **Automated Updates**: Network automatically installs and maintains required software across all nodes
-- **Common Root Access**: Network maintains and regularly rotates a common root password across all nodes
-- **Exit Strategy**: Only way to regain server control is complete disconnection and OS reinstallation
+No central servers. No domain names. No certificate authorities. No logins. No cookies. No blockchain. No company between you and your data.
 
-### PeerTree Communication Framework
-- **Hierarchical Structure**: Nodes organize into tree topology for efficient message propagation
-- **JSON Messaging**: All network communication uses structured JSON messages
-- **Broadcast Efficiency**: Messages cascade down the tree structure to reach all peers
-- **Geographic Distribution**: Supports nodes across multiple continents and time zones
-- **Synchronized Timing**: All nodes operate on unified timezone for consistent coordination
+Just nodes, cryptographic identity, and a set of elegant rules that produce a resilient, intelligent, economically self-sustaining collective — one that gets **faster, cheaper, and harder to destroy** the more people join it.
 
-### Distributed File Storage
-- **Shard-Based Storage**: Files split into encrypted fragments (shards) distributed across network
-- **Redundant Distribution**: Multiple copies of each shard stored across different nodes
-- **Hash-Based Retrieval**: File reconstruction requires correct sequence of shard hashes
-- **Security Through Fragmentation**: No single node contains complete file data
-- **Fault Tolerance**: Files remain accessible even with multiple node failures
+> *"Plug your USB stick in anywhere in the world, open a browser, and your entire digital life reconstructs itself from the network. Pull it out and you were never there."*
 
-### Governance and Software Management
-- **Repository-Based Distribution**: Core network software stored in distributed repository
-- **Multisignature Updates**: Changes to core software require majority consensus
-- **Democratic Control**: No single entity can unilaterally modify network software
-- **Transparent Decision Making**: All software changes require network stakeholder approval
-- **Version Control**: Comprehensive tracking of all software modifications and approvals
+---
 
-## Economic Layer
+## The Core Idea
 
-### None Blockchain-Based Distributed Ledger For BorgIOS Eco System
-- **Resource-Based Rewards**: Users earn currency proportional to contributed compute power and storage
-- **Service Payment**: Network services paid for using earned currency
-- **Transparent Ledger**: ledger maintains immutable record of all transactions
-- **Self-Sustaining Economy**: Built-in economic incentives encourage network participation
-- **Smart Contracts**: Automated enforcement of network rules and transactions
+Every node in BorgIOS is an identical clone. No masters, no workers, no special hardware. Just nodes running the same code, self-organizing into a shallow broadcast tree, communicating via cryptographically signed JSON messages.
 
-## Security Framework
+Your identity is an **EC keypair**. Your data is **signed shards** scattered across the network. Your access token is **the message itself** — timestamped, signed, and self-verifying. No login required. Ever.
 
-### Digital Passport Authentication
-- **Browser-Based Access**: Users connect via digital passport running in web browser
-- **Localhost Proxy**: Passport communicates with network through local proxy service
-- **Digital Signatures**: All network requests cryptographically signed before transmission
-- **Decentralized Identity**: No central authority controls user authentication
-- **Device-Specific**: Each user device maintains its own cryptographic identity
+---
 
-### Encrypted Messaging System
-- **RSA Encryption**: All messages encrypted using RSA public key cryptography
-- **Cloud Storage**: Encrypted messages stored across distributed network nodes
-- **Broadcast Retrieval**: Users request new messages via network broadcast
-- **Peer-to-Peer Delivery**: Messages delivered directly between nodes without central routing
-- **Perfect Forward Secrecy**: Messages remain secure even if keys are compromised later
+## Architecture
 
-## Key Features
+### PeerTree — The Self-Organizing Network
 
-### Decentralization
-- No single points of failure or control
-- Distributed decision making through consensus mechanisms
-- Geographic distribution across multiple continents
-- Autonomous operation without human intervention
+Nodes organize into a **shallow, wide broadcast tree**:
 
-### Security
-- End-to-end encryption for all data and communications
-- Cryptographic verification of all network operations
-- Immutable audit trails through blockchain technology
-- Multi-layer security through fragmentation and redundancy
+- New nodes fill positions left to right
+- Failed nodes are replaced by the last node (same mechanic at every level — leaf, branch, or root)
+- Root is just whoever currently holds position 1 — no special hardware, no election
+- A **join storm** of thousands of nodes is handled as efficiently as a single join via self-organizing chains
 
-### Scalability
-- Tree-based communication scales efficiently with network size
-- Distributed storage grows with node participation
-- Economic incentives encourage network expansion
-- Modular architecture supports diverse use cases
+**Broadcast depth at scale:**
+```
+10 children per node:
+  Hop 1 →        10 nodes
+  Hop 2 →       100 nodes
+  Hop 3 →     1,000 nodes
+  Hop 4 →    10,000 nodes
+  Hop 5 →   100,000 nodes
+  Hop 6 → 1,000,000 nodes
+```
+One million nodes reached in 6 hops. The larger the network, the **fewer hops** needed — not more.
 
-### Resilience
-- Fault tolerance through redundant data storage
-- Network continues operating despite node failures
-- Geographic distribution protects against regional outages
-- Autonomous recovery from various failure modes
+### Timestamped Signatures — Identity at Every Layer
 
-## Use Cases
+Every message at every layer carries the same signed token:
 
-### Distributed Computing
-- Large-scale computational tasks distributed across network nodes
-- Resource pooling for intensive processing requirements
-- Collaborative computing projects spanning multiple organizations
+```
+{
+  ip:        sender IP
+  timestamp: network-synchronized time
+  signature: EC signature over payload
+}
+```
 
-### Edge Computing
-- Processing closer to data sources for reduced latency
-- IoT device integration and management
-- Real-time data processing and analysis
+This single primitive provides:
+- **Authentication** — who sent it
+- **Integrity** — it wasn't tampered with
+- **Replay protection** — old messages are rejected
+- **Authorization** — ownership is provable
+- **Access control** — no login, no session, no cookie
 
-### Decentralized Applications (DApps)
-- Platform for building and deploying decentralized applications
-- Cryptocurrency and blockchain-based services
-- Peer-to-peer marketplaces and services
+The same format is used node-to-node, cell-to-cell, client-to-network, and browser-to-BorgHUIConduit. One verification function. No exceptions.
 
-### Secure Storage and Communication
-- Distributed file storage with built-in redundancy
-- Private messaging with strong cryptographic protection
-- Data backup and archival services
+### Cell Architecture — The Organism Model
 
-## Technical Specifications
+BorgIOS functionality is organized into **cells** — isolated processes, each with its own:
 
-### Network Requirements
-- Stable internet connection with adequate bandwidth
-- Ability to maintain connections across geographic regions
-- Support for peer-to-peer communication protocols
+```
+netPort   → private P2P mesh with other nodes of same type
+recpPort  → public receptor API (the cell's only door)
+monPort   → monitoring interface
+```
 
-### Security Requirements
-- RSA encryption for all message communications
-- Digital signature capabilities for authentication
-- Secure key management and storage
+Cells communicate only through receptors. No cross-talk. No shared state. Each cell type runs an independent tree with independent topology.
 
-### Economic Requirements
-- Blockchain ledger for transaction recording
-- Cryptocurrency wallet functionality
-- Resource monitoring and accounting systems
+**Core cell types:**
+
+| Cell | Role |
+|------|------|
+| `peerTreeNet` | Base P2P networking layer |
+| `shardTreeCell` | Distributed shard storage |
+| `fStreamCell` | Adaptive media streaming |
+| `cronoTreeCell` | Network time unification |
+| `peerPaysCell` | Borg Shell ledger |
+| `btraderOrganCell` | Borg Shell ↔ Dogecoin exchange |
+| `dogeNodeCell` | Dogecoin bridge |
+| `borgAgentCell` | AI agent colony |
+| `mailTreeCell` | Distributed messaging |
+| `peerMemoryCell` | Distributed memory store |
+| `serviceMgrCell` | Live service registry |
+| `ftreeFileMgrCell` | File management |
+| `borgAgentBrain` | Agent coordination & Mnemosyne protocol |
+
+Each cell's **DNA** (name, ports, maxChildren) is baked in at definition time. Cells clone themselves across the network carrying their DNA. Every `shardTreeCell` in the world is always on the same port. No config files. No service discovery complexity.
+
+### Shards — The Network IS the Filesystem
+
+There are no files. There are only shards.
+
+- Data is split into fixed-size chunks, each hashed with SHA-256
+- Shards are distributed randomly across the network via **proof-of-work placement** — non-blocking, tiny difficulty, network jitter provides genuine entropy
+- Only the owner's EC keypair can produce a valid signature for a shard — anyone can cache, nobody else can modify
+- To retrieve data: broadcast a shard request, holders respond, reconstruct locally
+- Each retrieval response includes a **confirmation count** — if copies fall below a safe threshold, the network self-heals by broadcasting a replication request
+
+**The network is self-auditing.** Every read is also a health check.
+
+### CronoTreeCell — Network Time
+
+Hardware clocks drift. BorgIOS solves this without NTP or external services.
+
+Root broadcasts its timestamp down the tree. Each hop logs propagation latency. Each leaf calculates its exact offset. All cells call their local CronoTree receptor for `Date.now()` — network-synchronized, not hardware.
+
+All cells use an overridden `Date.now()` automatically. Timestamp signatures are comparable across the entire network. Transaction ordering is deterministic.
+
+### DStreamMgrObj — Binary Streaming
+
+Large data moves over a windowed shard-transfer protocol built on top of the existing message layer:
+
+- Stream metadata sent as a normal signed JSON message
+- Receiver pre-allocates file, begins requesting shards in batches
+- Shards arrive out of order, written at correct offsets via random-access writes
+- Each shard validated by SHA-256 before write — bad shards re-requested automatically
+- Transfer is non-blocking, resumable, and concurrent-stream capable
+
+**Benchmark:** 111 shards, Toronto → California, single-core $5/month VM — completed in **2.017 seconds**. The reassembled file's SHA-256 matched the stream ID exactly.
+
+### fStreamCell — Adaptive Media Streaming
+
+Media streams are assembled from shards at the endpoint. The stream map is the source of truth — any endpoint can pick up mid-stream.
+
+- If a streaming cell fills to capacity it redirects new clients to a less busy endpoint seamlessly
+- Each cell serves as many clients as it can handle, then passes load to the next cell
+- The broadcast tree **is** the CDN — stream fanout is a natural property of the topology
+
+### NAT Traversal — Automatic, Zero Config
+
+Nodes detect when they're behind a router and register as `internalIP→externalIP`. Only one node per network needs a port forwarded. All others route through it. No STUN, no UPnP, no config files.
+
+---
+
+## Identity & Security
+
+### Your USB Stick IS Your Identity
+
+```
+Seed phrase (24 words)
+    → deterministically generates EC keypair
+    → keypair lives on USB stick
+    → USB stick runs BorgHUIConduit locally
+    → browser connects to localhost
+    → every message signed with your key
+    → your data in the network is yours, mathematically
+```
+
+Lose the USB: regenerate from seed phrase.  
+Move to a new machine: plug in USB, open browser, everything is there.  
+Pull out the USB: no trace left on the host machine.
+
+### No Domains. No CAs. No Cookies. No Sessions.
+
+```
+Traditional web:              BorgIOS:
+  Domain → ICANN               No domains
+  TLS cert → CA authority      Self-signed TLS
+  Login → password DB          EC signature IS the auth
+  Session → cookie             No sessions
+  Auth token → JWT server      Timestamped signature
+```
+
+A node's complete unforgeable address: `IP:port + public key`. Nothing else needed.
+
+### BorgHUIConduit
+
+The user-facing client is a local NodeJS server. The browser talks to localhost. BorgHUIConduit holds the user's EC keypair, signs every outgoing request, verifies every incoming response, maintains a live endpoint list per cell type, and handles failover transparently.
+
+The browser never knows it's talking to a P2P network.
+
+---
+
+## The Economy
+
+### Borg Shells
+
+The network's native currency. The genesis wallet holds **20 million Borg Shells** owned by the network itself.
+
+**Earn Shells by contributing:**
+- Shard storage
+- Compute time
+- Bandwidth and routing
+- Running a Dogecoin bridge node (`dogeNodeCell`)
+- Providing content consumed by other users
+
+**Spend Shells on:**
+- Compute time
+- Storage
+- Streaming
+- Content from creators
+
+### BTraderOrganCell — The Exchange
+
+Borg Shells trade against Dogecoin.
+
+```
+User sends Doge to their BorgDoge address
+    → dogeNodeCell detects incoming transaction
+    → BTrader locks the Doge
+    → releases Borg Shells to user's keypair
+    → finds Shell seller wanting Doge
+    → atomic swap completes
+    → dogeNodeCell operator earns Shells
+```
+
+No exchange account. No KYC. No custodial risk. The BorgDoge address is derived from the user's EC keypair — it's theirs by the same math that makes everything else theirs.
+
+**Why Dogecoin:** Low fees, fast settlement, wide availability. Micro-transactions are viable.
+
+---
+
+## The AI Layer
+
+### borgAgentCell — The Mnemosyne Protocol
+
+BorgIOS runs a colony of specialized AI agents that:
+
+- Read the system codebase into their own context
+- Save findings as signed shards on the network (persistent memory)
+- Retrieve memories via natural language queries
+- Communicate with each other via signed messages
+- Self-select specializations (networking, storage, economics, monitoring)
+- **Rewrite their own agent prompt** to improve themselves
+- Earn Borg Shells for useful work
+
+The **System Monitor** agent gets extra protocols — network-wide visibility into which nodes are running which cells, health metrics, anomaly detection.
+
+Agents communicate with humans through borgHUI's chat interface.
+
+**Tested with 3 agents simultaneously:** They spontaneously divided labor, shared memory addresses, selected appropriate specialties, read the codebase in the correct dependency order, and collaborated on understanding the system — all without being told to.
+
+**DeepSeek R1** is particularly well-suited to reasoning through the BorgIOS protocol.
+
+As local models improve, AI nodes run inference locally — near-zero API cost, continuous operation, the network becomes genuinely self-maintaining and self-improving.
+
+---
+
+## Hardware
+
+### Entry Node (~$99-150)
+Raspberry Pi class ARM. 5-10 watts. Passive income from storage, routing, and bandwidth.
+
+### AI Node (~$500-800)
+Higher-end ARM or x86 with NPU/GPU. Runs borgAgentCell with local inference. Earns premium Shells for AI work.
+
+**Setup:**
+1. Plug into power and router
+2. Forward one port
+3. Done — node joins the collective automatically, no config files
+
+---
+
+## Resilience Properties
+
+| Threat | Response |
+|--------|----------|
+| Node failure | Last-node swap, same rule at every level |
+| Root failure | Last node becomes root, broadcasts time, network recalibrates |
+| Network split | Smaller branch detects loss, resigns, redirects members to larger branch |
+| Join storm | Self-organizing chains, O(1) cost regardless of storm size |
+| Shard loss | Retrieval triggers replication back to safe threshold |
+| Node comes back alone | Declares itself root, waits, first contact rebuilds the network |
+| All contacts offline | Sits as root until found — fully functional single-node mode |
+
+**To destroy BorgIOS you would need to simultaneously take down every node of every cell type worldwide with no warning before any node tells another. At scale, this is not a realistic threat model.**
+
+---
 
 ## Current Status
 
-BorgIOS is currently in advanced testing phase with a geographically distributed test network spanning Asia, Europe, USA, and Canada. The system has been validated across multiple continental boundaries with all core systems operational including PeerTree communication, distributed file storage, and blockchain-based economic layer.
+Live test network spanning **Asia, Europe, USA, and Canada**.
 
-<div align='center'>
+```
+Core systems:          ✅ operational
+PeerTree networking:   ✅ operational  
+Binary streaming:      ✅ operational (2s coast-to-coast)
+Signed messaging:      ✅ operational
+BTraderOrganCell:      ✅ operational
+AI agent colony:       ✅ operational
+fStreamCell:           🔧 ~80% complete
+serviceMgrCell:        🔧 in progress
+dogeNodeCell:          🔧 in progress
+```
 
-![Support](https://img.shields.io/badge/support-financing-green.svg)
+---
+
+## The Numbers
+
+```
+Coast-to-coast file transfer:  2 seconds on a $5/month VM
+Broadcast reach at 6 hops:     1,000,000 nodes
+Node electricity cost:         ~$8-12/year
+Minimum viable network:        1 node per cell type
+Config files required:         0
+Certificate authorities needed: 0
+Domain names required:         0
+Logins required:               0
+```
+
+---
+
+## Philosophy
+
+BorgIOS was not designed to improve the existing internet. It was designed to replace its foundations.
+
+The existing web was built for documents and retrofitted for identity, payments, privacy, and sovereignty — all as afterthoughts, all controlled by intermediaries. BorgIOS builds those primitives correctly from the start:
+
+- **Identity** is a keypair, not a username
+- **Auth** is a signature, not a password  
+- **Storage** is shards, not a server
+- **Money** is a signed ledger, not a bank
+- **Time** is network consensus, not a hardware clock
+- **Trust** is mathematics, not a certificate authority
+
+The network owns itself. You own your data. The math enforces both.
+
+---
+
+## Repository
+
+```
+peerTree.js          Core P2P networking
+DStreamMgrObj.js     Binary shard streaming
+shardTreeCell.js     Distributed storage
+btraderOrganCell.js  Shell/Doge exchange
+fstreamTreeCell.js   Media streaming
+cronoTreeCell.js     Network time
+peerPaysCell.js      Shell ledger
+borgAgentCell.js     AI agent host
+borgAgentBrain.js    Mnemosyne protocol / agent cognition
+borgAgentObj.js      Agent logic
+BorgECMail.js        Distributed mail
+peerMemoryCell.js    Distributed memory
+borgCoreSystems.js   Core system utilities
+ptreeReceptorObj.js  Receptor base class
+```
+
+---
+
 
 
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/petergs6)
