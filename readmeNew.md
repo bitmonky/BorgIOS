@@ -2,6 +2,8 @@
 ### Borg Internet Operating System
 **A self-organizing, self-healing, self-funding distributed network where your USB stick is your identity and the network is your computer.**
 
+![main](images/borgGit.jpg)
+
 ---
 
 ## What Is BorgIOS?
