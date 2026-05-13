@@ -1,8 +1,14 @@
-  
-/****************************
-BitMonky Wallet Server
-****************************
-*/
+/**
+ * borgHUIconduit.js
+ *
+ * borgHUI uses a BORG‑native mnemonic that deterministically encodes
+ * the EC private key. The seed phrase restores the exact same keypair,
+ * public key, and address — it is not a BIP‑39 wallet and does not
+ * derive multiple keys.
+ *
+ * This is NOT a crypto wallet. The EC keypair represents user identity
+ * and data ownership within the BorgIOS network.
+ */
 
 const webCon  = require('http');
 const fs      = require('fs');
@@ -278,7 +284,7 @@ class bitMonkyWSrv {
         }
         else {
 
-        if (req.url.indexOf('/netREQ') == 0){
+          if (req.url.indexOf('/netREQ') == 0){
             if (req.method == 'POST') {
               var body = '';
               req.on('data', (data)=>{
@@ -358,6 +364,10 @@ class bitMonkyWSrv {
            j.signedToken = this.wallet.signMsg(j.sigTokenData);
            res.end(JSON.stringify(j));
            return;
+         }
+         if (j.req  == 'sendRSV'){
+            this.Wallet.doRSVExecuteCmd(j,res);
+            return;
          }
          if (j.req  == 'getRsaPubKey'){
             j.rsaPubKey = this.wallet.rsaKeys
@@ -829,6 +839,16 @@ class bitMonkyWallet{
         console.log('callback is now:',j.orig);
         this.sendPostRequest(j.orig,wres);
       }          
+   }
+   async doRSVExecuteCmd(j,res){
+     let service = await this.portal.selectPortal(svcName);
+     if (service.endPoint === '' || service.endPoint === null){
+       service.endPoint === '/netREQ';
+     }
+     var conf = confirm("run service https://"+service.host+':'+service.port+'/'+service.endPoint+" Now?");
+     if (conf){
+       sendPostRequest(msg,div,service);
+     }
    }
    sendPostRequest(msg,wres=null,service=null,redirectCount=0){
      return new Promise((resolve) => { 
