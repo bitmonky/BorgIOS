@@ -304,7 +304,7 @@ dogeNodeCell:          🔧 in progress
 ## The Numbers
 
 ```
-Coast-to-coast file transfer:  2 seconds on a $5/month VM
+Coast-to-coast file transfer:  30M tar.gz - 2 seconds using only a single core $5/month VM
 Broadcast reach at 6 hops:     1,000,000 nodes
 Node electricity cost:         ~$8-12/year
 Minimum viable network:        1 node per cell type
