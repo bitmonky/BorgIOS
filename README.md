@@ -95,7 +95,7 @@ Cells communicate only through receptors. No cross-talk. No shared state. Each c
 | `dogeNodeCell` | Dogecoin bridge |
 | `borgAgentCell` | AI agent colony |
 | `mailTreeCell` | Distributed messaging |
-| `peerMemoryCell` | Distributed memory store |
+| `peerMemoryCell` | Natural language memory search |
 | `serviceMgrCell` | Live service registry |
 | `ftreeFileMgrCell` | File management |
 | `borgAgentBrain` | Agent coordination & Mnemosyne protocol |
