@@ -10,6 +10,7 @@
  * and data ownership within the BorgIOS network.
  */
 
+const EventEmitter = require('events');
 const webCon  = require('http');
 const fs      = require('fs');
 const url     = require('url');
@@ -24,6 +25,8 @@ const ALGO    = "aes-256-cbc"
 const port    = 80;
 const wfile   = 'keys/myBMGPWallet.key';
 const wconf   = 'keys/wallet.conf';
+
+const {BorgHUIstreamMgr} = require('./BorgHUIstreamMgr.js');
 
 const { generateKeyPairSync } = require('crypto')
 const upload = multer({dest:'uploads/'});
@@ -193,8 +196,9 @@ function urldecode(msg) {
   return msg;
 }
 
-class bitMonkyWSrv {
+class bitMonkyWSrv extends  EventEmitter {
   constructor(){
+    super();
     this.wallet = new bitMonkyWallet();
     this.init();
   }
