@@ -97,7 +97,7 @@ class BorgHUIstreamMgr {
   // ---------------------------------------------------------
   // Create a stream descriptor for outgoing messages
   // ---------------------------------------------------------
-  async createStreamMsg(msg, toIp,type,winSize,blob=null) {
+  async createStreamMsg(service,msg,type,winSize,blob=null) {
     const filename = msg.filename;
     let streamId;
     let shards;
@@ -121,7 +121,7 @@ class BorgHUIstreamMgr {
     }
 
     const fmap = {
-      toIp,
+      service,
       streamId,
       filename,
       reqId       : msg.reqId,
@@ -168,13 +168,17 @@ class BorgHUIstreamMgr {
   // ---------------------------------------------------------
   // Send a normal PeerTree message that includes a stream descriptor
   // ---------------------------------------------------------
-  sendMsg(msg, toIp,type = 'file',winSize = 35,blob=null) {
+  streamTo(service,type = 'file',winSize = 35,blob=null) {
     return new Promise(async (resolve) => {
       const reqId = crypto.randomUUID();
-      msg.reqId = reqId;
+      const msg = {
+        req      : 'openBinStream',
+        filename : service.filename
+      }
+      msg.reqId   = reqId;
 
       // Create stream descriptor
-      const stream = await this.createStreamMsg(msg, toIp,type,winSize,blob);
+      const stream = await this.createStreamMsg(service,msg,type,winSize,blob);
       msg.stream = stream;
       let timer;
       let failListener, replyListener, sendOKListener;
@@ -237,7 +241,7 @@ class BorgHUIstreamMgr {
   // ---------------------------------------------------------
   // Send a shard to a remote host
   // ---------------------------------------------------------
-  async sendStreamShard(remIp, streamId, shardIdx,shardId) {
+  async sendStreamShard(service, streamId, shardIdx,shardId) {
     const shard = await this.getShardData(streamId, shardIdx);
     const msg = {
       streamId : streamId,
@@ -247,7 +251,7 @@ class BorgHUIstreamMgr {
     } 
      
     // Then send raw binary shard
-    this.net.sendBinaryShardCX(remIp, msg);
+    this.sendBinaryShardCX(service, msg);
     this.setStatus(streamId,'transfering:'+shardId);
   }
 
@@ -572,6 +576,175 @@ class BorgHUIstreamMgr {
 
     // 4. Otherwise request more shards
     this.requestShardBatch(streamId);
+  }
+  sendMsgCX(service,msg){
+
+     const endPoint = service.endPoint;
+     const toHost   = service.host;
+     const https    = require('https');
+
+     msg.errCount = 0;
+     msg.sentTime = Date.now();
+
+     const pmsg = {msg : msg}
+     const data = JSON.stringify(pmsg);
+
+     var emitError = null;
+     const options = {
+       hostname : toHost,
+       port     : this.port,
+       path     : endPoint,
+       method: 'POST',
+       headers: {
+         'Connection': 'close',
+         'Content-Type': 'application/json',
+         'Content-Length': Buffer.byteLength(data, 'utf8')
+       },
+       timeout: 3000
+     }
+
+     const req = https.request(options, res => {
+       let chunks = [];
+       res.on('data', (chunk)=>{
+         chunks.push(chunk);
+       });
+
+       res.on('end',async ()=>{
+         const body = Buffer.concat(chunks);
+
+         shard.toHost = toHost;
+         msg.toHost = toHost;
+         if (res.statusCode !== 200) {
+           msg.toHost   = toHost;
+           msg.endpoint = options.path;
+           msg.xhrError = res.statusCode;
+           msg.errCount++;
+           this.net.emit('xhrFailedTry',msg);
+         } else {
+           try {
+             msg.res = JSON.parse(body);
+             this.net.emit('xhrPostOK',msg);
+           }
+           catch(e) {
+             msg.xhrError = 'jsonParse';
+             msg.errMsg   = e;
+             msg.toHost   = toHost;
+             this.net.emit('xhrFailedTry',msg);
+           }
+         }
+       });
+
+     });
+
+     req.on("timeout", () => {
+       if (emitError === null){
+          emitError    = true;
+          msg.toHost   = toHost;
+          msg.endpoint = options.path;
+          msg.xhrError = 'xTime';
+          msg.errCount++;
+          this.net.emit('xhrFailedTry',msg);
+       }
+       req.destroy();
+     });
+
+     req.on('error', error => {
+        if (emitError !== null) return;
+
+        emitError     = true;
+        msg.toHost    = toHost;
+        msg.endpoint  = options.path;
+        msg.xhrError  = 'xError';
+        msg.xhrErCode = error.code;
+        msg.errCount++;
+        if (error.code === 'ETIMEDOUT') {
+          msg.xhrError = 'xTime';
+        }
+        this.net.emit('xhrFailedTry',msg);
+     })
+
+     req.write(data);
+     req.end();
+  }
+  sendBinaryShardCX(service,shard){
+    const https    = require('https');
+    const toHost   = serice.host;
+    shard.sentTime = Date.now();
+
+    let emitError  = null;
+    const data     = shard.shard;
+    const endPoint = `{$service.endPont}?streamId=${shard.streamId}&index=${shard.shardIdx}&shardId=${shard.shardId}`;
+
+    const options = {
+       hostname : service.host,
+       port     : service.port,
+       path     : endPoint,
+       method: 'POST',
+       headers: {
+         'Connection': 'close',
+         'Content-Type': 'application/octet-stream',
+         'Content-Length': data.length
+       },
+       timeout: 3000
+     }
+
+     const req = https.request(options, res => {
+       let chunks = [];
+       res.on('data', (chunk)=>{
+         chunks.push(chunk);
+       });
+
+       res.on('end',async ()=>{
+         const body = Buffer.concat(chunks);
+
+         shard.toHost = toHost;
+         if (res.statusCode !== 200) {
+           shard.toHost   = toHost;
+           shard.endpoint = options.path;
+           shard.xhrError = res.statusCode;
+           this.net.emit('xhrBinShardFailed',shard);
+         } else {
+           console.log('bin send good',shard.shardIdx,shard.shardId);
+           try {        
+             shard.res = JSON.parse(body);
+             this.net.emit('xhrBinShardOK',shard);
+           }
+           catch(e) {
+             shard.xhrError = 'jsonParse';
+             shard.errMsg   = e;
+             shard.toHost   = toHost;
+             this.net.emit('xhrBinShardFailed',shard);
+           }
+         }
+       });
+     });
+     req.on("timeout", () => {
+       if (emitError === null){
+          emitError    = true;
+          msg.toHost   = toHost;
+          msg.endpoint = options.path;
+          msg.xhrError = 'xTime';
+          msg.errCount++;
+          this.net.emit('xhrBinFailed',shard);
+       }
+       req.destroy();
+     });
+
+     req.on('error', error => {
+        if (emitError !== null) return;
+
+        emitError       = true;
+        shard.toHost    = toHost;
+        shard.endpoint  = options.path;
+        shard.xhrError  = 'xError';
+        shard.xhrErCode = error.code;
+        if (error.code === 'ETIMEDOUT') {
+          shard.xhrError = 'xTime';
+        }
+        this.net.emit('xhrBinShardFailed',shard);
+     })
+     req.write(data);
+     req.end();
   }
 };
 module.exports.BorgHUIstreamMgr = BorgHUIstreamMgr;

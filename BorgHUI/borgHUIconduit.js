@@ -199,7 +199,8 @@ function urldecode(msg) {
 class bitMonkyWSrv extends  EventEmitter {
   constructor(){
     super();
-    this.wallet = new bitMonkyWallet();
+    this.wallet  = new bitMonkyWallet();
+    this.DStream = new DStreamMgrObj(this);
     this.init();
   }
   async init() {
@@ -714,6 +715,45 @@ class bitMonkyWallet{
      //const mime = require('mime-types');
 
      const filePath = j.filePath;  
+
+     const p = await this.portal.selectPortal('shardTreeCell');
+
+     const service = {
+       endPoint : '/storeShard/',
+       filename : filePath,
+       host     : p.host,
+       port     : p.port,
+       raw      : true
+     };
+
+     // Try streaming file to the shardTreeCell network.
+     let doTry = await this.DStream.streamTo(service);
+
+     if (doTry.result !== 'OK'){
+        let errorMsg = `doUploadFile():: stream to shard network failed Try later...';
+        console.log(errorMsg);
+        j.result = false;
+        j.data = `Error - ${errorMsg}`;
+        res.end(JSON.stringify(j));
+        return;
+     }
+
+     // File stored OK so send meta data to the ftreeFileMgrCell
+     doTry = await this.ftreeInsertFileToRepo(muid, name, doTry.fmap, path, folderID, nCopys);
+     if (doTry.result !== 'OK'){
+        let errorMsg = `doUploadFile():: stream to shard network failed Try later...';
+        console.log(errorMsg);
+        j.result = false;
+        j.data = `Error - ${errorMsg}`;
+        res.end(JSON.stringify(j));
+        return;
+     }
+
+     console.log('Upload successful:', response);
+     j.result = true;
+     j.msg = 'File uploaded successfully.';
+     j.response = doTry.response;
+/*
      const remoteUrl = j.targetURL;
 
      const form = new FormData();
@@ -769,6 +809,35 @@ class bitMonkyWallet{
     });
 
     form.pipe(req);
+*/
+  }
+  async ftreeInsertFileToRepo(muid, name, file, path, folderID, nCopys) {
+    const j = {
+      from: muid,
+      name: name,
+      file: file,
+      path: path,
+      folderID: folderID,
+      nCopys: Number(nCopys)
+    };
+
+    // Remove leading slash if path is not root
+    if (j.path !== '/') {
+      j.path = j.path.replace('/', '');
+    }
+
+    const post = {
+      url: global.PTC_ftreeRECEPTOR + "/netREQ",
+      postd: JSON.stringify({
+        msg: {
+          req: "insertRSfile",
+          repo: j
+        }
+      })
+    };
+
+    const bcRes = await tryJFetchURL(post, 'POST');
+    return bcRes;
   }
   writeWallet(){
      var wallet = '{"ownMUID":"'+ this.ownMUID+'","publicKey":"' + this.publicKey + '","privateKey":"' + this.privateKey + '",';
@@ -927,7 +996,7 @@ class bitMonkyWallet{
              } 
              else {
                console.log('Redirect response received, but no location header provided.');
-               resolve(nul);
+               resolve(null);
                return;
              }
            }
