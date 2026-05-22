@@ -101,7 +101,7 @@ class DStreamMgrObj {
     const filename = msg.filename;
     let streamId;
     let shards;
-
+    console.log(type,blob);
     // CASE 1: File-based stream (deterministic)
     if (type === 'file') {
       streamId = await this.getHash(msg.filename);
@@ -146,6 +146,10 @@ class DStreamMgrObj {
       sentAt      : Date.now()
     };
 
+    if (blob) {
+      fmap.buffer = streamId;
+      this.memFiles.set(streamId,blob);
+    }
  
     this.streams.set(streamId, fmap);
 
@@ -164,13 +168,13 @@ class DStreamMgrObj {
   // ---------------------------------------------------------
   // Send a normal PeerTree message that includes a stream descriptor
   // ---------------------------------------------------------
-  sendMsg(msg, toIp,type = 'file',winSize = 35) {
+  sendMsg(msg, toIp,type = 'file',winSize = 35,blob=null) {
     return new Promise(async (resolve) => {
       const reqId = crypto.randomUUID();
       msg.reqId = reqId;
 
       // Create stream descriptor
-      const stream = await this.createStreamMsg(msg, toIp,type,winSize);
+      const stream = await this.createStreamMsg(msg, toIp,type,winSize,blob);
       msg.stream = stream;
       let timer;
       let failListener, replyListener, sendOKListener;
@@ -251,6 +255,7 @@ class DStreamMgrObj {
   // Remove stream metadata
   // ---------------------------------------------------------
   removeStream(streamId) {
+    this.memFiles.delete(streamId);
     this.streams.delete(streamId);
   }
   getHash(filePath) {
@@ -342,13 +347,16 @@ class DStreamMgrObj {
     return new Promise(async (resolve, reject) => {
 
       const stream = this.streams.get(streamId);
+      stream.buffer = this.memFiles.get(streamId);
+
       if (!stream) return reject(new Error("Unknown streamId"));
 
       const start = shardIdx * stream.shardSize;
       const end   = Math.min(start + stream.shardSize, stream.totalSize);
 
       // CASE 1: memFile / dsBuffer (RAM)
-      if (stream.type === 'memFile' || stream.type === 'dsBuffer') {
+      console.log(`getShardData::() stream is `,stream);
+      if (stream.hasOwnProperty('buffer') && stream.buffer !== null && (stream.type === 'memFile' || stream.type === 'dsBuffer')) {
         try {
           const slice = stream.buffer.slice(start, end);
           return resolve(slice);
@@ -412,6 +420,7 @@ class DStreamMgrObj {
       reqId    : stream.reqId,
       remIp    : stream.remIp,
       response : stream.response,
+      fileInfo : stream.filename,
       file     : stream.tempFilePath,   // for file streams
       buffer   : stream.buffer          // for memFile/dsBuffer streams
     };
@@ -468,7 +477,6 @@ class DStreamMgrObj {
     else {
       fmap.tempFilePath = await this.prepareTempFile(fmap.streamId, fmap.totalSize);
     }
-    console.log('doOpenStream():: fmap',fmap);
 
     this.net.isStreaming.set(fmap.streamId, fmap);
 
