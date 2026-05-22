@@ -1,22 +1,24 @@
 const crypto = require("crypto");
 const fs = require("fs");
+process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
+
+const shardSize = 256 * 1024;
 
 class BorgHUIstreamMgr {
   constructor(net) {
     this.net = net;
     this.cell = null;
     this.streams  = new Map();   // streamId → streamMeta / conversation
+    this.dstreams = new Map();
     this.memFiles = new Map();   // streamId → Buffer ( in memory file system);
+    this.sentShardListener();    // start listening for sendBinShard results.
   }
   attachCell(cell){
    this.cell = cell;
    console.log('hello');
   }
-  prepareTempFile(streamId, fileSize) {
-    let dir = this.net.tmpDir || process.cwd();
-    if (!dir.endsWith("/")) dir += "/";
-
-    const file = `${dir}stream_${streamId}.bin`;
+  prepareTempFile(filepath, fileSize) {
+    const file = filepath;
 
     // Remove old file if it exists
     try {
@@ -138,9 +140,11 @@ class BorgHUIstreamMgr {
       completed   : false,
 
       // Progress
-      shardsSent  : 0,
+      shardsSent    : 0,
       pendingShards : new Set([...Array(shards.count).keys()]),
-      inProgress  : false,
+      inFlight      : new Set(),
+      shardsSentOK  : new Set(),
+      inProgress    : false,
 
       // Diagnostics
       sentAt      : Date.now()
@@ -150,7 +154,7 @@ class BorgHUIstreamMgr {
       fmap.buffer = streamId;
       this.memFiles.set(streamId,blob);
     }
- 
+    console.log(`fmap`,fmap); 
     this.streams.set(streamId, fmap);
 
     return {
@@ -168,7 +172,35 @@ class BorgHUIstreamMgr {
   // ---------------------------------------------------------
   // Send a normal PeerTree message that includes a stream descriptor
   // ---------------------------------------------------------
-  streamTo(service,type = 'file',winSize = 35,blob=null) {
+  async streamRepoFileFrom(service,repo){
+    return await this.doOpenStream(repo,service);
+  }
+  async streamFrom(service,fmap){
+   // FOR TESTING ONLY!
+   console.log('fig',fmap);
+    fmap.pendingShards  = new Set([...Array(j.stream.count).keys()]);
+    fmap.inFlight       = new Set();       // shardIdx values currently requested but not yet received
+    fmap.inProgress     = true;
+
+    // Diagnostics
+    fmap.startAt       = Date.now();
+    fmap.timeElapsed   = 0;
+ 
+    // Storage
+    if (fmap.type === 'memFile' || fmap.type === 'dsBuffer') {
+      fmap.buffer = this.prepareBlobMemFile(fmap.streamId, fmap.totalSize);
+    }
+    else {
+      fmap.tempFilePath = await this.prepareTempFile(`./downloads/${fmap.streamId}.tmp`, fmap.totalSize);
+    }
+
+    // Start requesting shards
+    this.gatherShards(fmap);
+
+    // Kick off the first batch of shard requests
+    this.requestShardBatch(fmap.streamId,service);
+  }
+  streamTo(service,type = 'file',winSize = 20,blob=null) {
     return new Promise(async (resolve) => {
       const reqId = crypto.randomUUID();
       const msg = {
@@ -185,20 +217,12 @@ class BorgHUIstreamMgr {
 
       //console.log(`sendMsg():: `,msg,toIp);
       // DELIVERED PATH
-      this.net.on('xhrPostOK', sendOKListener = (j) => {
-        if (j.reqId === reqId) {
-          this.net.removeListener('xhrPostOK', sendOKListener);
+      const toIp = service.host;
 
-          timer = setTimeout(() => {
-            this.net.removeListener('xhrFail', failListener);
-            this.net.removeListener('peerTReply', replyListener);
-            resolve({ result: 'timeout' });
-          }, 5000);
-        }
-      });
 
       // FAILURE PATH
       this.net.on('xhrFail', failListener = (j) => {
+        console.log('streamTo():: xhrFail ',j);
         if (j.toHost === toIp && j.req === msg.req) {
           clearTimeout(timer);
 
@@ -212,15 +236,19 @@ class BorgHUIstreamMgr {
       });
 
       // SUCCESS PATH
-      this.net.on('peerTReply', replyListener = (j) => {
-        if (j.response === msg.response && j.reqId === reqId) {
-          clearTimeout(timer);
+      this.net.on('xhrPostOK', sendOKListener = async (j) => {
+        console.log('streamTo():: success ',reqId,j.reqId);
+        if (j.reqId === reqId) {
+         console.log(`streamTo():: j.res `,j.res);
+         clearTimeout(timer);
 
           this.net.removeListener('xhrFail', failListener);
-          this.net.removeListener('peerTReply', replyListener);
           this.net.removeListener('xhrPostOK', sendOKListener);
-          if (j.result === 'STREAM_META_ACK'){
+          console.log(`streamTo():: !!!! j.res `,j.res,`j.res.result ${j.res.result}`);
+          if (j.res.result === 'STREAM_META_ACK'){
+            console.log('streamTo():: stream is ',stream);
             this.setStatus(stream.streamId, j.status);
+            await this.doBlastShardBatch(service,stream.streamId);
           }
           else {
             console.error(`DStreamMgrObj.sendMsg():: failed to open remote stream`,j);
@@ -229,7 +257,9 @@ class BorgHUIstreamMgr {
           resolve(j);
         }
       });
-      this.net.sendMsgCX(toIp, msg);
+      service.endPoint = '/netREQ/';
+      console.log(`streamTo():: sending msg`,service,msg);
+      this.sendMsgCX(service, msg);
     });
   }
   setStatus(sId,status){
@@ -238,19 +268,64 @@ class BorgHUIstreamMgr {
      return;
 
   }
+  async doBlastShardBatch(service, streamId) {
+    const stream = this.streams.get(streamId);
+    if (!stream) {
+      console.log(`Stream not found.`,streamId);
+      return;
+    }
+    // Nothing to do if stream is already complete
+    if (stream.completed) return;
+    // Fill the window
+    while (
+      stream.inFlight.size < stream.winSize &&
+      stream.pendingShards.size > 0
+    ) {
+      // Pull next shard index
+      const shardIdx = stream.pendingShards.values().next().value;
+      stream.pendingShards.delete(shardIdx);
+
+      const shardId = stream.shardHashes[shardIdx];
+
+      // Mark as in-flight
+      stream.inFlight.add(shardIdx);
+
+      // Dispatch the shard
+      this.sendStreamShard(service, stream.streamId, shardIdx, shardId);
+
+      // Optional: status update
+      this.setStatus(stream.streamId, `sending:${shardIdx}`);
+    }
+  }
   // ---------------------------------------------------------
   // Send a shard to a remote host
   // ---------------------------------------------------------
   async sendStreamShard(service, streamId, shardIdx,shardId) {
+    const stream = this.streams.get(streamId);
+    if (!service ) service = stream.service;
+
     const shard = await this.getShardData(streamId, shardIdx);
     const msg = {
       streamId : streamId,
       shardId  : shardId,
       shardIdx : shardIdx,
-      shard    : shard
+      shard    : shard,
+
+      // Required by /storeShard/ endpoint
+      hash     : stream.shardHashes[shardIdx],   // canonical shard hash
+      hashID   : stream.streamId,                // or stream.hashID if you have one
+      encrypt  : stream.encrypt || 0,
+      expires  : stream.expires || 0,
+      nCopys   : stream.nCopys  || 3,
+      pass     : stream.pass    || 0,
+      fptr     : shardIdx*stream.shardSize,
+      index    : shardIdx,
+      from     : this.net.wallet.ownMUID 
     } 
      
     // Then send raw binary shard
+    service.endPoint = '/storeShard/'
+    //console.log(`sendStreamShard():: sending shard`,service,msg);
     this.sendBinaryShardCX(service, msg);
     this.setStatus(streamId,'transfering:'+shardId);
   }
@@ -261,6 +336,9 @@ class BorgHUIstreamMgr {
   removeStream(streamId) {
     this.memFiles.delete(streamId);
     this.streams.delete(streamId);
+  }
+  closeOutgoingStream(stream){
+    this.removeStream(stream.streamId);
   }
   getHash(filePath) {
     return new Promise((resolve, reject) => {
@@ -357,7 +435,7 @@ class BorgHUIstreamMgr {
       const end   = Math.min(start + stream.shardSize, stream.totalSize);
 
       // CASE 1: memFile / dsBuffer (RAM)
-      console.log(`getShardData::() stream is `,stream);
+      //console.log(`getShardData::() stream is `,stream);
       if (stream.hasOwnProperty('buffer') && stream.buffer !== null && (stream.type === 'memFile' || stream.type === 'dsBuffer')) {
         try {
           const slice = stream.buffer.slice(start, end);
@@ -382,21 +460,22 @@ class BorgHUIstreamMgr {
   gatherShards(stream) {
     const handler = async (data) => {
       // Only handle shards for this stream
+      console.log(`gatherShards():: data`,data);
       if (data.streamId !== stream.streamId) return;
 
       // Forward to the shard handler
       await this.onShardReceived({
         streamId: stream.streamId,
         shard: {
-          shardId:  data.shardId,
-          shardIdx: data.index,
-          shard:    data.shard
+          shardId  : data.hash,
+          shardIdx : data.index,
+          shard    : data.data
         }
       });
     };
 
     // Attach listener
-    this.net.on('binShard', handler);
+    this.net.on('requestBinShardOk', handler);
 
     // Store handler so we can remove it later in closeIncomingStream()
     stream._shardHandler = handler;
@@ -429,7 +508,7 @@ class BorgHUIstreamMgr {
 
     // Remove from active streams
     console.log(`Stream ${stream.streamId} completed in ${stream.timeElapsed}ms`);
-    this.net.isStreaming.delete(stream.streamId);
+    this.dstreams.delete(stream.streamId);
 
     // Deliver file or Buffer to application handler
     // Send File and Initial request to the req action handler
@@ -438,22 +517,25 @@ class BorgHUIstreamMgr {
       console.error('closeInCommingStream():: cell is NOT attached can not call stream handler!');
       return;
     }
-    this.cell.handleReq(buildLocalReq.remIp, buildLocalReq);
+    //this.cell.handleReq(buildLocalReq.remIp, buildLocalReq);
   }
-  async doOpenStream(j) {
-    console.log('fig',j);
+  async doOpenStream(repo,service,winSize=20) {
+    let j = repo.file;
+    let shards = [];
+    j.shards.forEach( (shard) => shards.push(shard.shardID));
+
     const fmap = {
-      remIp       : j.remIp,
-      streamId    : j.stream.streamId,
-      filename    : j.filename,
-      reqId       : j.reqId,
-      response    : j.response,
-      request     : j.req,
-      shardSize   : j.stream.shardSize,
-      shardHashes : j.stream.shardHashes,
-      count       : j.stream.count,
-      totalSize   : j.stream.totalSize,
-      type        : j.stream.type,
+      service     : service,
+      streamId    : j.fileInfo.checkSum,
+      filename    : service.filename,
+      reqId       : crypto.randomUUID(),
+      response    : 'na',
+      request     : 'sendShard',
+      shardSize   : shardSize,
+      shardHashes : shards,
+      count       : shards.length,
+      totalSize   : shards.length * shardSize,
+      type        : 'file',
 
       // State machine
       status      : "readyForShards",
@@ -462,44 +544,36 @@ class BorgHUIstreamMgr {
 
       // Progress
       shardsReceived : 0,
-      pendingShards  : new Set([...Array(j.stream.count).keys()]),
-      inFlight: new Set(),                    // shardIdx values currently requested but not yet received
-      windowSize     : j.stream.winSize ,     // or 8, or dynamic later
+      pendingShards  : new Set([...Array(shards.length).keys()]),
+      inFlight: new Set(),           // shardIdx values currently requested but not yet received
+      windowSize     : winSize ,     // or 8, or dynamic later
       inProgress     : true,
 
       // Diagnostics
       startAt       : Date.now(),
       timeElapsed   : 0,
     };
-
+    console.log(`doOpenStream():: `,fmap,service);
     // Storage
     if (fmap.type === 'memFile' || fmap.type === 'dsBuffer') {
       fmap.buffer = this.prepareBlobMemFile(fmap.streamId, fmap.totalSize);
     }
     else {
-      fmap.tempFilePath = await this.prepareTempFile(fmap.streamId, fmap.totalSize);
+      fmap.tempFilePath = await this.prepareTempFile(fmap.filename, fmap.totalSize);
     }
 
-    this.net.isStreaming.set(fmap.streamId, fmap);
-
-    // ACK metadata
-    const reply = {
-      reqId    : j.reqId,
-      response : j.response,
-      result   : 'STREAM_META_ACK',
-      status   : fmap.status
-    };
-
-    this.net.sendReplyCX(j.remIp, reply);
+    this.dstreams.set(fmap.streamId, fmap);
 
     // Start requesting shards
     this.gatherShards(fmap);
 
     // Kick off the first batch of shard requests
-    this.requestShardBatch(fmap.streamId);
+    this.requestShardBatch(fmap.streamId,service);
+    return fmap;
   }
-  requestShardBatch(streamId) {
-    const stream = this.net.isStreaming.get(streamId);
+  requestShardBatch(streamId,service) {
+    const stream = this.dstreams.get(streamId);
+    console.log(`requestShardBatch():: stream`,stream);
     if (!stream) return;
 
     // If nothing left, close stream
@@ -519,19 +593,24 @@ class BorgHUIstreamMgr {
       stream.inFlight.add(shardIdx);
 
       const msg = {
-        req       : "sendShard",
-        streamId  : streamId,
-        shardIdx  : shardIdx,
-        shardId   : stream.shardHashes[shardIdx],
-        shardSize : stream.shardSize
+        req       : "requestShard",
+        sIndex    : shardIdx,
+        shard : {
+          streamId  : streamId,
+          ownerID   : '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ',
+          hash      : stream.shardHashes[shardIdx],
+          encrypted : 0,
+          shardSize : stream.shardSize
+        }
       };
-
-      this.net.sendMsgCX(stream.remIp, msg);
+      console.log(`requestShardBatch():: sending `,service,msg);
+      this.sendMsgCX(service, msg);
     }
   }
   async onShardReceived(j) {
+    console.log(`onShardReceived():: j`,j);
     const { streamId, shard } = j;
-    const stream = this.net.isStreaming.get(streamId);
+    const stream = this.dstreams.get(streamId);
     if (!stream) return;
 
     const idx = shard.shardIdx;
@@ -547,6 +626,7 @@ class BorgHUIstreamMgr {
     stream.inFlight.delete(idx);
 
     // 1. Validate + write shard
+    console.log(`onShardReceived():: writing to file`,shard);
     const result = await this.writeShardToFile(stream,shard);
     if (!result.ok) {
       console.warn(
@@ -557,7 +637,7 @@ class BorgHUIstreamMgr {
       stream.pendingShards.add(idx);
 
       // Continue filling the window
-      this.requestShardBatch(streamId);
+      this.requestShardBatch(streamId,j.service);
       return;
     }
 
@@ -577,6 +657,44 @@ class BorgHUIstreamMgr {
     // 4. Otherwise request more shards
     this.requestShardBatch(streamId);
   }
+  sentShardListener(){
+    this.net.on('xhrBinShardOK',(shard) =>{
+      const stream = this.streams.get(shard.streamId);
+      if (!stream) {
+        return;
+      }
+      this.onShardSentACK(shard.service,stream,shard);
+    });
+  }
+  async onShardSentACK(service,stream,shard) {
+    const { streamId, index } = shard;
+    if (!stream) return;
+
+    // 0. Ensure this shard was actually in flight
+    if (!stream.inFlight.has(index)) {
+      console.warn(`ACK for shard ${index} of ${streamId} not in flight`);
+      return;
+     }
+
+     // 1. Remove from inFlight
+     stream.inFlight.delete(index);
+
+     // 2. Mark shard as completed
+     stream.shardsSentOK.add(index);
+
+     // 3. If all shards done, close stream
+     if (
+       stream.shardsSentOK.size === stream.count &&
+       stream.inFlight.size === 0 &&
+       stream.pendingShards.size === 0
+     ) {
+       console.log(`onShardSentACK():: closeOutgoingStream: elasped Time`,Date.now() - stream.sentAt);
+       return this.closeOutgoingStream(stream);
+     }
+
+     // 4. Otherwise send more shards
+     this.doBlastShardBatch(service, stream.streamId);
+  }
   sendMsgCX(service,msg){
 
      const endPoint = service.endPoint;
@@ -585,6 +703,7 @@ class BorgHUIstreamMgr {
 
      msg.errCount = 0;
      msg.sentTime = Date.now();
+     msg.service  = service;
 
      const pmsg = {msg : msg}
      const data = JSON.stringify(pmsg);
@@ -592,7 +711,7 @@ class BorgHUIstreamMgr {
      var emitError = null;
      const options = {
        hostname : toHost,
-       port     : this.port,
+       port     : service.port,
        path     : endPoint,
        method: 'POST',
        headers: {
@@ -612,15 +731,21 @@ class BorgHUIstreamMgr {
        res.on('end',async ()=>{
          const body = Buffer.concat(chunks);
 
-         shard.toHost = toHost;
          msg.toHost = toHost;
          if (res.statusCode !== 200) {
            msg.toHost   = toHost;
            msg.endpoint = options.path;
            msg.xhrError = res.statusCode;
            msg.errCount++;
-           this.net.emit('xhrFailedTry',msg);
+           this.net.emit('xhrFail',msg);
          } else {
+           if (msg.req === 'requestShard'){
+             let shard   = msg.shard;
+             shard.index = msg.sIndex;
+             shard.data  = body;
+             this.net.emit('requestBinShardOk',shard);
+             return;
+           }
            try {
              msg.res = JSON.parse(body);
              this.net.emit('xhrPostOK',msg);
@@ -629,7 +754,7 @@ class BorgHUIstreamMgr {
              msg.xhrError = 'jsonParse';
              msg.errMsg   = e;
              msg.toHost   = toHost;
-             this.net.emit('xhrFailedTry',msg);
+             this.net.emit('xhrFail',msg);
            }
          }
        });
@@ -643,7 +768,7 @@ class BorgHUIstreamMgr {
           msg.endpoint = options.path;
           msg.xhrError = 'xTime';
           msg.errCount++;
-          this.net.emit('xhrFailedTry',msg);
+          this.net.emit('xhrFail',msg);
        }
        req.destroy();
      });
@@ -660,7 +785,7 @@ class BorgHUIstreamMgr {
         if (error.code === 'ETIMEDOUT') {
           msg.xhrError = 'xTime';
         }
-        this.net.emit('xhrFailedTry',msg);
+        this.net.emit('xhrFail',msg);
      })
 
      req.write(data);
@@ -668,12 +793,25 @@ class BorgHUIstreamMgr {
   }
   sendBinaryShardCX(service,shard){
     const https    = require('https');
-    const toHost   = serice.host;
+    const toHost   = service.host;
     shard.sentTime = Date.now();
 
     let emitError  = null;
     const data     = shard.shard;
-    const endPoint = `{$service.endPont}?streamId=${shard.streamId}&index=${shard.shardIdx}&shardId=${shard.shardId}`;
+
+    const params = new URLSearchParams({
+      hash:    shard.hash,        // canonical shard hash
+      hashID:  shard.hashID,      // usually streamId
+      encrypt: shard.encrypt,
+      expires: shard.expires,
+      nCopys:  shard.nCopys,
+      pass:    shard.pass,
+      fptr:    shard.fptr,
+      index:   shard.shardIdx,
+      from:    shard.from
+    });
+
+    const endPoint = `${service.endPoint}?${params.toString()}`;
 
     const options = {
        hostname : service.host,
@@ -685,9 +823,9 @@ class BorgHUIstreamMgr {
          'Content-Type': 'application/octet-stream',
          'Content-Length': data.length
        },
-       timeout: 3000
+       timeout: 30000
      }
-
+     //console.log(`sendBinaryShardCX():: sending`,options);
      const req = https.request(options, res => {
        let chunks = [];
        res.on('data', (chunk)=>{
@@ -703,16 +841,19 @@ class BorgHUIstreamMgr {
            shard.endpoint = options.path;
            shard.xhrError = res.statusCode;
            this.net.emit('xhrBinShardFailed',shard);
+           console.log(`sendBinaryShardCX():: NOT 200`,shard);
          } else {
            console.log('bin send good',shard.shardIdx,shard.shardId);
+           const res = body.toString();
            try {        
-             shard.res = JSON.parse(body);
+             shard.res = JSON.parse(res);
              this.net.emit('xhrBinShardOK',shard);
            }
            catch(e) {
              shard.xhrError = 'jsonParse';
              shard.errMsg   = e;
              shard.toHost   = toHost;
+             console.log('bin send JSON parse fail',shard.shardIdx,shard.shardId);
              this.net.emit('xhrBinShardFailed',shard);
            }
          }
@@ -721,11 +862,12 @@ class BorgHUIstreamMgr {
      req.on("timeout", () => {
        if (emitError === null){
           emitError    = true;
-          msg.toHost   = toHost;
-          msg.endpoint = options.path;
-          msg.xhrError = 'xTime';
-          msg.errCount++;
-          this.net.emit('xhrBinFailed',shard);
+          shard.toHost   = toHost;
+          shard.endpoint = options.path;
+          shard.xhrError = 'xTime';
+          shard.errCount++;
+          console.log(`sendBinaryShardCX():: timeout first`,shard);
+          this.net.emit('xhrBinShardFailed',shard);
        }
        req.destroy();
      });
@@ -741,7 +883,8 @@ class BorgHUIstreamMgr {
         if (error.code === 'ETIMEDOUT') {
           shard.xhrError = 'xTime';
         }
-        this.net.emit('xhrBinShardFailed',shard);
+       console.log(`sendBinaryShardCX():: timeout xTime`,shard);
+       this.net.emit('xhrBinShardFailed',shard);
      })
      req.write(data);
      req.end();

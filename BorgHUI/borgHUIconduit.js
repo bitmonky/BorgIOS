@@ -27,6 +27,9 @@ const wfile   = 'keys/myBMGPWallet.key';
 const wconf   = 'keys/wallet.conf';
 
 const {BorgHUIstreamMgr} = require('./BorgHUIstreamMgr.js');
+const PTree  = require("./borgHUIptreeAPI.js");
+
+PTree.sayHello();
 
 const { generateKeyPairSync } = require('crypto')
 const upload = multer({dest:'uploads/'});
@@ -199,9 +202,11 @@ function urldecode(msg) {
 class bitMonkyWSrv extends  EventEmitter {
   constructor(){
     super();
-    this.wallet  = new bitMonkyWallet();
-    this.DStream = new DStreamMgrObj(this);
+    this.wallet     = new bitMonkyWallet(this);
+    this.DStream    = new BorgHUIstreamMgr(this);
+    this.sseClients = [];
     this.init();
+    //setInterval(() => { this.pushEvent('borg-event',{hello:"hello"});console.log(`borg-event`);},8000);
   }
   async init() {
     //console.log(this.wallet);
@@ -215,15 +220,30 @@ class bitMonkyWSrv extends  EventEmitter {
    
     this.srv = webCon.createServer( async (req, res) => {
      var pathname = url.parse(req.url).pathname;
-     console.log(pathname);
+     console.log(req.url);
      if (req.method === 'GET' && pathname === '/favicon.ico') {
        res.setHeader('Content-Type', 'image/x-icon');
        fs.createReadStream('favicon.ico').pipe(res);
        return;
      }
      
-     if (req.method === 'POST' && pathname === '/storeRepoFileOnTree.php') {
-       console.log('Got repoUploadFile.php req!');
+       if (req.url === "/borgEvents") {
+         return this.handleSSE(req, res);
+       }
+       else if (req.method === 'POST' && req.url.indexOf('/storeRepoFileOnTree') === 0) {
+       console.log('Got repoUploadFile !',req.url);
+ 
+
+       const urlObj = new URL(req.url, `http://${req.headers.host}`);
+
+       const meta = {
+         ownerMUID : urlObj.searchParams.get('ownerMUID'),
+         path      : urlObj.searchParams.get('path'),
+         folderID  : urlObj.searchParams.get('folderID'),
+         rname     : urlObj.searchParams.get('rname'),
+         encrypt   : urlObj.searchParams.get('encrypt') 
+       } 
+       console.log(`upload meta data`,meta);
 
        upload.single('photo')(req, res, (err) => {
          if (err) {
@@ -234,6 +254,7 @@ class bitMonkyWSrv extends  EventEmitter {
 
          const { originalname, mimetype, path: tmpname, size, error } = req.file;
          console.log(req.file);
+         meta.filename = originalname;
 
          if (size > 0 && size < 200000000 && !error) {
 
@@ -263,10 +284,10 @@ class bitMonkyWSrv extends  EventEmitter {
                 } else {
                   const j = {
                     req: 'uploadUserFile',
-                    fileName: originalname,
-                    filePath: targetFile,
-                    mimeType: mimetype,
-                    remoteUrl: `${this.webPortal}/whzon/bitMiner/storeRepoFileOnTree.php`
+                    fileName : originalname,
+                    filePath : targetFile,
+                    mimeType : mimetype,
+                    repoInfo : meta
                   };
                   this.wallet.doUploadFile(j, res);
                 }
@@ -342,6 +363,30 @@ class bitMonkyWSrv extends  EventEmitter {
 
     this.srv.listen(port,'localhost');
     console.log('bitMonky Wallet Server running at http://localhost:'+port);
+  }
+  handleSSE(req, res) {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "Access-Control-Allow-Origin": "*"
+    });
+
+    res.write("\n");
+
+    this.sseClients.push(res);
+
+    req.on("close", () => {
+      const i = this.sseClients.indexOf(res);
+      if (i !== -1) this.sseClients.splice(i, 1);
+    });
+  }
+  pushEvent(eventName, data) {
+    const payload = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
+    this.sseClients.forEach( (c) =>{
+      c.write(payload);
+      console.log(payload);
+    });
   }
   handleRequest(msg,res,req){
      var j = null;
@@ -423,6 +468,43 @@ async doCheckSumLookup(msg, service,checksum) {
   }
 }
 async getFileFromRepo(req, msg, res) {
+  const rawUrl = msg.url;
+
+  // Node requires a base for relative URLs
+  const u = new URL(rawUrl, 'http://localhost');
+
+  // Path
+  const path = u.pathname;
+
+  // Query fields
+  const wzID      = u.searchParams.get('wzID');
+  const fname     = u.searchParams.get('fname');
+  const rname     = u.searchParams.get('rname');
+  const repoPath  = u.searchParams.get('path');
+  const ownerMUID = u.searchParams.get('ownerMUID');
+  const folderID  = u.searchParams.get('folderID');
+  const encrypt   = u.searchParams.get('encrypt');
+
+  console.log('getFileFromRepo():: msg: ',  msg);
+  let doTry = await PTree.ftreeGetFileFromRepo(ownerMUID, rname, fname, repoPath, folderID);
+  if (doTry.status === 200){ 
+    console.log(`getFileFromRepo():: doTry is `,doTry.json);
+    console.log(`getFileFromRepo():: doTry is `,doTry.json.file.shards);
+    console.log(`getFileFromRepo():: doTry is `,doTry.json.file.fileInfo);     
+  }
+  const p = await this.portal.selectPortal('shardTreeCell');
+
+  const service = {
+    endPoint : '/netREQ/',
+    filename : `./downloads/${doTry.json.file.fileInfo.checkSum}.tmp`,
+    host     : p.host,
+    port     : p.port,
+    raw      : true
+  };
+
+  doTry = await this.DStream.streamRepoFileFrom(service,doTry.json);
+  console.log('getFileFromRepo():: ',doTry);
+
   try {
     const wp = await this.portal.selectPortal('borgApacheCell');
 
@@ -629,12 +711,14 @@ async getFileFromRepo(req, msg, res) {
 };
 
 class bitMonkyWallet{
-   constructor(){
+   constructor(net){
+      this.net = net;
       this.publicKey   = null;
       this.privateKey  = null;
       this.signingKey  = null;
       this.rsaKeys     = null;
       this.openWallet();
+            
    }
    calculateHash(txt) {
       const crypto = require('crypto');
@@ -708,15 +792,14 @@ class bitMonkyWallet{
         this.writeWallet();
       }
    }
-   doUploadFile(j, res) {
+   async doUploadFile(j, res) {
      console.log('doUploadFile::',j);
-     const https = require('https');
+     const https    = require('https');
      const FormData = require('form-data');
-     //const mime = require('mime-types');
 
      const filePath = j.filePath;  
 
-     const p = await this.portal.selectPortal('shardTreeCell');
+     const p = await this.net.portal.selectPortal('shardTreeCell');
 
      const service = {
        endPoint : '/storeShard/',
@@ -727,21 +810,23 @@ class bitMonkyWallet{
      };
 
      // Try streaming file to the shardTreeCell network.
-     let doTry = await this.DStream.streamTo(service);
-
-     if (doTry.result !== 'OK'){
-        let errorMsg = `doUploadFile():: stream to shard network failed Try later...';
+     let doTry = await this.net.DStream.streamTo(service);
+     console.log(`doUploadFile():: doTry`,doTry);
+     if (doTry.res.result !== 'STREAM_META_ACK'){
+        let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
         console.log(errorMsg);
         j.result = false;
         j.data = `Error - ${errorMsg}`;
         res.end(JSON.stringify(j));
         return;
      }
+     const r = j.repoInfo;
 
      // File stored OK so send meta data to the ftreeFileMgrCell
-     doTry = await this.ftreeInsertFileToRepo(muid, name, doTry.fmap, path, folderID, nCopys);
-     if (doTry.result !== 'OK'){
-        let errorMsg = `doUploadFile():: stream to shard network failed Try later...';
+     doTry = await this.ftreeInsertFileToRepo(doTry.stream, r.ownerMUID, r.rname, r.filename,j.mimeType, r.path, r.folderID, 3,r.encrypt);
+     console.log(`ftreeInsertFileToRepo():: doTry is `, doTry);
+     if (!doTry){
+        let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
         console.log(errorMsg);
         j.result = false;
         j.data = `Error - ${errorMsg}`;
@@ -749,10 +834,12 @@ class bitMonkyWallet{
         return;
      }
 
-     console.log('Upload successful:', response);
      j.result = true;
      j.msg = 'File uploaded successfully.';
-     j.response = doTry.response;
+     j.response = doTry;
+
+     res.end(JSON.stringify(j));
+
 /*
      const remoteUrl = j.targetURL;
 
@@ -811,14 +898,44 @@ class bitMonkyWallet{
     form.pipe(req);
 */
   }
-  async ftreeInsertFileToRepo(muid, name, file, path, folderID, nCopys) {
+  buildShardMap(stream) {
+    const shards = [];
+    const fname = stream.filename;
+    const chunkSize = stream.shardSize;
+
+    for (let shardIndex = 0; shardIndex < stream.count; shardIndex++) {
+      const shardHash = stream.shardHashes[shardIndex];
+
+      const smap = {
+        Result   : false,
+        shardID  : shardHash,  // already SHA-256 hex
+        startPos : shardIndex * chunkSize,
+        nStored  : 0,
+        index    : shardIndex,
+        hosts    : [],
+        shardHID : this.calculateHash(shardHash + (shardIndex * chunkSize) + fname + Date.now())
+      };
+
+      shards.push(smap);
+    }
+
+    return shards;
+  }
+  async ftreeInsertFileToRepo(stream,muid, name, file,mimeType, path, folderID, nCopys,encrypt) {
     const j = {
-      from: muid,
-      name: name,
-      file: file,
-      path: path,
-      folderID: folderID,
-      nCopys: Number(nCopys)
+      from     : muid,
+      name     : name,
+      file     : {
+        owner    : muid,
+        filename : file,
+        ftype    : mimeType,
+        encrypt  : encrypt,
+        shards   : this.buildShardMap(stream),
+        checksum : stream.streamId 
+      }, 
+      path     : path,
+      folderID : folderID,
+      nCopys   : Number(nCopys),
     };
 
     // Remove leading slash if path is not root
@@ -826,18 +943,48 @@ class bitMonkyWallet{
       j.path = j.path.replace('/', '');
     }
 
-    const post = {
-      url: global.PTC_ftreeRECEPTOR + "/netREQ",
-      postd: JSON.stringify({
-        msg: {
-          req: "insertRSfile",
-          repo: j
-        }
-      })
-    };
+     const p = await this.net.portal.selectPortal('ftreeFileMgrCell');
 
-    const bcRes = await tryJFetchURL(post, 'POST');
+     const service = {
+       endPoint : '/netREQ/',
+       host     : p.host,
+       port     : p.port,
+       raw      : true
+     };
+
+    const msg = {
+      req   : "insertRSfile",
+      reqId : crypto.randomUUID(), 
+      repo  : j
+    }
+    console.log(`ftreeInsertFileToRepo():: `,service,msg);
+    this.net.DStream.sendMsgCX(service,msg);
+
+    const bcRes = await this.responseToRepoInsert(msg.reqId);
     return bcRes;
+  }
+  responseToRepoInsert(reqId){
+    return new Promise( (resolve) => {
+      let lsFail,lsOK;
+    
+      const finish = (result) => {
+        this.net.removeListener('xhrFail', lsFail);
+        this.net.removeListener('xhrPostOK', lsOK);
+        resolve(result);
+      }
+
+      this.net.on('xhrFail', lsFail = (msg) => {
+        if (msg.reqId === reqId) {
+          finish(false);
+        }    
+      });
+
+      this.net.on('xhrPostOK',lsOK = (msg) =>{
+        if (msg.reqId === reqId) {
+          finish(msg.res);
+        }
+      });
+    });
   }
   writeWallet(){
      var wallet = '{"ownMUID":"'+ this.ownMUID+'","publicKey":"' + this.publicKey + '","privateKey":"' + this.privateKey + '",';
@@ -914,7 +1061,7 @@ class bitMonkyWallet{
       }          
    }
    async doRSVExecuteCmd(j,res){
-     let service = await this.portal.selectPortal(svcName);
+     let service = await this.net.portal.selectPortal(svcName);
      if (service.endPoint === '' || service.endPoint === null){
        service.endPoint === '/netREQ';
      }
