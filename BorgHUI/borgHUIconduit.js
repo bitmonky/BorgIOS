@@ -28,8 +28,7 @@ const wconf   = 'keys/wallet.conf';
 
 const {BorgHUIstreamMgr} = require('./BorgHUIstreamMgr.js');
 const PTree  = require("./borgHUIptreeAPI.js");
-
-PTree.sayHello();
+const maxUpLoadSize = 100000000000; // 1Gig
 
 const { generateKeyPairSync } = require('crypto')
 const upload = multer({dest:'uploads/'});
@@ -231,75 +230,80 @@ class bitMonkyWSrv extends  EventEmitter {
          return this.handleSSE(req, res);
        }
        else if (req.method === 'POST' && req.url.indexOf('/storeRepoFileOnTree') === 0) {
-       console.log('Got repoUploadFile !',req.url);
+         console.log('Got repoUploadFile !',req.url);
  
 
-       const urlObj = new URL(req.url, `http://${req.headers.host}`);
+         const urlObj = new URL(req.url, `http://${req.headers.host}`);
 
-       const meta = {
-         ownerMUID : urlObj.searchParams.get('ownerMUID'),
-         path      : urlObj.searchParams.get('path'),
-         folderID  : urlObj.searchParams.get('folderID'),
-         rname     : urlObj.searchParams.get('rname'),
-         encrypt   : urlObj.searchParams.get('encrypt') 
-       } 
-       console.log(`upload meta data`,meta);
+         const meta = {
+           ownerMUID : urlObj.searchParams.get('ownerMUID'),
+           path      : urlObj.searchParams.get('path'),
+           folderID  : urlObj.searchParams.get('folderID'),
+           rname     : urlObj.searchParams.get('rname'),
+           encrypt   : urlObj.searchParams.get('encrypt') 
+         } 
+         console.log(`upload meta data`,meta);
 
-       upload.single('photo')(req, res, (err) => {
-         if (err) {
-           res.writeHead(500, { 'Content-Type': 'application/json' });
-           res.end(JSON.stringify({ result: false, data: 'File Upload Failed' }));
-           return;
-         }
+         upload.single('photo')(req, res, (err) => {
+           if (err) {
+             res.writeHead(500, { 'Content-Type': 'application/json' });
+             res.end(JSON.stringify({ result: false, data: 'File Upload Failed' }));
+             return;
+           }
 
-         const { originalname, mimetype, path: tmpname, size, error } = req.file;
-         console.log(req.file);
-         meta.filename = originalname;
+           const { originalname, mimetype, path: tmpname, size, error } = req.file;
+           console.log(req.file);
+           meta.filename = originalname;
 
-         if (size > 0 && size < 200000000 && !error) {
+           if (size > 0 && size < maxUpLoadSize && !error) {
 
-           // --- STREAMING HASH FUNCTION ---
-           const hashFileStream = (filePath) => {
-             return new Promise((resolve, reject) => {
-               const hash = crypto.createHash('sha256');
-               const stream = fs.createReadStream(filePath);
+             // --- STREAMING HASH FUNCTION ---
+             const hashFileStream = (filePath) => {
+               return new Promise((resolve, reject) => {
+                 const hash = crypto.createHash('sha256');
+                 const stream = fs.createReadStream(filePath);
 
-               stream.on('data', chunk => hash.update(chunk));
-               stream.on('end', () => resolve(hash.digest('hex')));
-               stream.on('error', reject);
+                 stream.on('data', chunk => hash.update(chunk));
+                 stream.on('end', () => resolve(hash.digest('hex')));
+                 stream.on('error', reject);
+               });
+             };
+
+             // --- USE STREAMING HASH ---
+             hashFileStream(tmpname)
+             .then(hash => {
+               const fholder = `${hash}.tmp`;
+               const targetDir = 'uploads/';
+               const targetFile = path.join(targetDir, fholder);
+
+               fs.rename(tmpname, targetFile, (err) => {
+                 if (err) {
+                   res.writeHead(500, { 'Content-Type': 'application/json' });
+                   res.end(JSON.stringify({ result: false, data: 'File Move Failed' }));
+                 } else {
+                   const j = {
+                     req: 'uploadUserFile',
+                     fileName : originalname,
+                     filePath : targetFile,
+                     mimeType : mimetype,
+                     repoInfo : meta
+                   };
+                   this.wallet.doUploadFile(j, res);
+                 }
+               });
+             })
+             .catch(err => {
+               console.error('Hashing failed:', err);
+               res.writeHead(500, { 'Content-Type': 'application/json' });
+               res.end(JSON.stringify({ result: false, data: 'Hashing Failed' }));
              });
-           };
-
-           // --- USE STREAMING HASH ---
-           hashFileStream(tmpname)
-           .then(hash => {
-              const fholder = `${hash}.tmp`;
-              const targetDir = 'uploads/';
-              const targetFile = path.join(targetDir, fholder);
-
-              fs.rename(tmpname, targetFile, (err) => {
-                if (err) {
-                  res.writeHead(500, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify({ result: false, data: 'File Move Failed' }));
-                } else {
-                  const j = {
-                    req: 'uploadUserFile',
-                    fileName : originalname,
-                    filePath : targetFile,
-                    mimeType : mimetype,
-                    repoInfo : meta
-                  };
-                  this.wallet.doUploadFile(j, res);
-                }
-              });
-            })
-            .catch(err => {
-              console.error('Hashing failed:', err);
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ result: false, data: 'Hashing Failed' }));
-            });
-          }
-        });
+           }
+           else {
+             console.error('File Upload Max Size Exceeded: size is:', size);
+             res.writeHead(500, { 'Content-Type': 'application/json' });
+             res.end(JSON.stringify({ result: false, data: 'Max Upload Size Exceeded' }));
+           } 
+         });
      }
      else {
 
@@ -469,6 +473,7 @@ async doCheckSumLookup(msg, service,checksum) {
 }
 async getFileFromRepo(req, msg, res) {
   const rawUrl = msg.url;
+  const ftype  = msg.ftype;
 
   // Node requires a base for relative URLs
   const u = new URL(rawUrl, 'http://localhost');
@@ -488,22 +493,25 @@ async getFileFromRepo(req, msg, res) {
   console.log('getFileFromRepo():: msg: ',  msg);
   let doTry = await PTree.ftreeGetFileFromRepo(ownerMUID, rname, fname, repoPath, folderID);
   if (doTry.status === 200){ 
-    console.log(`getFileFromRepo():: doTry is `,doTry.json);
-    console.log(`getFileFromRepo():: doTry is `,doTry.json.file.shards);
-    console.log(`getFileFromRepo():: doTry is `,doTry.json.file.fileInfo);     
+    //console.log(`getFileFromRepo():: doTry is `,doTry.json);
+    //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.shards);
+    //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.fileInfo);     
   }
-  const p = await this.portal.selectPortal('shardTreeCell');
+  if (doTry.json.file.fileInfo.fileSize > 0) {
+    const p = await this.portal.selectPortal('shardTreeCell');
 
-  const service = {
-    endPoint : '/netREQ/',
-    filename : `./downloads/${doTry.json.file.fileInfo.checkSum}.tmp`,
-    host     : p.host,
-    port     : p.port,
-    raw      : true
-  };
+    const service = {
+      endPoint : '/netREQ/',
+      filename : `./downloads/${doTry.json.file.fileInfo.checkSum}.tmp`,
+      host     : p.host,
+      port     : p.port,
+      raw      : true
+    };
 
-  doTry = await this.DStream.streamRepoFileFrom(service,doTry.json);
-  console.log('getFileFromRepo():: ',doTry);
+    doTry = await this.DStream.streamRepoFileFrom(service,doTry.json,res);
+    //console.log('getFileFromRepo():: ',doTry);
+    return;
+  }
 
   try {
     const wp = await this.portal.selectPortal('borgApacheCell');
@@ -811,7 +819,7 @@ class bitMonkyWallet{
 
      // Try streaming file to the shardTreeCell network.
      let doTry = await this.net.DStream.streamTo(service);
-     console.log(`doUploadFile():: doTry`,doTry);
+     //console.log(`doUploadFile():: doTry`,doTry);
      if (doTry.res.result !== 'STREAM_META_ACK'){
         let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
         console.log(errorMsg);
@@ -821,10 +829,11 @@ class bitMonkyWallet{
         return;
      }
      const r = j.repoInfo;
+     let doWait = await this.net.DStream.uploadResult(doTry.stream.streamId);
 
      // File stored OK so send meta data to the ftreeFileMgrCell
      doTry = await this.ftreeInsertFileToRepo(doTry.stream, r.ownerMUID, r.rname, r.filename,j.mimeType, r.path, r.folderID, 3,r.encrypt);
-     console.log(`ftreeInsertFileToRepo():: doTry is `, doTry);
+     //console.log(`ftreeInsertFileToRepo():: doTry is `, doTry);
      if (!doTry){
         let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
         console.log(errorMsg);
@@ -926,12 +935,14 @@ class bitMonkyWallet{
       from     : muid,
       name     : name,
       file     : {
-        owner    : muid,
-        filename : file,
-        ftype    : mimeType,
-        encrypt  : encrypt,
-        shards   : this.buildShardMap(stream),
-        checksum : stream.streamId 
+        owner     : muid,
+        filename  : file,
+        ftype     : mimeType,
+        encrypt   : encrypt,
+        shards    : this.buildShardMap(stream),
+        checksum  : stream.streamId,
+        fileSize  : stream.totalSize,
+        shardSize : stream.shardSize 
       }, 
       path     : path,
       folderID : folderID,
