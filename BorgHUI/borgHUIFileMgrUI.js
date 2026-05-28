@@ -395,10 +395,12 @@ async function initRepoContextFromGET(queryString) {
   const ownerID      = params.ownerID   || "1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ";
   const rname        = params.rname     || "";
   const folder       = params.folder    || "";
-  let   path         = params.path      || "";
+  let   path         = params.path      || "/";
   let   folderID     = params.folderID  ? Number(params.folderID) : 0;
   const sessISMOBILE = params.sessISMOBILE === "1" || params.sessISMOBILE === "true";
 
+  if (folder !== "") path += folder;
+  
   const port  = 13341;
   const rport = 13381;
   let folders = [];
@@ -418,8 +420,8 @@ async function initRepoContextFromGET(queryString) {
 
     if (!myRPath.error) {
       // Your ftree API returns { path, folders }
-      path    = myRPath.path    ?? path;
-      folders = myRPath.folders ?? [];
+      path    = myRPath.json.path    ?? path;
+      folders = myRPath.json.folders ?? [];
     }
   }
 

@@ -29,6 +29,7 @@ const wconf   = 'keys/wallet.conf';
 const {BorgHUIstreamMgr} = require('./BorgHUIstreamMgr.js');
 const PTree  = require("./borgHUIptreeAPI.js");
 const UI     = require("./borgHUIFileMgrUI.js");
+const BPay   = require("./borgHUIBorgPay.js");
 
 const maxUpLoadSize = 100000000000; // 1Gig
 
@@ -432,7 +433,11 @@ class bitMonkyWSrv extends  EventEmitter {
             return;
          }  
 
-         if (j.req  === 'sendBorgFileSys' || j.req === 'borgUpdateResByUrl'){
+         if (j.req === 'sendAccountInfo'){
+           await this.wallet.doSendAccountInfo(j,res);
+           return;
+         }
+         if (j.req === 'sendBorgFileSys' || j.req === 'borgUpdateResByUrl'){
            await this.wallet.doHandleBorgFileSys(j,res);
            return;
          }
@@ -671,6 +676,22 @@ async getFileFromRepo(req, msg, res) {
 }
   async startBorgBrowser(res, msg) {
     try {
+
+      let jsCode = fs.readFileSync('./borgHUIboot.js', 'utf8');
+
+      // Inject server-side values into the JS code
+      jsCode =
+        `// Injected by BorgHUI\n` +
+        `var MODE        = "PC";        // or "Mobile"\n` +
+        `var ROOT_DOMAIN = "bitmonky.com";\n` +
+        `var SERVICE_HOST = "www.bitmonky.com";\n` +
+        `var NET_PORT     = "" //80;\n` +
+        `var PIN          = "TEST_PIN_2x49fg16";\n` +
+        `\n` + jsCode; 
+
+      res.writeHead(200, { "Content-Type": "application/javascript" });
+      res.end(jsCode);
+/*
       const wp = await this.portal.selectPortal('borgApacheCell');
 
       const service = {
@@ -699,6 +720,7 @@ async getFileFromRepo(req, msg, res) {
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end("No Code For Borg Humane Interface Found.\n");
       }
+*/
     }
     catch (err) {
       console.log("startBorgBrowser error:", err);
@@ -996,6 +1018,12 @@ class bitMonkyWallet{
     console.log(`UI.buildBorgUIHTML():: `, j);
     res.end(JSON.stringify(j));
     return;
+  }
+  async doSendAccountInfo(m,res){
+    let j = await BPay.doSendBorgPayRecentTrans(m,this);
+    console.log(`UI.BPay.doSendAccountInfo():: `, j);
+    res.end(JSON.stringify(j));
+    return;    
   }
   async ftreeInsertFileToRepo(stream,muid, name, file,mimeType, path, folderID, nCopys,encrypt) {
     const j = {
