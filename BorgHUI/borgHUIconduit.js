@@ -28,6 +28,8 @@ const wconf   = 'keys/wallet.conf';
 
 const {BorgHUIstreamMgr} = require('./BorgHUIstreamMgr.js');
 const PTree  = require("./borgHUIptreeAPI.js");
+const UI     = require("./borgHUIFileMgrUI.js");
+
 const maxUpLoadSize = 100000000000; // 1Gig
 
 const { generateKeyPairSync } = require('crypto')
@@ -392,19 +394,12 @@ class bitMonkyWSrv extends  EventEmitter {
       console.log(payload);
     });
   }
-  handleRequest(msg,res,req){
+  async handleRequest(msg,res,req){
      var j = null;
           
      try {
        j = JSON.parse(msg);
        console.log(`handleRequest():: values:`,j);
-       if (j.PIN != 'TEST_PIN_2x49fg16'){ //this.wallet.walletCipher){
-         j.req    = 'repPINFail';
-         j.result = true;
-         j.msg    = "PIN Error";
-         res.end(JSON.stringify(j));
-         return; 
-       }   
        if (j.req){
          if (j.req == 'useNewWallet'){
            this.wallet.changeWallet(j,res);
@@ -420,7 +415,7 @@ class bitMonkyWSrv extends  EventEmitter {
            return;
          }
          if (j.req  == 'sendRSV'){
-            this.Wallet.doRSVExecuteCmd(j,res);
+            this.wallet.doRSVExecuteCmd(j,res);
             return;
          }
          if (j.req  == 'getRsaPubKey'){
@@ -429,14 +424,21 @@ class bitMonkyWSrv extends  EventEmitter {
             return;
          }
          if (j.req  == 'rsaDecodeMsg'){
-            this.Wallet.doRsaDecodeMsg(j,res);
+            this.wallet.doRsaDecodeMsg(j,res);
             return;
          }
          if (j.req  == 'startBorgBrowser'){
             this.startBorgBrowser(res);
             return;
          }  
-         if (j.req  == 'getFileFromRepo'){
+
+         if (j.req  === 'sendBorgFileSys' || j.req === 'borgUpdateResByUrl'){
+           await this.wallet.doHandleBorgFileSys(j,res);
+           return;
+         }
+
+         if (j.req  === 'getFileFromRepo'){
+            console.log(`DFDSLKFJ`,j);
             this.getFileFromRepo(req,j, res);
             return;
          }
@@ -446,7 +448,7 @@ class bitMonkyWSrv extends  EventEmitter {
        res.end("No Handler Found For:\n\n "+JSON.stringify(j));
      }
      catch(err) {
-       //console.log("json parse error:",err);
+       console.log("json parse error:",err);
        res.end("JSON PARSE Errors: \n\n"+msg+"\n\n"+err);
      }
   }
@@ -476,8 +478,9 @@ async getFileFromRepo(req, msg, res) {
   const ftype  = msg.ftype;
 
   // Node requires a base for relative URLs
+  console.log(`rawUrl`,rawUrl);
   const u = new URL(rawUrl, 'http://localhost');
-
+  console.log(`u`,u);
   // Path
   const path = u.pathname;
 
@@ -493,10 +496,15 @@ async getFileFromRepo(req, msg, res) {
   console.log('getFileFromRepo():: msg: ',  msg);
   let doTry = await PTree.ftreeGetFileFromRepo(ownerMUID, rname, fname, repoPath, folderID);
   if (doTry.status === 200){ 
-    //console.log(`getFileFromRepo():: doTry is `,doTry.json);
+    console.log(`getFileFromRepo():: doTry is `,doTry.json);
     //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.shards);
     //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.fileInfo);     
   }
+  if (doTry.json.result === false){
+    console.log(`doTry error: `,doTry.error);
+    res.end(`Get File Failed... details: ${JSON.stringify(doTry)}\n`);
+    return;
+  }  
   if (doTry.json.file.fileInfo.fileSize > 0) {
     const p = await this.portal.selectPortal('shardTreeCell');
 
@@ -929,6 +937,65 @@ class bitMonkyWallet{
     }
 
     return shards;
+  }
+  async doHandleBorgFileSys(m, res) {
+    console.log(`doHandleBorgFileSys():: `, m);
+
+    if (m.req === 'sendBorgFileSys') {
+      m.url = m.service.endPoint;
+      await this.doRenderFileSys(m,res);
+      return;
+    }
+    if (m.req === 'borgUpdateResByUrl'){
+      m.url = m.parms.url;
+      if (m.url.startsWith('/whzon/bitMiner/sendBorgFileSys')){
+        await this.doRenderFileSys(m,res);
+        return;
+      }
+    }
+    res.end('doHandleBorgFileSys():: Failed.. no endpoint found');
+  }
+  async doRenderFileSys(m,res){
+    // 1. Build repo context from GET string
+    console.log(`doRenderFileSys():: m.url`,m.url);
+
+    const urlObj = new URL(m.url, "http://localhost"); // base required
+    const queryString = urlObj.search.replace(/^\?/, "");
+
+    const ctx = await UI.initRepoContextFromGET(queryString);
+    console.log(`initRepoContextFromGET():: `, ctx);
+
+    // 2. Build HTML
+    const htm = await UI.getBorgFileSys(queryString);
+
+    // 3. Load JS template
+    let jsCode = fs.readFileSync('./borgHUIFileSysJS.js', 'utf8');
+
+    // 4. Inject server-side values into the JS code
+    jsCode =
+      `// Injected by BorgHUI\n` +
+      `var sKey      = "${ctx.sessISMOBILE ? 'MOBILE' : 'DESKTOP'}";\n` +
+      `var mbrMUID   = "${ctx.mbrMUID}";\n` +
+      `var rname     = "${ctx.rname}";\n` +
+      `var path      = "${ctx.path}";\n` +
+      `var folderID  = "${ctx.folderID}";\n` +
+      `var foldName  = "${ctx.fname}";\n` +
+      `var queryString = "${m.url.replace(/"/g, '\\"')}";\n\n` +
+      jsCode;
+
+    // 5. Build response object
+    const j = {
+      action : m.req,
+      result : true,
+      html   : htm,
+      js     : jsCode,
+      jsID   : this.calculateHash(jsCode),
+      pMUID  : '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ'
+    };
+
+    console.log(`UI.buildBorgUIHTML():: `, j);
+    res.end(JSON.stringify(j));
+    return;
   }
   async ftreeInsertFileToRepo(stream,muid, name, file,mimeType, path, folderID, nCopys,encrypt) {
     const j = {

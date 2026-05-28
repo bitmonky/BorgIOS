@@ -79,7 +79,7 @@ function httpRequestRaw(options, body = null, timeout = 180000) {
 
 function postJSON(url, obj, timeout = 180000) {
   const body = JSON.stringify(obj);
-
+  console.log(`ptreeAPI.postJSON():: `,body);
   return httpRequestRaw(
     {
       url,
@@ -280,7 +280,7 @@ function ftreeGetMyRepoFiles(muid, name, parentID = null) {
 
 function ftreeGetFileFromRepo(muid, name, file, path, folderID) {
   if (path !== "/") path = path.replace(/^\//, "");
-
+  if (path === "")  path = "/";
   return postJSON(
     `${PTC_ftreeRECEPTOR}/netREQ`,
     { msg: { req: "getRepoFileData", repo: { from: muid, name, file, path, folderID } } }
@@ -289,6 +289,7 @@ function ftreeGetFileFromRepo(muid, name, file, path, folderID) {
 
 function ftreeInsertFileToRepo(muid, name, file, path, folderID, nCopys) {
   if (path !== "/") path = path.replace(/^\//, "");
+  if (path === "")  path = "/";
 
   return postJSON(
     `${PTC_ftreeRECEPTOR}/netREQ`,

@@ -4,6 +4,30 @@ process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 
 const shardSize = 256 * 1024;
 
+class Mutex {
+  constructor() {
+    this._locked = false;
+    this._waiters = [];
+  }
+
+  async lock() {
+    if (!this._locked) {
+      this._locked = true;
+      return;
+    }
+    return new Promise(resolve => this._waiters.push(resolve));
+  }
+
+  unlock() {
+    if (this._waiters.length > 0) {
+      const next = this._waiters.shift();
+      next();
+    } else {
+      this._locked = false;
+    }
+  }
+}
+
 class BorgHUIstreamMgr {
   constructor(net) {
     this.net = net;
@@ -129,6 +153,7 @@ class BorgHUIstreamMgr {
       service,
       streamId,
       filename,
+      requestMutex: new Mutex(),
       reqId       : msg.reqId,
       shardSize   : shards.shardSize,
       shardHashes : shards.shardHashes,
@@ -137,6 +162,7 @@ class BorgHUIstreamMgr {
       type        : type,
       winSize     : winSize,
       nCopys      : nCopys,
+
       // State machine
       status      : "metaDataSent",   // metaDataSent → metaDataACK → transferring → completed
       acked       : false,
@@ -275,26 +301,33 @@ class BorgHUIstreamMgr {
     }
     // Nothing to do if stream is already complete
     if (stream.completed) return;
+
     // Fill the window
-    console.log(`doBlastShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
-    while (
-      stream.inFlight.size < stream.winSize &&
-      stream.pendingShards.size > 0
-    ) {
-      // Pull next shard index
-      const shardIdx = stream.pendingShards.values().next().value;
-      stream.pendingShards.delete(shardIdx);
+    const mutex = stream.requestMutex;
+    await mutex.lock();
+    try {
+      console.log(`doBlastShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
+      while (
+        stream.inFlight.size < stream.winSize &&
+        stream.pendingShards.size > 0
+      ) {
+        // Pull next shard index
+        const shardIdx = stream.pendingShards.values().next().value;
+        stream.pendingShards.delete(shardIdx);
 
-      const shardId = stream.shardHashes[shardIdx];
+        const shardId = stream.shardHashes[shardIdx];
 
-      // Mark as in-flight
-      stream.inFlight.add(shardIdx);
+        // Mark as in-flight
+        stream.inFlight.add(shardIdx);
 
-      // Dispatch the shard
-      this.sendStreamShard(service, stream.streamId, shardIdx, shardId);
+        // Dispatch the shard
+        this.sendStreamShard(service, stream.streamId, shardIdx, shardId);
 
-      // Optional: status update
-      this.setStatus(stream.streamId, `sending:${shardIdx}`);
+        // Optional: status update
+        this.setStatus(stream.streamId, `sending:${shardIdx}`);
+      } 
+    } finally {
+      mutex.unlock();
     }
   }
   // ---------------------------------------------------------
@@ -531,7 +564,7 @@ class BorgHUIstreamMgr {
     };
 
     headers["ETag"] = `"${stream.streamId}"`;
-    headers["Content-Disposition"] = `inline; filename="${stream.filename}"`;
+    headers["Content-Disposition"] = `inline; filename="${stream.origName}"`;
 
     // remove stream;
     this.dstreams.delete(stream.streamId);
@@ -557,15 +590,19 @@ class BorgHUIstreamMgr {
     let j = repo.file;
     let shards = [];
     j.shards.forEach( (shard) => shards.push(shard.shardID));
+    const input = j.filename;
+    const origName = input.split('/').pop();
 
     const fmap = {
       httpRes      : httpRes,
+      requestMutex : new Mutex(), 
       videoClients : [],
       videoShardBuffer  : new Map(), // idx -> Buffer
       nextToSend   : 0,
       service      : service,
       streamId     : j.fileInfo.checkSum,
       filename     : service.filename,
+      origName     : origName,
       mimeType     : j.fileInfo.fileType,
       reqId        : crypto.randomUUID(),
       response     : 'na',
@@ -619,7 +656,7 @@ class BorgHUIstreamMgr {
     this.requestShardBatch(fmap.streamId,service);
     return fmap;
   }
-  requestShardBatch(streamId,service) {
+  async requestShardBatch(streamId,service) {
     const stream = this.dstreams.get(streamId);
     //console.log(`requestShardBatch():: stream`,stream);
     if (!stream) return;
@@ -629,33 +666,38 @@ class BorgHUIstreamMgr {
       return;
     }
 
-    // Fill the window
-    console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
-    console.log(stream.inFlight);
-    while (
-      stream.inFlight.size < stream.windowSize &&
-      stream.pendingShards.size > 0
-    ) {
-      const shardIdx = this.getLowestPendingShard(stream.pendingShards);
-      if (shardIdx === null) return;
+    const mutex = stream.requestMutex;
+    await mutex.lock();
+    try {
+      // Fill the window
+      console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
+      while (
+        stream.inFlight.size < stream.windowSize &&
+        stream.pendingShards.size > 0
+      ) {
+        const shardIdx = this.getLowestPendingShard(stream.pendingShards);
+        if (shardIdx === null) return;
 
-      // Move shard from pending → inFlight
-      stream.pendingShards.delete(shardIdx);
-      stream.inFlight.add(shardIdx);
+        // Move shard from pending → inFlight
+        stream.pendingShards.delete(shardIdx);
+        stream.inFlight.add(shardIdx);
 
-      const msg = {
-        req       : "requestShard",
-        sIndex    : shardIdx,
-        shard : {
-          streamId  : streamId,
-          ownerID   : this.net.wallet.ownMUID,
-          hash      : stream.shardHashes[shardIdx],
-          encrypted : 0,
-          shardSize : stream.shardSize
-        }
-      };
-      // console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx]);
-      this.sendMsgCX(service, msg);
+        const msg = {
+          req       : "requestShard",
+          sIndex    : shardIdx,
+          shard : {
+            streamId  : streamId,
+            ownerID   : this.net.wallet.ownMUID,
+            hash      : stream.shardHashes[shardIdx],
+            encrypted : 0,
+            shardSize : stream.shardSize
+          }
+        };
+        // console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx]);
+        this.sendMsgCX(service, msg);
+      }
+    } finally {
+      mutex.unlock();
     }
   }
   getLowestPendingShard(pendingShards) {
