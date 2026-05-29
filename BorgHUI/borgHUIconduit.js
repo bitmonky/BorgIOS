@@ -27,9 +27,9 @@ const wfile   = 'keys/myBMGPWallet.key';
 const wconf   = 'keys/wallet.conf';
 
 const {BorgHUIstreamMgr} = require('./BorgHUIstreamMgr.js');
-const PTree  = require("./borgHUIptreeAPI.js");
-const UI     = require("./borgHUIFileMgrUI.js");
-const BPay   = require("./borgHUIBorgPay.js");
+const {BorgHUIptreeAPI}  = require("./borgHUIptreeAPI.js");
+const {BorgHUIFileMgrUI} = require("./borgHUIFileMgrUI.js");
+const {BorgHUIBorgPay}   = require("./borgHUIBorgPay.js");
 
 const maxUpLoadSize = 100000000000; // 1Gig
 
@@ -102,6 +102,7 @@ class BorgPortal {
   }
 
   async selectPortal(netName) {
+    console.log(`selectPortal():: `,this.portals);
     const index = this.portals.findIndex(portal => portal.netName === netName);
     console.log('INDEX', index, netName);
 
@@ -204,9 +205,14 @@ function urldecode(msg) {
 class bitMonkyWSrv extends  EventEmitter {
   constructor(){
     super();
-    this.wallet     = new bitMonkyWallet(this);
     this.DStream    = new BorgHUIstreamMgr(this);
     this.sseClients = [];
+    this.portal     = new BorgPortal();
+    this.PTree      = new BorgHUIptreeAPI(this);
+    this.UI         = new BorgHUIFileMgrUI(this);
+    this.BPay       = new BorgHUIBorgPay(this);
+    this.wallet     = new bitMonkyWallet(this);
+
     this.init();
     //setInterval(() => { this.pushEvent('borg-event',{hello:"hello"});console.log(`borg-event`);},8000);
   }
@@ -215,7 +221,6 @@ class bitMonkyWSrv extends  EventEmitter {
     this.allow = ["127.0.0.1"];
     this.recPort = 1385;
     this.readConfigFile();
-    this.portal = new BorgPortal();
     const wp  = await this.portal.selectPortal('borgApacheCell');
     this.webPortal = `${wp.host}:${wp.port}`;
     console.log('USINGING WEB PORTAL',this.webPortal);
@@ -499,7 +504,8 @@ async getFileFromRepo(req, msg, res) {
   const encrypt   = u.searchParams.get('encrypt');
 
   console.log('getFileFromRepo():: msg: ',  msg);
-  let doTry = await PTree.ftreeGetFileFromRepo(ownerMUID, rname, fname, repoPath, folderID);
+  let doTry = await this.PTree.ftreeGetFileFromRepo(ownerMUID, rname, fname, repoPath, folderID);
+  console.log(`doTry`,doTry);
   if (doTry.status === 200){ 
     console.log(`getFileFromRepo():: doTry is `,doTry.json);
     //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.shards);
@@ -974,8 +980,31 @@ class bitMonkyWallet{
         await this.doRenderFileSys(m,res);
         return;
       }
+      if (m.url.startsWith(`/whzon/bitMiner/borgDelFileFromRepo`)){
+        await this.doDeleteFile(m,res);
+        return;
+      }
     }
     res.end('doHandleBorgFileSys():: Failed.. no endpoint found');
+  }
+  async doDeleteFile(m,res){
+    console.log(`doDeleteFile():: m.url`,m.url);
+    let doTry = await this.net.UI.deleteFileFromRepoGET(m.url);
+    console.log(`doDeleteFile():: doTry`,doTry);
+
+    // 5. Build response object
+    const j = {
+      action : m.req,
+      result : true,
+      html   : doTry,
+      js     : "",
+      jsID   : this.calculateHash(doTry),
+      pMUID  : '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ'
+    };
+
+    console.log(`this.UI.dodeletFile():: `, j);
+    res.end(JSON.stringify(j));
+    return;
   }
   async doRenderFileSys(m,res){
     // 1. Build repo context from GET string
@@ -984,11 +1013,11 @@ class bitMonkyWallet{
     const urlObj = new URL(m.url, "http://localhost"); // base required
     const queryString = urlObj.search.replace(/^\?/, "");
 
-    const ctx = await UI.initRepoContextFromGET(queryString);
+    const ctx = await this.net.UI.initRepoContextFromGET(queryString);
     console.log(`initRepoContextFromGET():: `, ctx);
 
     // 2. Build HTML
-    const htm = await UI.getBorgFileSys(queryString);
+    const htm = await this.net.UI.getBorgFileSys(queryString);
 
     // 3. Load JS template
     let jsCode = fs.readFileSync('./borgHUIFileSysJS.js', 'utf8');
@@ -1015,13 +1044,11 @@ class bitMonkyWallet{
       pMUID  : '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ'
     };
 
-    console.log(`UI.buildBorgUIHTML():: `, j);
     res.end(JSON.stringify(j));
     return;
   }
   async doSendAccountInfo(m,res){
-    let j = await BPay.doSendBorgPayRecentTrans(m,this);
-    console.log(`UI.BPay.doSendAccountInfo():: `, j);
+    let j = await this.net.BPay.doSendBorgPayRecentTrans(m);
     res.end(JSON.stringify(j));
     return;    
   }

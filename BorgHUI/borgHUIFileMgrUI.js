@@ -1,11 +1,13 @@
-const PTree  = require("./borgHUIptreeAPI.js");
-
 //
 // BorgIOS Unified Server‑Side HTML Builder
 // Produces one giant HTML string to send to the browser
 //
 
-async function createRepoGET(queryString) {
+class BorgHUIFileMgrUI {
+  constructor(net){
+    this.net = net;
+  }
+async createRepoGET(queryString) {
   //
   // 1. Parse GET string
   //
@@ -23,9 +25,9 @@ async function createRepoGET(queryString) {
 
   //
   // 3. Validate user token
-  //    (PHP used SQL; JS uses your PTree API)
+  //    (PHP used SQL; JS uses your this.net.PTree API)
   //
-  const userRec = await PTree.lookupUserByToken(token);
+  const userRec = await this.net.PTree.lookupUserByToken(token);
   // You must implement lookupUserByToken() in borgHUIptreeAPI.js
 
   if (!userRec) {
@@ -52,7 +54,7 @@ async function createRepoGET(queryString) {
   //
   // 5. Create the repo
   //
-  const newRepo = await PTree.ftreeCreateRepo(
+  const newRepo = await this.net.PTree.ftreeCreateRepo(
     mbrMUID,
     name,
     nCopys
@@ -63,7 +65,7 @@ async function createRepoGET(queryString) {
   //
   return newRepo;
 }
-async function createRepoFolderGET(queryString) {
+async createRepoFolderGET(queryString) {
   //
   // 1. Parse GET string
   //
@@ -85,7 +87,7 @@ async function createRepoFolderGET(queryString) {
   // 3. Validate user token (PHP used SQL)
   //    You must replace this with your actual JS auth lookup.
   //
-  const userRec = await PTree.lookupUserByToken(token); 
+  const userRec = await this.net.PTree.lookupUserByToken(token); 
   // You must implement lookupUserByToken() in borgHUIptreeAPI.js
 
   if (!userRec) {
@@ -112,7 +114,7 @@ async function createRepoFolderGET(queryString) {
   //
   // 5. Create the repo folder
   //
-  const newRepo = await PTree.ftreeCreateRepoFolder(
+  const newRepo = await this.net.PTree.ftreeCreateRepoFolder(
     mbrMUID,
     name,
     folder,
@@ -124,7 +126,7 @@ async function createRepoFolderGET(queryString) {
   //
   return newRepo;
 }
-async function deleteFileFromRepoGET(queryString) {
+async deleteFileFromRepoGET(queryString) {
   //
   // 1. Parse GET string into an object
   //
@@ -144,26 +146,19 @@ async function deleteFileFromRepoGET(queryString) {
   //
   // 3. Fetch file metadata from repo
   //
-  const fd = await PTree.ftreeGetFileFromRepo(mbrMUID, rname, fname, path, folderID);
+  const fd = await this.net.PTree.ftreeGetFileFromRepo(mbrMUID, rname, fname, path, folderID);
   if (!fd) {
     return "Node::ftreeGetFileFromRepo: Failed";
   }
 
-  let f;
-  try {
-    f = JSON.parse(fd.data);
-  } catch (err) {
-    return "JSON parse error: " + fd.data;
-  }
-
-  if (!f.result) {
+  if (fd.error || fd.json.result === false) {
     return `File ${fname} Not Found`;
   }
 
   //
   // 4. Delete file record from repo
-  //
-  const del = await PTree.ftreeDeleteFileFromRepo(mbrMUID, rname, fname, path);
+  const del = await this.net.PTree.ftreeDeleteFileFromRepo(mbrMUID, rname, fname, path);
+  console.log(`deleteFileFromRepoGET():: del-> `,del,fd,mbrMUID, rname, fname, path, folderID);
   if (!del) {
     return "Node::ftreeDeleteFileFromRepo: Failed";
   }
@@ -174,13 +169,13 @@ async function deleteFileFromRepoGET(queryString) {
   const maxConcurrentRequests = 10;
   const sTracker = [];
 
-  let tempShards = f.file.shards;
+  let tempShards = fd.json.file.shards;
   let tries = 1;
 
-  while (tempShards.length > 0 && tries <= 25) {
+  while (tempShards.length > 0 && tries <= 2) {
     console.log(`BORG:FASTDELETE::try ${tries}`);
 
-    await PTree.fastDeleteFileShards(mbrMUID, tempShards, maxConcurrentRequests, sTracker);
+    await this.net.PTree.fastDeleteFileShards(mbrMUID, tempShards, maxConcurrentRequests, sTracker);
 
     // Remove successfully deleted shards
     tempShards = tempShards.filter(s => {
@@ -197,9 +192,9 @@ async function deleteFileFromRepoGET(queryString) {
   //
   return `Message From Borg .:\nFile ${fname} Deleted`;
 }
-async function getBorgFileSys(url) {
+async getBorgFileSys(url) {
   // Merge ctx with repo context defaults
-  ctx = await initRepoContextFromGET(url);
+  let ctx = await this.initRepoContextFromGET(url);
 
   const {
     rname,
@@ -272,7 +267,7 @@ async function getBorgFileSys(url) {
   // SIDEBAR
   // ---------------------------------------------------------
   //
-  const sidebarHTML = await buildRepoSidebarHTML(ctx);
+  const sidebarHTML = await this.buildRepoSidebarHTML(ctx);
 
   html += `
     <div id='sideBar' style='width:25%;min-width:25em;overflow:auto;'>
@@ -378,7 +373,7 @@ async function getBorgFileSys(url) {
 // INIT CONTEXT (PHP → JS)
 // ---------------------------------------------------------
 //
-async function initRepoContextFromGET(queryString) {
+async initRepoContextFromGET(queryString) {
   //
   // 1. Parse GET string
   //
@@ -414,7 +409,7 @@ async function initRepoContextFromGET(queryString) {
   // 3. Resolve repo path if repo selected
   //
   if (rname) {
-    const myRPath = await PTree.ftreeGetMyRepoPath(mbrMUID, rname, fname, folderID);
+    const myRPath = await this.net.PTree.ftreeGetMyRepoPath(mbrMUID, rname, fname, folderID);
 
     console.log("ftreeGetMyRepoPath:", myRPath);
 
@@ -448,7 +443,7 @@ async function initRepoContextFromGET(queryString) {
 // SIDEBAR BUILDER (HTML STRING)
 // ---------------------------------------------------------
 //
-async function buildRepoSidebarHTML(ctx) {
+async buildRepoSidebarHTML(ctx) {
   const { mbrMUID, rname, fname, path, folderID } = ctx;
 
   let html = "";
@@ -473,7 +468,7 @@ async function buildRepoSidebarHTML(ctx) {
   `;
 
   // GET MY REPOS
-  const myRepos = await PTree.ftreeGetMyRepos(mbrMUID);
+  const myRepos = await this.net.PTree.ftreeGetMyRepos(mbrMUID);
 
   if (!myRepos.error) {
     console.log(myRepos);
@@ -500,7 +495,7 @@ async function buildRepoSidebarHTML(ctx) {
 
   // IF A REPO IS SELECTED
   if (rname) {
-    const myRepoFiles = await PTree.ftreeGetMyRepoFiles(mbrMUID, rname, folderID);
+    const myRepoFiles = await this.net.PTree.ftreeGetMyRepoFiles(mbrMUID, rname, folderID);
     console.log(`IF A REPO IS SELECTED `,mbrMUID,rname,folderID,myRepoFiles);
     const result = myRepoFiles.json;
 
@@ -508,7 +503,7 @@ async function buildRepoSidebarHTML(ctx) {
       html += `<h3>${rname} - Files:</h3>`;
       html += `<div id="newRepoFolderSpot"></div>`;
 
-      const preFolder = extractFolderName(path);
+      const preFolder = this.extractFolderName(path);
       let plinkStart = "";
       let plinkEnd = "";
 
@@ -551,7 +546,7 @@ async function buildRepoSidebarHTML(ctx) {
         });
       }
 
-      html += drawFolderFormHTML();
+      html += this.drawFolderFormHTML();
     }
   }
 
@@ -566,7 +561,7 @@ async function buildRepoSidebarHTML(ctx) {
 // extractFolderName()
 // ---------------------------------------------------------
 //
-function extractFolderName(path) {
+extractFolderName(path) {
   if (!path) path="";
   path = path.trim();
   if (path === "" || path === "/") return null;
@@ -585,7 +580,7 @@ function extractFolderName(path) {
 // Folder Form (HTML STRING)
 // ---------------------------------------------------------
 //
-function drawFolderFormHTML() {
+drawFolderFormHTML() {
   return `
     <div class='infoCardClear' style='background:#333333;color:darkKhaki;margin-top:.5em;'>
       <form style='margin-top:1.5em;' onsubmit="return false" enctype="multipart/form-data">
@@ -597,15 +592,9 @@ function drawFolderFormHTML() {
     </div>
   `;
 }
+};
 function left(str, n) {
   if (!str) return "";
   return str.slice(0, n);
 }
-module.exports = {
-  // utils
-  createRepoGET,
-  createRepoFolderGET,
-  deleteFileFromRepoGET,
-  getBorgFileSys,
-  initRepoContextFromGET
-};
+module.exports.BorgHUIFileMgrUI = BorgHUIFileMgrUI;

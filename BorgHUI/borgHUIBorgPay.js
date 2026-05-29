@@ -1,23 +1,26 @@
-const PTree = require("./borgHUIptreeAPI.js");
 
-async function doSendBorgPayRecentTrans(m,wallet) {
-  const borgAdr = "1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ";
-  const uAdr = m.wAdr || borgAdr;
+class BorgHUIBorgPay {
+   constructor(net) {
+     this.net = net;
+   }
+  async doSendBorgPayRecentTrans(m) {
+    const borgAdr = "1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ";
+    const uAdr = m.wAdr || borgAdr;
 
-  // Fetch balances
-  let masterBal = await PTree.peerPaysGetMyBalance(borgAdr);
-  let userBal   = await PTree.peerPaysGetMyBalance(uAdr);
+    // Fetch balances
+    let masterBal = await this.net.PTree.peerPaysGetMyBalance(borgAdr);
+    let userBal   = await this.net.PTree.peerPaysGetMyBalance(uAdr);
 
-  console.log(`doSendBorgPayRecentTrans():: masterBal `,masterBal);
+    console.log(`doSendBorgPayRecentTrans():: masterBal `,masterBal);
 
-  masterBal = masterBal.json.balance;
-  userBal   = userBal.json.balance;
+    masterBal = masterBal.json.balance;
+    userBal   = userBal.json.balance;
 
-  // Fetch transactions
-  const trans = await PTree.peerPaysGetMyTrans(uAdr);
+    // Fetch transactions
+    const trans = await this.net.PTree.peerPaysGetMyTrans(uAdr);
 
-  // Build HTML
-  let htm = `
+    // Build HTML
+    let htm = `
     <div class='infoCardClear' id='transactionSpot'>
       <div align='right'>
         <input type='button' value=' Borg File Mgr ' onclick='hideDiv("transactionSpot");doSendBorgFileSys("transactionSpot")'/>
@@ -47,15 +50,15 @@ async function doSendBorgPayRecentTrans(m,wallet) {
           <td>Balance</td>
           <td>Tx</td>
         </tr>
-  `;
-  console.log(`trans`,trans);
-  for (const t of trans.json.transactions) {
-    const bal = (t.pledFromAdr === uAdr)
-      ? t.pledFrBalance
-      : t.pledToBalance;
+    `;
+    console.log(`trans`,trans);
+    for (const t of trans.json.transactions) {
+      const bal = (t.pledFromAdr === uAdr)
+        ? t.pledFrBalance
+        : t.pledToBalance;
 
-    htm += `
-      <tr>
+      htm += `
+        <tr>
         <td>${t.pledDate}</td>
         <td>${t.pledFromAdr}</td>
         <td>${t.pledToAdr}</td>
@@ -63,28 +66,26 @@ async function doSendBorgPayRecentTrans(m,wallet) {
         <td>${t.confirms}</td>
         <td align='right'>${bal.toFixed(3)}</td>
         <td>${t.pledTx.slice(0,15)}...</td>
-      </tr>
-    `;
+        </tr>
+      `;
+    }
+
+    htm += `</table></div>`;
+
+    // Return to HUI
+    const j = {
+      action  : "sendAccountInfo",
+      result  : true,
+      name    : 'Joe Blow',
+      balance : `${userBal.balance.toFixed(3)} BORG Shells - Confirms: ${userBal.confirms}`,
+      icon    : 'http://localhost/netREQ/msg=%7B%22req%22:%22getFileFromRepo%22,%22url%22:%22/whzon/bitMiner/getFileFromRepo.php?wzID=DESKTOP&fname=portMale17.jpg&rname=myOtherRepo&path=&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&folderID=0&encrypt=0%22,%22checkSum%22:%22cc97009add696816ff58af3f34a9a44c615d8a8ef529fe21696de957d9eeecd3%22,%22ftype%22:%22image/jpeg%22,%22PIN%22:%22TEST_PIN_2x49fg16%22}',
+      html    : htm,
+      js      : "",
+      jsID    : this.net.wallet.calculateHash(htm),
+      pMUID   : "1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ"
+    };
+    return j;
   }
-
-  htm += `</table></div>`;
-
-  // Return to HUI
-  const j = {
-    action  : "sendAccountInfo",
-    result  : true,
-    name    : 'Joe Blow',
-    balance : `${userBal.balance.toFixed(3)} BORG Shells - Confirms: ${userBal.confirms}`,
-    icon    : 'http://localhost/netREQ/msg=%7B%22req%22:%22getFileFromRepo%22,%22url%22:%22/whzon/bitMiner/getFileFromRepo.php?wzID=DESKTOP&fname=portMale17.jpg&rname=myOtherRepo&path=&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&folderID=0&encrypt=0%22,%22checkSum%22:%22cc97009add696816ff58af3f34a9a44c615d8a8ef529fe21696de957d9eeecd3%22,%22ftype%22:%22image/jpeg%22,%22PIN%22:%22TEST_PIN_2x49fg16%22}',
-    html    : htm,
-    js      : "",
-    jsID    : wallet.calculateHash(htm),
-    pMUID   : "1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ"
-  };
-  return j;
-}
-module.exports = {
-  // utils
-  doSendBorgPayRecentTrans
 };
+module.exports.BorgHUIBorgPay = BorgHUIBorgPay;
 
