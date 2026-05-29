@@ -315,13 +315,18 @@ class BorgHUIstreamMgr {
         const shardIdx = stream.pendingShards.values().next().value;
         stream.pendingShards.delete(shardIdx);
 
-        const shardId = stream.shardHashes[shardIdx];
+        const shard    = stream.shardHashes[shardIdx];
+        const shardId  = shard.hash;
+        const shardHID = this.net.wallet.calculateHash(`${shardId}-${this.net.ownMUID}-${Date.now()}`);
+        const shardSig = this.net.wallet.signToken(shardHID);
+        shard.hashHID  = shardHID;
 
         // Mark as in-flight
         stream.inFlight.add(shardIdx);
 
         // Dispatch the shard
-        this.sendStreamShard(service, stream.streamId, shardIdx, shardId);
+        console.log(`doBlastShardBatch():: `,service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
+        this.sendStreamShard(service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
 
         // Optional: status update
         this.setStatus(stream.streamId, `sending:${shardIdx}`);
@@ -333,7 +338,7 @@ class BorgHUIstreamMgr {
   // ---------------------------------------------------------
   // Send a shard to a remote host
   // ---------------------------------------------------------
-  async sendStreamShard(service, streamId, shardIdx,shardId) {
+  async sendStreamShard(service, streamId, shardIdx,shardId,shardHID,shardSig) {
     const stream = this.streams.get(streamId);
     if (!service ) service = stream.service;
 
@@ -346,8 +351,10 @@ class BorgHUIstreamMgr {
       shard    : shard,
 
       // Required by /storeShard/ endpoint
-      hash     : stream.shardHashes[shardIdx],   // canonical shard hash
-      hashID   : stream.streamId,                // or stream.hashID if you have one
+      hash     : shardId,                    // canonical shard hash
+      hashID   : shardHID,                   // shart Identity pointer
+      hashSig  : shardSig,
+      opKey    : this.net.wallet.publicKey,
       encrypt  : stream.encrypt || 0,
       expires  : stream.expires || 0,
       nCopys   : stream.nCopys  || 3,
@@ -432,7 +439,7 @@ class BorgHUIstreamMgr {
                            .update(shard)
                            .digest("hex");
 
-          shardHashes.push(hash);
+          shardHashes.push({hash:hash,hashHID:null});
 
           shardBuffer = shardBuffer.slice(shardSize);
         }
@@ -444,7 +451,7 @@ class BorgHUIstreamMgr {
           const hash = crypto.createHash("sha256")
                            .update(shardBuffer)
                            .digest("hex");
-          shardHashes.push(hash);
+          shardHashes.push({hash:hash,hashHID:null});
         }
 
         resolve({
@@ -989,15 +996,16 @@ class BorgHUIstreamMgr {
     const data     = shard.shard;
 
     const params = new URLSearchParams({
-      hash:    shard.hash,        // canonical shard hash
-      hashID:  shard.hashID,      // usually streamId
-      encrypt: shard.encrypt,
-      expires: shard.expires,
-      nCopys:  shard.nCopys,
-      pass:    shard.pass,
-      fptr:    shard.fptr,
-      index:   shard.shardIdx,
-      from:    shard.from
+      hash    : shard.hash,         // canonical shard hash
+      hashID  : shard.hashHID,      // unique shard pointer 
+      hashSig : shard.hashSig,
+      encrypt : shard.encrypt,
+      expires : shard.expires,
+      nCopys  : shard.nCopys,
+      pass    : shard.pass,
+      fptr    : shard.fptr,
+      index   : shard.shardIdx,
+      from    : shard.from
     });
 
     const endPoint = `${service.endPoint}?${params.toString()}`;

@@ -769,7 +769,7 @@ class bitMonkyWallet{
       return crypto.createHash('sha256').update(txt).digest('hex');
    }
    signToken(token) {
-      const sig = this.signingKey.sign(calculateHash(token), 'base64');
+      const sig = this.signingKey.sign(this.calculateHash(token), 'base64');
       const hexSig = sig.toDER('hex');
       return hexSig;
    }
@@ -953,12 +953,12 @@ class bitMonkyWallet{
 
       const smap = {
         Result   : false,
-        shardID  : shardHash,  // already SHA-256 hex
+        shardID  : shardHash.hash,         // already SHA-256 hex
+        shardHID : shardHash.hashHID,      // Shard Idenity Pointer.
         startPos : shardIndex * chunkSize,
         nStored  : 0,
         index    : shardIndex,
         hosts    : [],
-        shardHID : this.calculateHash(shardHash + (shardIndex * chunkSize) + fname + Date.now())
       };
 
       shards.push(smap);
