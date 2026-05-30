@@ -997,8 +997,9 @@ class BorgHUIstreamMgr {
 
     const params = new URLSearchParams({
       hash    : shard.hash,         // canonical shard hash
-      hashID  : shard.hashHID,      // unique shard pointer 
+      hashID  : shard.hashID,       // unique shard pointer 
       hashSig : shard.hashSig,
+      opKey   : shard.opKey,
       encrypt : shard.encrypt,
       expires : shard.expires,
       nCopys  : shard.nCopys,
