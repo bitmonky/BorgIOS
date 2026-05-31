@@ -1,0 +1,94 @@
+[
+    {
+        "netPort": 13390,
+        "recpPort": 13392,
+        "monPort": 13391,
+        "maxChildren": 25,
+        "netName": "peerPaysCell",
+        "activeNodes": [
+            {
+                "ip": "172.105.22.200",
+                "errors": 0,
+                "date": 1741133712868,
+                "pKey": "041df09d20463e705b8358ae4652ab74a5070bf2e991f1a465724e0794e13a629d960bf33055c77e1845d295b884b29b12e224e862cd79093100cea5d659db8f28"
+            }
+        ]
+    },
+    {
+        "netPort": 13351,
+        "recpPort": 13381,
+        "monPort": 13341,
+        "maxChildren": 25,
+        "netName": "ftreeFileMgrCell",
+        "activeNodes": [
+            {
+                "ip": "139.177.195.184",
+                "errors": 0,
+                "date": 1741133712868,
+                "pKey": "041df09d20463e705b8358ae4652ab74a5070bf2e991f1a465724e0794e13a629d960bf33055c77e1845d295b884b29b12e224e862cd79093100cea5d659db8f28"
+            }
+        ]
+    },
+    {
+        "netPort": 13350,
+        "recpPort": 13355,
+        "monPort": 13340,
+        "maxChildren": 25,
+        "netName": "shardTreeCell",
+        "activeNodes": [
+            {
+                "ip": "172.105.110.34",
+                "errors": 0,
+                "date": 1739572043373,
+                "pKey": "043d6f6f8812d690cc29eab464c027d9734b342aab8cbb1a9feddae937382753f79aafd49fa857b8a61a47b785c27d512c4e8e9bd2b561f813c9010f052a31e4b7"
+            },
+            {
+                "ip": "139.177.195.184",
+                "errors": 0,
+                "date": 1741133712868,
+                "pKey": "041df09d20463e705b8358ae4652ab74a5070bf2e991f1a465724e0794e13a629d960bf33055c77e1845d295b884b29b12e224e862cd79093100cea5d659db8f28"
+            },
+            {
+                "ip": "172.105.22.200",
+                "errors": 0,
+                "date": 1741810700757,
+                "pKey": "04ffc8881c6721d246465c9b5c97a52f03cc678b650fffc56dd302703651e13e1266274f700acf46b71c83c50e9c9a5c4b4b9252c08f86b8a57b91a52adb43470e"
+            },
+            {
+                "ip": "172.105.98.225",
+                "errors": 0,
+                "date": 1742421863150,
+                "pKey": "049fab33824990be214852d8830baf415b7a80094c6a8acb2ee8709f51624bb178325e1a3d6230c3270c05aff686fc8e6f4fb42ae646eb09a92e68968372453a46"
+            },
+            {
+                "ip": "172.105.15.49",
+                "errors": 0,
+                "date": 1742421953928,
+                "pKey": "04112cf16717edcfa5bf12ab50451cbf017183c3e9a3951cc8e939efd4654308b0f213d0f13a5157c8aea4c57fbba5df89d1004daa8b22870ef5165cd459676f69"
+            },
+            {
+                "ip": "172.105.106.134",
+                "errors": 0,
+                "date": 1742422595463,
+                "pKey": "04d712b8df250809e46eb80770f792ecb491ffa802f1c6708b3d68e5903aa40bea0657b98bc3ff73c2c16064e20a31484b72af79657e14e808ccd5db7ad866b16e"
+            }
+        ]
+    },
+    {
+        "netPort": 1336,
+        "recpPort": 1335,
+        "monPort": 1339,
+        "maxChildren": 25,
+        "netName": "peerMemoryCell"
+    },
+    {
+        "netName": "borgApacheCell",
+        "recpPort": null,
+        "activeNodes": [
+            {
+                "ip": "173.255.241.199",
+                "date": 1747499615
+            }
+        ]
+    }
+]
