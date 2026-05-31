@@ -180,15 +180,15 @@ function startPhotoUpload(){
   xhr.send(formData);
 }
 
-function openFolder(rname, folderID, fname){
+function openFolder(rname, folderID, fname,owner){
   var url = '/whzon/bitMiner/sendBorgFileSys.php?rname=' + encodeURIComponent(rname) +
-    '&folderID=' + folderID + '&folder=' + encodeURIComponent(fname);
+    '&folderID=' + folderID + '&folder=' + encodeURIComponent(fname) + `&ownerID=${encodeURIComponent(owner)}`;
   console.log('openFolder::url', url);
   borgSendUpdateResByUrl(url, 'serviceMenu');
 }
 
 function changeRepo(rname, owner){
-  var url = '/whzon/bitMiner/sendBorgFileSys.php?rname=' + encodeURIComponent(rname);
+  var url = `/whzon/bitMiner/sendBorgFileSys.php?rname=${encodeURIComponent(rname)}&ownerID=${encodeURIComponent(owner)}`;
   borgSendUpdateResByUrl(url, 'serviceMenu');
 }
 
@@ -244,14 +244,14 @@ function parseQuery(url){
   return params;
 }
 
-function doBorgRFolderAdd(rname, foldname, foldID, parentID){
+function doBorgRFolderAdd(rname, foldname, foldID, parentID,owner){
   const parent = document.getElementById("repoFolderSpot:" + parentID);
   if (!parent) return;
 
   const newDiv = document.createElement("div");
   newDiv.id    = "folder:" + foldname;
   newDiv.innerHTML =
-    `<a href="javascript:openFolder('${rname}',${foldID},'${foldname}');">
+    `<a href="javascript:openFolder('${rname}',${foldID},'${foldname},'${owner}');">
       <div style="width:100%;padding:.0em .5em .5em 1.5em;">/${foldname}</div>
     </a>`;
 
@@ -286,7 +286,7 @@ function handlerCreateRepoFolder(j){
       }
       let newFolderID = d.result;
       console.log('parseQuery():: newFolderID:', newFolderID);
-      doBorgRFolderAdd(parms.rname, parms.folder, newFolderID, parms.parentID);
+      doBorgRFolderAdd(parms.rname, parms.folder, newFolderID, parms.parentID,parms.owner);
       return;
     }
     alert(j.data.error);

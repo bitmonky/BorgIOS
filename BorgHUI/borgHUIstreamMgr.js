@@ -596,7 +596,7 @@ class BorgHUIstreamMgr {
   async doOpenStream(repo,service,httpRes,winSize=20) {
     let j = repo.file;
     let shards = [];
-    j.shards.forEach( (shard) => shards.push(shard.shardID));
+    j.shards.forEach( (shard) => shards.push({hash:shard.shardID,shardHID:shard.shardHID}));
     const input = j.filename;
     const origName = input.split('/').pop();
 
@@ -677,30 +677,32 @@ class BorgHUIstreamMgr {
     await mutex.lock();
     try {
       // Fill the window
-      console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
+      console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size} winSize${stream.windowSize} `);
       while (
         stream.inFlight.size < stream.windowSize &&
         stream.pendingShards.size > 0
       ) {
         const shardIdx = this.getLowestPendingShard(stream.pendingShards);
+        console.log(`requestShardBatch():: filling`,shardIdx);
         if (shardIdx === null) return;
 
         // Move shard from pending → inFlight
         stream.pendingShards.delete(shardIdx);
         stream.inFlight.add(shardIdx);
-
+        let shard = stream.shardHashes[shardIdx];
         const msg = {
           req       : "requestShard",
           sIndex    : shardIdx,
           shard : {
             streamId  : streamId,
             ownerID   : this.net.wallet.ownMUID,
-            hash      : stream.shardHashes[shardIdx],
+            hash      : shard.hash,
+            hashID    : shard.shardHID,
             encrypted : 0,
             shardSize : stream.shardSize
           }
         };
-        // console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx]);
+        console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx],msg);
         this.sendMsgCX(service, msg);
       }
     } finally {

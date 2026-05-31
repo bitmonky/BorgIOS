@@ -999,7 +999,7 @@ class bitMonkyWallet{
       html   : doTry,
       js     : "",
       jsID   : this.calculateHash(doTry),
-      pMUID  : '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ'
+      pMUID  : this.ownMUID
     };
 
     console.log(`this.UI.dodeletFile():: `, j);
@@ -1041,7 +1041,7 @@ class bitMonkyWallet{
       html   : htm,
       js     : jsCode,
       jsID   : this.calculateHash(jsCode),
-      pMUID  : '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ'
+      pMUID  : this.ownMUID
     };
 
     res.end(JSON.stringify(j));
