@@ -83,22 +83,30 @@ class BorgHUIstreamMgr {
     const index     = shard.shardIdx;
     const offset    = index * shardSize;
     const expectedShardId = shard.shardId;
-
+ 
     const remaining = fileSize - offset;
-    const isFinal   = (index === stream.count - 1)
+    const isFinal   = (index === stream.count - 1);
+
+    console.log(`writeShardToFile():: shardSize`,shardSize);
+    console.log(`writeShardToFile():: fileSize`,fileSize);
+    console.log(`writeShardToFile():: index`,index);
+    console.log(`writeShardToFile():: offset`,offset);
+    console.log(`writeShardToFile():: expectedShardId`,expectedShardId);
+    console.log(`writeShardToFile():: remaining`,remaining);
+    console.log(`writeShardToFile():: isFinal`,isFinal);
 
     // 1. Size validation
     if (!isFinal) {
       // Non-final shard must match shardSize exactly
       if (shard.shard.length !== shardSize) {
         console.log(`writeShardToFile():: BAD_SIZE `,shard.shard.length,shardSize);
-        //return { ok: false, reason: "BAD_SIZE", index };
+        return { ok: false, reason: "BAD_SIZE", index };
       }
     } else {
       // Final shard must be <= remaining bytes
       if (shard.shard.length > remaining) {
         console.log(`writeShardToFile():: BAD_SIZE_FINAL `,shard.shard.length,remaining);
-        //return { ok: false, reason: "BAD_SIZE_FINAL", index };
+        return { ok: false, reason: "BAD_SIZE_FINAL", index };
       }
     }
     // 2. Validate shard hash
@@ -228,7 +236,7 @@ class BorgHUIstreamMgr {
     // Kick off the first batch of shard requests
     this.requestShardBatch(fmap.streamId,service);
   }
-  streamTo(service,type = 'file',winSize = 20,nCopys=3,blob=null) {
+  streamTo(service,type = 'file',winSize = 12,nCopys=3,blob=null) {
     return new Promise(async (resolve) => {
       const reqId = crypto.randomUUID();
       const msg = {
@@ -593,7 +601,7 @@ class BorgHUIstreamMgr {
     // Pipe file to client
     fileStream.pipe(httpRes);
   }
-  async doOpenStream(repo,service,httpRes,winSize=20) {
+  async doOpenStream(repo,service,httpRes,winSize=12) {
     let j = repo.file;
     let shards = [];
     j.shards.forEach( (shard) => shards.push({hash:shard.shardID,shardHID:shard.shardHID}));
@@ -826,12 +834,14 @@ class BorgHUIstreamMgr {
       console.warn(`ACK for shard ${index} of ${streamId} not in flight`);
       return;
      }
-     console.log(`onShardSentACK():: shard: ${shard.hash} result ${shard.nCopys} stored`);
+     console.log(`onShardSentACK():: shard: ${shard.hash} result ${shard.res.result} n ${shard.res.nStored} stored;`);
+
+
      // 1. Remove from inFlight
      stream.inFlight.delete(index);
 
      // 2. Mark shard as completed
-     stream.shardsSentOK.set(index,{shardId:shard.hash,nCopys:shard.nCopys,excTime:Date.now() - shard.reqTime});
+     stream.shardsSentOK.set(index,{shardId:shard.res.shardID,nCopys:shard.res.nStored,excTime:Date.now() - shard.reqTime,hostIPs:shard.res.hosts});
 
      // 3. If all shards done, close stream
      if (
@@ -1033,20 +1043,27 @@ class BorgHUIstreamMgr {
        });
 
        res.on('end',async ()=>{
-         const body = Buffer.concat(chunks);
+         const body = Buffer.concat(chunks).toString('utf8');
 
          shard.toHost = toHost;
          if (res.statusCode !== 200) {
            shard.toHost   = toHost;
            shard.endpoint = options.path;
            shard.xhrError = res.statusCode;
+           try {
+             shard.res = JSON.parse(body);
+           } catch(e){
+             shard.res = {netPost:"FAIL",result:"RESC_FAIL",error:"res:NOT 200 and JSON.pars fail xhrError"};
+           }
            this.net.emit('xhrBinShardFailed',shard);
-           console.log(`sendBinaryShardCX():: NOT 200`,shard);
+           console.log(`sendBinaryShardCX():: NOT 200`,body);
          } else {
            //console.log('bin send good',shard.shardIdx,shard.shardId);
            const res = body.toString();
            try {        
-             shard.res = JSON.parse(res);
+             //console.log('bin send good RES:',body);
+             shard.res = JSON.parse(body);
+             //console.log('bin send good JPARSE:',shard.res);
              this.net.emit('xhrBinShardOK',shard);
            }
            catch(e) {
@@ -1054,7 +1071,7 @@ class BorgHUIstreamMgr {
              shard.errMsg   = e;
              shard.toHost   = toHost;
              console.log('bin send JSON parse fail',shard.shardIdx,shard.shardId);
-
+             shard.res      = {netPost:"FAIL",result:"JParseFAIL",error:"res:200 but JSON.parse failed"};
              this.net.emit('xhrBinShardFailed',shard);
            }
          }
@@ -1067,6 +1084,7 @@ class BorgHUIstreamMgr {
           shard.endpoint = options.path;
           shard.xhrError = 'xTime';
           shard.errCount++;
+          shard.res = {netPost:"FAIL",result:"xTimeFAIL1",error:"req.on timeout xTime"};
           console.log(`sendBinaryShardCX():: timeout first`,shard);
           this.net.emit('xhrBinShardFailed',shard);
        }
@@ -1084,6 +1102,7 @@ class BorgHUIstreamMgr {
         if (error.code === 'ETIMEDOUT') {
           shard.xhrError = 'xTime';
         }
+       shard.res = {netPost:"FAIL",result:"xTimeFAIL",error:"req.on timeout xTime"};
        console.log(`sendBinaryShardCX():: timeout xTime`,shard);
        this.net.emit('xhrBinShardFailed',shard);
      })

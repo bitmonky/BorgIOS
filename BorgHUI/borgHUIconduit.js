@@ -102,7 +102,7 @@ class BorgPortal {
   }
 
   async selectPortal(netName) {
-    console.log(`selectPortal():: `,this.portals);
+    //console.log(`selectPortal():: `,this.portals);
     const index = this.portals.findIndex(portal => portal.netName === netName);
     console.log('INDEX', index, netName);
 

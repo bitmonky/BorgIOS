@@ -4,8 +4,8 @@ class BorgHUIBorgPay {
      this.net = net;
    }
   async doSendBorgPayRecentTrans(m) {
-    const borgAdr = "1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ";
-    const uAdr = m.wAdr || borgAdr;
+    const borgAdr = this.net.wallet.ownMUID;
+    const uAdr    = m.wAdr || borgAdr;
 
     // Fetch balances
     let masterBal = await this.net.PTree.peerPaysGetMyBalance(borgAdr);
@@ -82,7 +82,7 @@ class BorgHUIBorgPay {
       html    : htm,
       js      : "",
       jsID    : this.net.wallet.calculateHash(htm),
-      pMUID   : "1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ"
+      pMUID   : this.net.wallet.ownMUID
     };
     return j;
   }

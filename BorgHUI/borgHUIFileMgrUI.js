@@ -18,7 +18,7 @@ async createRepoGET(queryString) {
   //
   // 2. Extract + defaults
   //
-  const mbrMUID = params.owner || "1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ";
+  const mbrMUID = params.owner || this.net.wallet.ownMUID;
   const name    = params.rname  || "";
   let nCopys    = params.ncopys ? Number(params.ncopys) : 10;
   const token   = params.tok    || "";
@@ -76,7 +76,7 @@ async createRepoFolderGET(queryString) {
   //
   // 2. Extract + defaults
   //
-  const mbrMUID = params.owner    || "1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ";
+  const mbrMUID = params.owner    || this.net.wallet.ownMUID;
   const name    = params.rname    || "";
   const folder  = params.folder   || "";
   let parent    = params.parentID || null;
@@ -137,7 +137,7 @@ async deleteFileFromRepoGET(queryString) {
   //
   // 2. Extract + default parameters
   //
-  const mbrMUID  = params.ownerMUID || "1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ";
+  const mbrMUID  = params.ownerMUID || this.net.wallet.ownMUID;
   const rname    = params.rname     || "";
   const fname    = params.fname     || "";
   const path     = params.path      || "";
@@ -308,7 +308,7 @@ async getBorgFileSys(url) {
 
       <div id='dispMemorySpot'></div>
 
-      <video id='videoSpot' style='display:none;' width="400" controls>
+      <video id='videoSpot' style='display:none;width:100%' controls>
         <source src="" type="video/mp4">
       </video>
 
@@ -387,7 +387,7 @@ async initRepoContextFromGET(queryString) {
   //
   const root         = params.root      || "139.177.195.184";
   const info         = params.info      || null;
-  const ownerID      = params.ownerID   || "1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ";
+  const ownerID      = params.ownerID   || this.net.wallet.ownMUID;
   const rname        = params.rname     || "";
   const folder       = params.folder    || "";
   let   path         = params.path      || "/";
@@ -478,8 +478,9 @@ async buildRepoSidebarHTML(ctx) {
       html += `<h2>Local Repos Found</h2><div style='color:gray'>`;
 
       result.list.forEach(rec => {
+        console.log(`GET MY REPOS`,rec);
         html += `
-          <a href="javascript:changeRepo('${rec.repoName}','');">
+          <a href="javascript:changeRepo('${rec.repoName}','${rec.repoOwner}');">
             <div id="id${rec.repoName}" style="width:100%;padding:.0em .5em 1em 1.5em;">
               ${rec.repoName} - Type: ${rec.repoType}<br/>
             </div>
@@ -508,7 +509,7 @@ async buildRepoSidebarHTML(ctx) {
       let plinkEnd = "";
 
       if (preFolder) {
-        plinkStart = `<a href='javascript:openFolder("${rname}",${folderID},"${preFolder}");'>`;
+        plinkStart = `<a href='javascript:openFolder("${rname}",${folderID},"${preFolder}","${mbrMUID}");'>`;
         plinkEnd = "</a>";
       }
 
@@ -521,7 +522,7 @@ async buildRepoSidebarHTML(ctx) {
         result.folders.forEach(rec => {
           html += `
             <div id="folder:${rec.rfoldName}">
-              <a href='javascript:openFolder("${rname}",${rec.rfoldID_master},"${rec.rfoldName}");'>
+              <a href='javascript:openFolder("${rname}",${rec.rfoldID_master},"${rec.rfoldName}","${mbrMUID}");'>
                 <div style='width:100%;padding:.0em .5em .5em 1.5em;'>/${rec.rfoldName}</div>
               </a>
             </div>
