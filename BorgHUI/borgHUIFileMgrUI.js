@@ -22,7 +22,10 @@ async createRepoGET(queryString) {
   const name    = params.rname  || "";
   let nCopys    = params.ncopys ? Number(params.ncopys) : 10;
   const token   = params.tok    || "";
-
+  console.log(`mbrMUID`,mbrMUID);
+  console.log(`name`,name);
+  console.log(`nCopys`,nCopys);
+/*
   //
   // 3. Validate user token
   //    (PHP used SQL; JS uses your this.net.PTree API)
@@ -38,6 +41,7 @@ async createRepoGET(queryString) {
       }
     };
   }
+*/
 
   //
   // 4. Validate repo name
@@ -84,22 +88,6 @@ async createRepoFolderGET(queryString) {
   const token   = params.tok      || "";
 
   //
-  // 3. Validate user token (PHP used SQL)
-  //    You must replace this with your actual JS auth lookup.
-  //
-  const userRec = await this.net.PTree.lookupUserByToken(token); 
-  // You must implement lookupUserByToken() in borgHUIptreeAPI.js
-
-  if (!userRec) {
-    return {
-      data: {
-        result: false,
-        error: "User Not Logged In"
-      }
-    };
-  }
-
-  //
   // 4. Validate repo name
   //
   if (!name || name.trim() === "") {
@@ -114,12 +102,7 @@ async createRepoFolderGET(queryString) {
   //
   // 5. Create the repo folder
   //
-  const newRepo = await this.net.PTree.ftreeCreateRepoFolder(
-    mbrMUID,
-    name,
-    folder,
-    parent
-  );
+  const newRepo = await this.net.PTree.ftreeCreateRepoFolder(mbrMUID,name,folder,parent);
 
   //
   // 6. Return JSON (same as PHP echo json_encode)

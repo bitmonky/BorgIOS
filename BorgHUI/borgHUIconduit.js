@@ -448,7 +448,6 @@ class bitMonkyWSrv extends  EventEmitter {
          }
 
          if (j.req  === 'getFileFromRepo'){
-            console.log(`DFDSLKFJ`,j);
             this.getFileFromRepo(req,j, res);
             return;
          }
@@ -707,15 +706,9 @@ async getFileFromRepo(req, msg, res) {
         raw      : true
       };
 
-      const stok = this.wallet.ownMUID+Date.now();
-      const borgHUI = {
-        Address : this.net.wallet.ownMUID,
-        sesTok  : stok,
-        pubKey  : this.net.wallet.publicKey,
-        sesSig  : this.net.wallet.signMsg(stok),
-      }
-      msgObj.borgHUI = borgHUI;      var msg = {
-        borgHUI : borgHUI,
+      const stok    = `${this.wallet.ownMUID}${reqTime}`    \\ old session token.
+
+      var msg = {
         Address : this.wallet.ownMUID,
         sesTok  : stok,
         pubKey  : this.wallet.publicKey,
@@ -888,7 +881,9 @@ class bitMonkyWallet{
 
      j.result = true;
      j.msg = 'File uploaded successfully.';
-     j.response = doTry;
+     j.response = j.msg;
+
+     console.log(`doUploadFile():: final`,j);
 
      res.end(JSON.stringify(j));
 
@@ -1255,12 +1250,29 @@ class bitMonkyWallet{
      }
      var conf = confirm("run service https://"+service.host+':'+service.port+'/'+service.endPoint+" Now?");
      if (conf){
-       sendPostRequest(msg,div,service);
+       this.sendPostRequest(msg,div,service);
      }
+   }
+   getBorgToken(){
+     const reqId   = crypto.randomUUID();
+     const reqTime = Date.now();
+     const btok    = `${this.ownMUID}-${reqTime}-${reqId}`;
+
+     const borgToken = {
+       reqId   : reqId,
+       reqTime : reqTime,
+       Address : this.ownMUID,
+       sesTok  : btok,
+       pubKey  : this.publicKey,
+       sesSig  : this.signMsg(btok),
+     }
+     return borgToken;
    }
    sendPostRequest(msg,wres=null,service=null,redirectCount=0){
      return new Promise((resolve) => { 
        const MAX_REDIRECTS = 5; // Limit the number of redirects
+
+       msg.borgToken = this.getBorgToken();
 
        if (redirectCount > 0 ) {
          console.log('REDIRECT::',redirectCount,service);

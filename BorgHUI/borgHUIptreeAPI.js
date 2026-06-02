@@ -69,17 +69,11 @@ class BorgHUIptreeAPI {
   async _postJSON(portalName, msgObj) {
     const service = await this._selectPortal(portalName);
     const url = this._buildURL(service);
-    const stok =  this.net.wallet.ownMUID+Date.now();
-    const borgHUI = {
-      Address : this.net.wallet.ownMUID,
-      sesTok  : stok,
-      pubKey  : this.net.wallet.publicKey,
-      sesSig  : this.net.wallet.signMsg(stok),
-    }
-    msgObj.borgHUI = borgHUI;
+
+    msgObj.borgToken = this.net.wallet.getBorgToken();
 
     const body = JSON.stringify(msgObj);
-    console.log(`url`,url,`body`,body);
+    console.log(`url`,url,`body`,msgObj);
     return this._httpRequestRaw(
       url,
       {

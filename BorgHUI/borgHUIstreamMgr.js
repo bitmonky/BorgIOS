@@ -877,6 +877,7 @@ class BorgHUIstreamMgr {
      const endPoint = service.endPoint;
      const toHost   = service.host;
      const https    = require('https');
+     msg.borgToken  = this.net.wallet.getBorgToken();
 
      msg.errCount = 0;
      msg.sentTime = Date.now();
