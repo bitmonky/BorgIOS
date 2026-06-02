@@ -511,12 +511,12 @@ async getFileFromRepo(req, msg, res) {
     //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.shards);
     //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.fileInfo);     
   }
-  if (doTry.json.result === false){
+  if (doTry?.json?.result === false){
     console.log(`doTry error: `,doTry.error);
     res.end(`Get File Failed... details: ${JSON.stringify(doTry)}\n`);
     return;
   }  
-  if (doTry.json.file.fileInfo.fileSize > 0) {
+  if (doTry?.json?.file.fileInfo.fileSize > 0) {
     const p = await this.portal.selectPortal('shardTreeCell');
 
     const service = {
@@ -708,7 +708,14 @@ async getFileFromRepo(req, msg, res) {
       };
 
       const stok = this.wallet.ownMUID+Date.now();
-      var msg = {
+      const borgHUI = {
+        Address : this.net.wallet.ownMUID,
+        sesTok  : stok,
+        pubKey  : this.net.wallet.publicKey,
+        sesSig  : this.net.wallet.signMsg(stok),
+      }
+      msgObj.borgHUI = borgHUI;      var msg = {
+        borgHUI : borgHUI,
         Address : this.wallet.ownMUID,
         sesTok  : stok,
         pubKey  : this.wallet.publicKey,
@@ -984,8 +991,56 @@ class bitMonkyWallet{
         await this.doDeleteFile(m,res);
         return;
       }
+      if (m.url.startsWith(`/whzon/bitMiner/createRepo.`)){
+        await this.doCreateRepo(m,res);
+        return;
+      }
+      if (m.url.startsWith(`/whzon/bitMiner/createRepoFolder.`)){
+        await this.doCreateRepoFolder(m,res);
+        return;
+      }
     }
     res.end('doHandleBorgFileSys():: Failed.. no endpoint found');
+  }
+  async doCreateRepoFolder(m,res){
+    console.log(`doCreateRepoFolder():: m.url`,m.url);
+
+    let doTry = await this.net.UI.createRepoFolderGET(m.url);
+    let html  = JSON.stringify(doTry);
+    if  (doTry.status === null){
+      html = JSON.stringify(doTry);
+    }
+    console.log(`doCreateRepoFolder():: doTry`,doTry);
+    const j = {
+      action : m.req,
+      result : true,
+      html   : html,
+      js     : "",
+      jsID   : this.calculateHash(JSON.stringify(doTry)),
+      pMUID  : this.ownMUID
+    }
+    res.end(JSON.stringify(j));
+    return;
+  }
+  async doCreateRepo(m,res){
+    console.log(`doDeleteFile():: m.url`,m.url);
+
+    let doTry = await this.net.UI.createRepoGET(m.url);
+    let html  = JSON.stringify(doTry);
+    if  (doTry.status === null){
+      html = JSON.stringify(doTry);
+    }
+    console.log(`doCreateRepo():: doTry`,doTry);
+    const j = {
+      action : m.req,
+      result : true,
+      html   : html,
+      js     : "",
+      jsID   : this.calculateHash(JSON.stringify(doTry)),
+      pMUID  : this.ownMUID
+    }
+    res.end(JSON.stringify(j));
+    return;
   }
   async doDeleteFile(m,res){
     console.log(`doDeleteFile():: m.url`,m.url);
