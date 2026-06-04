@@ -25,13 +25,80 @@ var service = {
   endPoint : "/whzon/gold/netWalletAPI.php"
 };
 
+/*
+********************
+Override Date class so that all nodes use one unifide time dictated By the root node.
+Capture the real Date constructor and real Date.now
+********************
+*/
+
+const RealDate = Date;
+const realNow = RealDate.now;
+
+let peerTCorrection = 0;
+
+// Override the Date constructor
+function CorrectedDate(...args) {
+  if (args.length === 0) {
+    return new RealDate(realNow() + peerTCorrection);
+  }
+  return new RealDate(...args);
+}
+
+// Copy static methods
+CorrectedDate.now = () => realNow() + peerTCorrection;
+CorrectedDate.UTC = RealDate.UTC;
+CorrectedDate.parse = RealDate.parse;
+
+// Preserve prototype so instanceof still works
+CorrectedDate.prototype = RealDate.prototype;
+
+// Install the override
+Date = CorrectedDate;//console.error('running::',process.title);
+
+function parseChronyOffset(output) {
+  // Find the line containing "Last offset"
+  const match = output.match(/Last offset\s*:\s*([+-]?\d+\.?\d*)\s*seconds/i);
+  if (!match) {
+    throw new Error("Could not parse chronyc tracking output");
+  }
+
+  const seconds = parseFloat(match[1]);
+  const milliseconds = Math.round(seconds * 1000);
+
+  return milliseconds;
+}
+
+
+/*
+ ::End Time Overide code
+*/
+
 /************************************************************
  *  CORE FUNCTIONS
  ************************************************************/
 
 function init() {
   console.log("helloworld");
+  setInterval(updateBorgClock, 500); // smooth 10Hz update
+  updateBorgClock();
+  setInterval(getBorgTime, 60*1000); 
+  getBorgTime();
   getAccountInfo();
+}
+function getBorgTime(){
+  console.log(`getBorgTime():: TTTT:TTT:TTTT: `);
+  sendRequest({req: "sendBorgTime"});
+}
+function doUpateBorgTime(j){
+  console.log(`doUpateBorgTime():: j`,j);
+  peerTCorrection = j.borgTime;
+  console.log(`doUpateBorgTime():: `, doUpateBorgTime);
+}
+function updateBorgClock() {
+  const now = new Date(); // this uses your overridden Date.now()
+  document.getElementById('borgClock').textContent =
+  new Date().toLocaleString();
 }
 
 function chkYouTubeImage(img) {
@@ -334,6 +401,7 @@ function handleResponse(j) {
   if (j.action === "doRegNewService") doHandleNewReg(j);
   if (j.action === "sendStoresList") doShowStoresList(j);
   if (j.action === "sendBorgFileSys") doShowBorgFileSys(j);
+  if (j.action === "sendBorgTime") doUpateBorgTime(j);
 
   if (j.action === "updateResByUrl" || j.action === "borgUpdateResByUrl") {
     doUpdateResByUrl(j);

@@ -467,6 +467,7 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
     console.log(msg);
     sendRequest(msg);
   } else {
+    hideSearching();
     spot.src = murl;
     if (id == 'videoSpot'){
       show(id);

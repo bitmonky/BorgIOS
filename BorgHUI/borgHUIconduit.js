@@ -66,7 +66,54 @@ function isSafePath(userPath) {
   return resolvedPath;
 }
 const https = require('https');
+/*
+********************
+Override Date class so that all nodes use one unifide time dictated By the root node.
+Capture the real Date constructor and real Date.now
+********************
+*/
 
+const RealDate = Date;
+const realNow = RealDate.now;
+
+let peerTCorrection = 0;
+
+// Override the Date constructor
+function CorrectedDate(...args) {
+  if (args.length === 0) {
+    return new RealDate(realNow() + peerTCorrection);
+  }
+  return new RealDate(...args);
+}
+
+// Copy static methods
+CorrectedDate.now = () => realNow() + peerTCorrection;
+CorrectedDate.UTC = RealDate.UTC;
+CorrectedDate.parse = RealDate.parse;
+
+// Preserve prototype so instanceof still works
+CorrectedDate.prototype = RealDate.prototype;
+
+// Install the override
+Date = CorrectedDate;//console.error('running::',process.title);
+
+function parseChronyOffset(output) {
+  // Find the line containing "Last offset"
+  const match = output.match(/Last offset\s*:\s*([+-]?\d+\.?\d*)\s*seconds/i);
+  if (!match) {
+    throw new Error("Could not parse chronyc tracking output");
+  }
+
+  const seconds = parseFloat(match[1]);
+  const milliseconds = Math.round(seconds * 1000);
+
+  return milliseconds;
+}
+
+
+/*
+ ::End Time Overide code
+*/
 class BorgPortal {
   constructor() {
     this.pfile = 'keys/borgPortalsList.dat';
@@ -100,7 +147,17 @@ class BorgPortal {
       req.end();
     });
   }
+  getPortalsAll(netName){
+    console.log(`getPortalsAll():: service name `,netName);
+    const index = this.portals.findIndex(portal => portal.netName === netName);
+    console.log(`applyCronoTreeTime():: index is `,index);
+    if (index === -1) {
+      return null;
+    }
+    console.log(this.portals[index]);
 
+    return {port: this.portals[index].recpPort, nodes:[...this.portals[index].activeNodes]};
+  }
   async selectPortal(netName) {
     //console.log(`selectPortal():: `,this.portals);
     const index = this.portals.findIndex(portal => portal.netName === netName);
@@ -212,7 +269,7 @@ class bitMonkyWSrv extends  EventEmitter {
     this.UI         = new BorgHUIFileMgrUI(this);
     this.BPay       = new BorgHUIBorgPay(this);
     this.wallet     = new bitMonkyWallet(this);
-
+    this.clockPulse = 60*1000;
     this.init();
     //setInterval(() => { this.pushEvent('borg-event',{hello:"hello"});console.log(`borg-event`);},8000);
   }
@@ -223,6 +280,8 @@ class bitMonkyWSrv extends  EventEmitter {
     this.readConfigFile();
     const wp  = await this.portal.selectPortal('borgApacheCell');
     this.webPortal = `${wp.host}:${wp.port}`;
+    this.applyCronoTreeTime();
+
     console.log('USINGING WEB PORTAL',this.webPortal);
    
     this.srv = webCon.createServer( async (req, res) => {
@@ -400,7 +459,106 @@ class bitMonkyWSrv extends  EventEmitter {
       console.log(payload);
     });
   }
-  async handleRequest(msg,res,req){
+  async applyCronoTreeTime() {
+    console.log(`applyCronoTreeTime():: checking BorgTime`);
+    try {
+      const ps = this.portal.getPortalsAll('cronoTreeCell');
+      const portals = ps.nodes;
+
+      console.log(`applyCronoTreeTime():: time portals found:`,portals);
+      if (!portals || portals.length === 0) {
+        setTimeout(() => this.applyCronoTreeTime(), this.clockPulse);
+        return;
+      }
+
+      // Fire all requests in parallel
+      const promises = portals.map(p =>
+        this.requestCronoTime(p.ip, ps.port)
+          .then(j => j?.cronoTreeSystemClock?.rootTime)
+          .catch(() => null)
+      );
+
+      const results = await Promise.all(promises);
+
+      const times = results.filter(rt =>
+        rt !== null &&
+        rt !== 'unavailable' &&
+        typeof rt === 'number'
+      );
+
+      // Debug
+      for (let i = 0; i < portals.length; i++) {
+        console.log(`applyCronoTreeTime():: ${portals[i].ip} says`, results[i]);
+      }
+      console.log(`Times:: `,times);
+
+      if (times.length > 0) {
+        // Sort
+        times.sort((a, b) => a - b);
+
+        // Median
+        const median = times[Math.floor(times.length / 2)];
+
+        // Filter out extreme offsets
+        const filtered = times.filter(t => Math.abs(t - median) < 200);
+
+        // Average the remaining cluster
+        const avg = filtered.reduce((a, b) => a + b, 0) / filtered.length;
+
+        // Apply drift correction
+        peerTCorrection = avg - realNow();
+        console.log(`applyCronoTreeTime():: avg ${avg} peerTCorrection `, peerTCorrection, Date.now(), realNow());
+      }
+
+    } catch (_) {}
+
+    setTimeout(() => this.applyCronoTreeTime(), this.clockPulse);
+  }
+  async requestCronoTime(ip,port) {
+     const msg = {msg:{req:'sendCronoTime'}};
+     const body = JSON.stringify(msg);
+
+     const options = {
+       hostname: ip,
+       port: port,
+       path: '/netReq',
+       method: 'POST',
+       rejectUnauthorized: false,   // allow self‑signed cert
+       headers: {
+         'Connection': 'close',
+         'Content-Type': 'application/json',
+         'Content-Length': Buffer.byteLength(body, 'utf8')
+       },
+       timeout: 3500   // 1.5s timeout — adjust as needed
+     };
+     console.log(`requestCronoTime():: msg,options`,msg,options);
+     return new Promise((resolve, reject) => {
+       const req = https.request(options, (res) => {
+         let data = '';
+
+         res.on('data', chunk => data += chunk);
+         res.on('end', () => {
+           try {
+             console.log(`requestCronoTime():: `,data);
+             resolve(JSON.parse(data));
+           } catch (err) {
+             reject(new Error(`Invalid JSON response: ${data}`));
+           }
+         });
+       });
+
+       req.on('timeout', () => {
+         req.destroy();
+         reject(new Error('Request timed out'));
+       });
+
+       req.on('error', reject);
+
+       req.write(body);
+       req.end();
+     });
+   }
+   async handleRequest(msg,res,req){
      var j = null;
           
      try {
@@ -440,6 +598,10 @@ class bitMonkyWSrv extends  EventEmitter {
 
          if (j.req === 'sendAccountInfo'){
            await this.wallet.doSendAccountInfo(j,res);
+           return;
+         }
+         if (j.req === 'sendBorgTime'){
+           await this.wallet.doSendBorgTime(j,res);
            return;
          }
          if (j.req === 'sendBorgFileSys' || j.req === 'borgUpdateResByUrl'){
@@ -1013,6 +1175,14 @@ class bitMonkyWallet{
       js     : "",
       jsID   : this.calculateHash(JSON.stringify(doTry)),
       pMUID  : this.ownMUID
+    }
+    res.end(JSON.stringify(j));
+    return;
+  }
+  async doSendBorgTime(m,res){
+    const j = {
+      action   : m.req,
+      borgTime : peerTCorrection,
     }
     res.end(JSON.stringify(j));
     return;
