@@ -237,7 +237,7 @@ async getBorgFileSys(url) {
   //
   if (!sessISMOBILE) {
     html += `
-      <table style='max-width:calc(100% - 5em);table-layout:fixed;'>
+      <table style='max-width:calc(100%);table-layout:fixed;'>
       <tr valign='top'>
       <td>
     `;

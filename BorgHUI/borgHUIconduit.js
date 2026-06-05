@@ -595,7 +595,10 @@ class bitMonkyWSrv extends  EventEmitter {
             this.startBorgBrowser(res);
             return;
          }  
-
+         if (j.req === 'sendWalletOptions'){
+           await this.wallet.doSendWalletOptions(j,res);
+           return;
+         }
          if (j.req === 'sendAccountInfo'){
            await this.wallet.doSendAccountInfo(j,res);
            return;
@@ -906,6 +909,7 @@ async getFileFromRepo(req, msg, res) {
          const j = JSON.parse(conf);
          this.recPort       = j.receptor.port;
          this.allow         = j.receptor.allow;
+         this.nicName       = j.nicName;
        }
        catch(err) {
          console.log('conf file not valid', err);
@@ -1183,6 +1187,27 @@ class bitMonkyWallet{
     const j = {
       action   : m.req,
       borgTime : peerTCorrection,
+    }
+    res.end(JSON.stringify(j));
+    return;
+  }
+  async doSendWalletOptions(m,res){
+    let doTry  = 'Fill this in later';
+    const html = `
+      <div ID='menuBar' align='right' style='background:#222324;padding:0.5em 1em 0.5em 1em;'>
+      <a href='javaScript:doCloseWalletOpt();'>Close[x]</a>
+      </div>
+      <div ID='walletBody' style='background:#151617;padding:0.5em;'>
+      <div ID='autoSelSpot'></div>
+    `;
+
+    const j = {
+      action : m.req,
+      result : true,
+      html   : html,
+      js     : "",
+      jsID   : this.calculateHash(JSON.stringify(doTry)),
+      pMUID  : this.ownMUID
     }
     res.end(JSON.stringify(j));
     return;

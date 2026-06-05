@@ -129,7 +129,7 @@ function doSendGoldNow() {
   var mnic = document.getElementById("sendToNic").value;
   var muid = document.getElementById("sendToMUID").value;
 
-  if (confirm("Send " + bmgp + " BORG Gold To " + mnic + " Now?")) {
+  if (confirm("Send " + bmgp + " BORG Shells To " + mnic + " Now?")) {
     sendRequest({
       req: "doSendBMGP",
       parms: {
@@ -416,7 +416,7 @@ function handleResponse(j) {
     hideDiv("walletForm");
     doShowQryResults(j);
     createAutoSelect({
-      title: "Send BORG Gold To",
+      title: "Send BORG Shells To",
       promt: "Type Name",
       action: "qryMemberSendTo"
     });
@@ -903,8 +903,9 @@ function videoShare(id) {
 }
 
 function wzGetPage(pg) {
+  document.location = "/";
   var app = MODE === "PC" ? "wzApp.php" : "mblp/wzMbl.php";
-
+  
   window.open(
     "https://web." + ROOT_DOMAIN + "/whzon/" + app + "?furl=" + encodeURIComponent(pg),
     "bitMonky"

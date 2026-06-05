@@ -173,6 +173,69 @@ class BorgHUIptreeAPI {
     console.log("borgHUIptreeAPI:: say hello");
   }
 
+  async peerPaysCreateOpeningBalance(muid) {
+    const unixTime = Date.now();
+
+    const payment = {
+      pacID: 1,
+      to: muid,
+      from: muid,
+      amount: 0,
+      unixTime: unixTime,
+      date: new Date(unixTime).toISOString().replace('T', ' ').replace('Z', ''),
+      status: 0,
+      signature: "",     // no signature needed for opening balance
+      signKey: "system", // or whatever you want to mark system-created entries
+      nCopies: 2
+    };
+
+    // Compute tx hash (same as PHP makeTx)
+    payment.tx = await this._sha256(JSON.stringify(payment));
+
+    const trans = {
+      from: muid,
+      payment: payment
+    };
+
+    return this._postJSON("peerPaysCell", {
+      msg: {
+        req: "createOpeningBalance",
+        userUID: muid,
+        trans: trans
+      }
+    });
+  }
+  async peerPaysMakeUserTrans(fromMuid, toMuid, amount, signature) {
+    const unixTime = Date.now();
+    const payment = {
+      pacID: 1,
+      to: toMuid,
+      from: fromMuid,
+      amount: amount,
+      unixTime: unixTime,
+      date: new Date(unixTime).toISOString().replace('T', ' ').replace('Z', ''),
+      status: 0,
+      signature: signature,
+      signKey: "xxxxx",
+      nCopies: 2
+    };
+
+    // Compute tx hash (same as PHP makeTx)
+    payment.tx = await this._sha256(JSON.stringify(payment));
+
+    const trans = {
+      from: fromMuid,
+      payment: payment
+    };
+
+    return this._postJSON("peerPaysCell", {
+      msg: {
+        req: "makeUserTransaction",
+        userUID: fromMuid,
+        trans: trans
+      }
+    });
+  }
   async peerPaysGetMyBalance(muid) {
     return this._postJSON("peerPaysCell", {
       msg: { req: "getUserBalance", userUID: muid }

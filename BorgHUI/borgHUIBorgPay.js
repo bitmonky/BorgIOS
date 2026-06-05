@@ -1,9 +1,8 @@
-
 class BorgHUIBorgPay {
    constructor(net) {
      this.net = net;
    }
-  async doSendBorgPayRecentTrans(m) {
+   async doSendBorgPayRecentTrans(m) {
     const borgAdr = this.net.wallet.ownMUID;
     const uAdr    = m.wAdr || borgAdr;
 
@@ -72,13 +71,19 @@ class BorgHUIBorgPay {
 
     htm += `</table></div>`;
 
+    let nicName = this.net.nicName;
+    let icon    = this.net.icon;
+
+    if (!nicName) nicName = 'Joe Blow';
+    if (!icon) icon =  'http://localhost/netREQ/msg=%7B%22req%22:%22getFileFromRepo%22,%22url%22:%22/whzon/bitMiner/getFileFromRepo.php?wzID=DESKTOP&fname=portMale17.jpg&rname=myOtherRepo&path=&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&folderID=0&encrypt=0%22,%22checkSum%22:%22cc97009add696816ff58af3f34a9a44c615d8a8ef529fe21696de957d9eeecd3%22,%22ftype%22:%22image/jpeg%22,%22PIN%22:%22TEST_PIN_2x49fg16%22}';
+
     // Return to HUI
     const j = {
       action  : "sendAccountInfo",
       result  : true,
-      name    : 'Joe Blow',
+      name    : nicName,
       balance : `${userBal.balance.toFixed(3)} BORG Shells - Confirms: ${userBal.confirms}`,
-      icon    : 'http://localhost/netREQ/msg=%7B%22req%22:%22getFileFromRepo%22,%22url%22:%22/whzon/bitMiner/getFileFromRepo.php?wzID=DESKTOP&fname=portMale17.jpg&rname=myOtherRepo&path=&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&folderID=0&encrypt=0%22,%22checkSum%22:%22cc97009add696816ff58af3f34a9a44c615d8a8ef529fe21696de957d9eeecd3%22,%22ftype%22:%22image/jpeg%22,%22PIN%22:%22TEST_PIN_2x49fg16%22}',
+      icon    : icon,
       html    : htm,
       js      : "",
       jsID    : this.net.wallet.calculateHash(htm),
