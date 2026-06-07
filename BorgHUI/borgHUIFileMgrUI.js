@@ -146,6 +146,13 @@ async deleteFileFromRepoGET(queryString) {
     return "Node::ftreeDeleteFileFromRepo: Failed";
   }
 
+  if (del.error || del.status != 200) {
+    return "Node::ftreeDeleteFileFromRepo:del.result Failed ";
+  }
+  if (del.json.result === false){
+    return `Node::ftreeDeleteFileFromRep: Failed ${del.json.msg}`;
+  }
+
   //
   // 5. Multi‑try shard deletion (1:1 with PHP)
   //
@@ -461,7 +468,6 @@ async buildRepoSidebarHTML(ctx) {
       html += `<h2>Local Repos Found</h2><div style='color:gray'>`;
 
       result.list.forEach(rec => {
-        console.log(`GET MY REPOS`,rec);
         html += `
           <a href="javascript:changeRepo('${rec.repoName}','${rec.repoOwner}');">
             <div id="id${rec.repoName}" style="width:100%;padding:.0em .5em 1em 1.5em;">

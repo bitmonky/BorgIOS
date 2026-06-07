@@ -2,8 +2,14 @@ const crypto = require("crypto");
 const fs = require("fs");
 process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 
-const shardSize = 256 * 1024;
+const shardSize    = 256 * 1024;
+const MAX_FAIL_REQ = 8;
 
+function sleep(ms){
+  return new Promise(resolve=>{
+    setTimeout(resolve,ms)
+  });
+}
 class Mutex {
   constructor() {
     this._locked = false;
@@ -32,11 +38,35 @@ class BorgHUIstreamMgr {
   constructor(net) {
     this.net = net;
     this.cell = null;
-    this.streams  = new Map();   // streamId → streamMeta / conversation
+    this.streams  = new Map();     // streamId → streamMeta / conversation
     this.dstreams = new Map();
-    this.memFiles = new Map();   // streamId → Buffer ( in memory file system);
-    this.sentShardListener();    // start listening for sendBinShard results.
+    this.memFiles = new Map();     // streamId → Buffer ( in memory file system);
+    this.sentShardListener();      // start listening for sendBinShard results.
+    this.shardPortals = new Map(); 
+    this.initializeShardPortals();
+
+    console.log(`BorgHUIstreamMgr:: shardPortals`,this.shardPortals);
   }
+  initializeShardPortals() {
+    const portals = this.net.portal.getPortalsAll('shardTreeCell');
+
+    this.shardPortals = portals;   // keep original if needed
+    this.shardPortalsMap = new Map();
+
+    for (const node of portals.nodes) {
+      this.shardPortalsMap.set(node.ip, {
+        ip: node.ip,
+        port: portals.port,
+        pKey: node.pKey,
+        errors: node.errors || 0,
+        lastSuccess: node.date || 0,
+        lastFailure: 0,
+        bannedUntil: 0
+      });
+    }
+
+    this.portalIndex = 0; // round‑robin index
+  }  
   attachCell(cell){
    this.cell = cell;
    console.log('hello');
@@ -87,6 +117,7 @@ class BorgHUIstreamMgr {
     const remaining = fileSize - offset;
     const isFinal   = (index === stream.count - 1);
 
+/*
     console.log(`writeShardToFile():: shardSize`,shardSize);
     console.log(`writeShardToFile():: fileSize`,fileSize);
     console.log(`writeShardToFile():: index`,index);
@@ -94,7 +125,7 @@ class BorgHUIstreamMgr {
     console.log(`writeShardToFile():: expectedShardId`,expectedShardId);
     console.log(`writeShardToFile():: remaining`,remaining);
     console.log(`writeShardToFile():: isFinal`,isFinal);
-
+*/
     // 1. Size validation
     if (!isFinal) {
       // Non-final shard must match shardSize exactly
@@ -263,7 +294,6 @@ class BorgHUIstreamMgr {
           clearTimeout(timer);
 
           this.net.removeListener('xhrFail', failListener);
-          this.net.removeListener('peerTReply', replyListener);
           this.net.removeListener('xhrPostOK', sendOKListener);
 
           this.removeStream(stream.streamId);
@@ -506,6 +536,56 @@ class BorgHUIstreamMgr {
     });
   }
   gatherShards(stream) {
+  // Create a per-stream queue if it doesn't exist
+  if (!stream._queue) {
+    stream._queue = [];
+    stream._processing = false;
+  }
+
+  const processQueue = async () => {
+    if (stream._processing) return;
+    stream._processing = true;
+
+    while (stream._queue.length > 0) {
+      const task = stream._queue.shift();
+      try {
+        await task();
+      } catch (err) {
+        console.log(`gatherShards().processQueue():: err `,err);
+        this.closeIncomingStream(stream,true);
+        break;
+      }
+    }
+
+    stream._processing = false;
+  };
+
+  const handler = (data) => {
+    if (data.streamId !== stream.streamId) return;
+
+    // Push shard-processing task into queue
+    stream._queue.push(async () => {
+      await this.onShardReceived({
+        streamId: stream.streamId,
+        shard: {
+          portal   : data.toHost,
+          shardId  : data.hash,
+          shardIdx : data.index,
+          error    : data.error,
+          shard    : data.data
+        }
+      });
+    });
+
+    // Kick the queue
+    processQueue();
+  };
+
+  this.net.on('requestBinShardOk', handler);
+  stream._shardHandler = handler;
+}
+/*
+gatherShards(stream) {
     const handler = async (data) => {
       if (data.streamId !== stream.streamId) return;
 
@@ -513,6 +593,7 @@ class BorgHUIstreamMgr {
         await this.onShardReceived({
           streamId: stream.streamId,
           shard: {
+            portal   : data.toHost,
             shardId  : data.hash,
             shardIdx : data.index,
             error    : data.error,
@@ -528,7 +609,8 @@ class BorgHUIstreamMgr {
     this.net.on('requestBinShardOk', handler);
     stream._shardHandler = handler;
   }
-  closeIncomingStream(stream) {
+*/
+  closeIncomingStream(stream,withError=false) {
     // Remove shard event listener
     if (stream._shardHandler) {
       this.net.removeListener('binShard', stream._shardHandler);
@@ -570,6 +652,14 @@ class BorgHUIstreamMgr {
       return;
     }
 
+    if (withError){
+      console.error("getFileFromRepo():: File read error: MAX_TRIES");
+      httpRes.writeHead(500);
+      httpRes.end("File read error");
+      this.dstreams.delete(stream.streamId);
+      return;
+    } 
+
     // Deliver file or Buffer to the browser
 
     const headers = {
@@ -584,7 +674,6 @@ class BorgHUIstreamMgr {
     // remove stream;
     this.dstreams.delete(stream.streamId);
 
-    console.log(`getFileFromRepo():: Headers:`,headers);
 
     // Send headers
     httpRes.writeHead(200, headers);
@@ -613,6 +702,7 @@ class BorgHUIstreamMgr {
       requestMutex : new Mutex(), 
       videoClients : [],
       videoShardBuffer  : new Map(), // idx -> Buffer
+      inRetry      : new Map(),      // retry watcher
       nextToSend   : 0,
       service      : service,
       streamId     : j.fileInfo.checkSum,
@@ -671,10 +761,35 @@ class BorgHUIstreamMgr {
     this.requestShardBatch(fmap.streamId,service);
     return fmap;
   }
+  getNextPortal() {
+    const now = Date.now();
+    const portals = Array.from(this.shardPortalsMap.values());
+    if (portals.length === 0) return null;
+
+    for (let i = 0; i < portals.length; i++) {
+      const portal = portals[this.portalIndex % portals.length];
+      this.portalIndex = (this.portalIndex + 1) % portals.length;
+
+      // Skip banned portals
+      if (portal.bannedUntil && portal.bannedUntil > now) {
+        continue;
+      }
+
+      return portal;
+    }
+
+    // If all portals are banned, pick the least-banned one
+    return portals.reduce((a, b) =>
+      (a.bannedUntil || 0) < (b.bannedUntil || 0) ? a : b
+    );
+  }
   async requestShardBatch(streamId,service) {
     const stream = this.dstreams.get(streamId);
-    //console.log(`requestShardBatch():: stream`,stream);
-    if (!stream) return;
+    if (!stream) {
+      console.log(`requestShardBatch():: stream NOT OPEN.`);
+      return;
+    }
+    console.log(`requestShardBatch():: stream`,stream.streamId);
 
     // If nothing left, close stream
     if (stream.pendingShards.size === 0 && stream.inFlight.size === 0) {
@@ -691,13 +806,19 @@ class BorgHUIstreamMgr {
         stream.pendingShards.size > 0
       ) {
         const shardIdx = this.getLowestPendingShard(stream.pendingShards);
-        console.log(`requestShardBatch():: filling`,shardIdx);
         if (shardIdx === null) return;
 
         // Move shard from pending → inFlight
         stream.pendingShards.delete(shardIdx);
         stream.inFlight.add(shardIdx);
         let shard = stream.shardHashes[shardIdx];
+
+        // 🔥 ROTATE PORTAL NODE HERE
+        const portal = this.getNextPortal();
+        if (portal) {
+          service.host = portal.ip;
+          service.port = this.shardPortals.port;  // shared port
+        }
         const msg = {
           req       : "requestShard",
           sIndex    : shardIdx,
@@ -710,7 +831,8 @@ class BorgHUIstreamMgr {
             shardSize : stream.shardSize
           }
         };
-        console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx],msg);
+        console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx].hash,portal.ip);
+        console.log(` `);
         this.sendMsgCX(service, msg);
       }
     } finally {
@@ -724,15 +846,49 @@ class BorgHUIstreamMgr {
     }
     return lowest === Infinity ? null : lowest;
   }
+  async maxTriesExceeded(stream,idx){
+
+    const tryIdx = stream.inRetry.get(idx);
+    if (!tryIdx) stream.inRetry.set(idx,{nFail: 0});
+    else {
+      tryIdx.nFail++;
+
+      if (tryIdx.nFail > MAX_FAIL_REQ){
+        console.log(`onShardReceived():: MAX_FAIL_REQ closeIncomingStream`);
+        this.closeIncomingStream(stream,true);
+        return true;
+      }
+    }
+    await sleep(500);
+
+    stream.pendingShards.add(idx);
+    return false;
+  }
   async onShardReceived(j) {
     const { streamId, shard } = j;
+    //console.log(`onShardReceived():: j`,j);
     const stream = this.dstreams.get(streamId);
     if (!stream) return;
     if (shard.shard === null){
-      //?X should count failed tries here;
-      console.log(`onShardReceived():: shard req error ${shard.shardId} ${shard.shardIdx} ${shard.error}`);
+      console.log(`onShardReceived():: shard req error ${shard.shardId} ${shard.shardIdx} ${shard.error}`,shard.portal);
+      const portal = this.shardPortalsMap.get(shard.portal);
+      if (portal) {
+        const now = Date.now();
+
+        portal.errors = (portal.errors || 0) + 1;
+        portal.lastFailure = now;
+        portal.consecutiveFailures = (portal.consecutiveFailures || 0) + 1;
+
+        // 🔥 HARD BAN: disable this portal for 2 minutes
+        portal.bannedUntil = now + 2 * 60 * 1000;
+
+        console.log(`Portal ${portal.ip} banned until ${portal.bannedUntil}`);        portal.errors = (portal.errors || 0) + 1;
+      }
+
       stream.inFlight.delete(shard.shardIdx);
-      stream.pendingShards.add(shard.shardIdx);
+      if (await this.maxTriesExceeded(stream,shard.shardIdx)){
+        return;
+      }
       this.requestShardBatch(streamId,stream.service);
       return;
     }
@@ -741,7 +897,7 @@ class BorgHUIstreamMgr {
     // 0. Ensure this shard was expected
     if (!stream.inFlight.has(idx)) {
       // Unexpected shard — ignore or log
-      console.warn(`Shard ${idx} for stream ${streamId} not in flight`);
+      console.warn(`Shard ${idx} for stream ${streamId} not in flight`,j);
       return;
     }
 
@@ -760,7 +916,7 @@ class BorgHUIstreamMgr {
       // store this shard’s bytes
       stream.videoShardBuffer.set(idx, shard.shard);
       
-      console.log(stream.nextToSend,stream.videoShardBuffer);
+      //console.log(stream.nextToSend,stream.videoShardBuffer);
       // try to flush in order starting from nextToSend
       while (stream.videoShardBuffer.has(stream.nextToSend)) {
         const chunk = stream.videoShardBuffer.get(stream.nextToSend);
@@ -768,7 +924,7 @@ class BorgHUIstreamMgr {
 
         for (const client of stream.videoClients) {
           try {
-            console.log(`onShardReceived():: write shard to media player`,stream.nextToSend);
+            //console.log(`onShardReceived():: write shard to media player`,stream.nextToSend);
             client.write(chunk);
           } catch (err) {
             console.warn("Video client disconnected", err);
@@ -784,8 +940,11 @@ class BorgHUIstreamMgr {
         `Shard ${idx} rejected for stream ${streamId}: ${result.reason}`
       );
 
-      // Re-request this shard
-      stream.pendingShards.add(idx);
+      // Try Re-request this shard
+
+      if (await this.maxTriesExceeded(stream,shard.Idx)){
+        return;
+      }
 
       // Continue filling the window
       this.requestShardBatch(streamId,stream.service);
@@ -877,13 +1036,13 @@ class BorgHUIstreamMgr {
      const endPoint = service.endPoint;
      const toHost   = service.host;
      const https    = require('https');
-     msg.borgToken  = this.net.wallet.getBorgToken();
+     const borgToken  = this.net.wallet.getBorgToken();
 
      msg.errCount = 0;
      msg.sentTime = Date.now();
      msg.service  = service;
 
-     const pmsg = {msg : msg}
+     const pmsg = {msg : msg,borgToken : borgToken }
      const data = JSON.stringify(pmsg);
 
      var emitError = null;
@@ -929,6 +1088,8 @@ class BorgHUIstreamMgr {
                shard.error = reqEr;
                shard.data  = null;            
              } else {
+               shard.toHost = msg.toHost;
+               shard.error = false;
                shard.data  = body;
              }
              this.net.emit('requestBinShardOk',shard);
@@ -992,10 +1153,11 @@ class BorgHUIstreamMgr {
      req.end();
   }
   procAsShard(msg){
-    let shard   = msg.shard;
-    shard.index = msg.sIndex;
-    shard.error = msg.xhrError;
-    shard.data  = null;
+    let shard    = msg.shard;
+    shard.toHost = msg.toHost;
+    shard.index  = msg.sIndex;
+    shard.error  = msg.xhrError;
+    shard.data   = null;
     //console.log(`requestShard:: Error `,shard.error);
     this.net.emit('requestBinShardOk',shard);
   } 

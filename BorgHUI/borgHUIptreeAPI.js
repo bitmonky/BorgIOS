@@ -73,7 +73,7 @@ class BorgHUIptreeAPI {
     msgObj.borgToken = this.net.wallet.getBorgToken();
 
     const body = JSON.stringify(msgObj);
-    console.log(`url`,url,`body`,msgObj);
+    //console.log(`url`,url,`body`,msgObj);
     return this._httpRequestRaw(
       url,
       {
@@ -341,7 +341,7 @@ class BorgHUIptreeAPI {
 
   async ptreeDeleteShard(muid, hash, hashID, encrypted = null, nCopys = 3) {
     return this._postJSON("shardTreeCell", {
-      msg: { req: "deleteShard", shard: { ownerID: muid, hash, hashID, nCopys } }
+      msg: { req: "deleteShard", shard: { ownerID: muid, pubKey: this.net.wallet.publicKey,hash, hashID, nCopys } }
     });
   }
 

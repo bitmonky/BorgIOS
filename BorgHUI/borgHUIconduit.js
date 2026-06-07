@@ -154,7 +154,6 @@ class BorgPortal {
     if (index === -1) {
       return null;
     }
-    console.log(this.portals[index]);
 
     return {port: this.portals[index].recpPort, nodes:[...this.portals[index].activeNodes]};
   }
@@ -262,6 +261,7 @@ function urldecode(msg) {
 class bitMonkyWSrv extends  EventEmitter {
   constructor(){
     super();
+    this.portal     = new BorgPortal();
     this.DStream    = new BorgHUIstreamMgr(this);
     this.sseClients = [];
     this.portal     = new BorgPortal();
@@ -286,7 +286,7 @@ class bitMonkyWSrv extends  EventEmitter {
    
     this.srv = webCon.createServer( async (req, res) => {
      var pathname = url.parse(req.url).pathname;
-     console.log(req.url);
+     
      if (req.method === 'GET' && pathname === '/favicon.ico') {
        res.setHeader('Content-Type', 'image/x-icon');
        fs.createReadStream('favicon.ico').pipe(res);
@@ -465,7 +465,6 @@ class bitMonkyWSrv extends  EventEmitter {
       const ps = this.portal.getPortalsAll('cronoTreeCell');
       const portals = ps.nodes;
 
-      console.log(`applyCronoTreeTime():: time portals found:`,portals);
       if (!portals || portals.length === 0) {
         setTimeout(() => this.applyCronoTreeTime(), this.clockPulse);
         return;
@@ -531,7 +530,6 @@ class bitMonkyWSrv extends  EventEmitter {
        },
        timeout: 3500   // 1.5s timeout — adjust as needed
      };
-     console.log(`requestCronoTime():: msg,options`,msg,options);
      return new Promise((resolve, reject) => {
        const req = https.request(options, (res) => {
          let data = '';
@@ -539,7 +537,6 @@ class bitMonkyWSrv extends  EventEmitter {
          res.on('data', chunk => data += chunk);
          res.on('end', () => {
            try {
-             console.log(`requestCronoTime():: `,data);
              resolve(JSON.parse(data));
            } catch (err) {
              reject(new Error(`Invalid JSON response: ${data}`));
@@ -563,7 +560,7 @@ class bitMonkyWSrv extends  EventEmitter {
           
      try {
        j = JSON.parse(msg);
-       console.log(`handleRequest():: values:`,j);
+       //console.log(`handleRequest():: values:`,j);
        if (j.req){
          if (j.req == 'useNewWallet'){
            this.wallet.changeWallet(j,res);
@@ -822,13 +819,12 @@ async getFileFromRepo(req, msg, res) {
       headers["Content-Disposition"] = `inline; filename="${fname}"`;
     }
     
-    console.log(`getFileFromRepo():: Headers:`,headers);
+    //console.log(`getFileFromRepo():: Headers:`,headers);
+
     // -----------------------------------
     // SEND FILE
     //-------------------------------------
-    console.log("Transfer-Encoding BEFORE:", res.getHeader("Transfer-Encoding"));
     res.writeHead(200, headers);
-    console.log("Transfer-Encoding AFTER:", res.getHeader("Transfer-Encoding"));
 
     if (Buffer.isBuffer(result)) {
       console.log(`getFileFromRepo():: response is buffer:`);
@@ -1486,7 +1482,7 @@ class bitMonkyWallet{
            port     : ''
          }
        }
-       console.log('sendPostRequest():: sending msg :',msg,service);
+       //console.log('sendPostRequest():: sending msg :',msg,service);
        const https = require('https');
 
        const data = JSON.stringify(msg);
