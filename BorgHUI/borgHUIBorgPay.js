@@ -75,8 +75,10 @@ class BorgHUIBorgPay {
     let icon    = this.net.icon;
 
     if (!nicName) nicName = 'Joe Blow';
-    if (!icon) icon =  'http://localhost/netREQ/msg=%7B%22req%22:%22getFileFromRepo%22,%22url%22:%22/whzon/bitMiner/getFileFromRepo.php?wzID=DESKTOP&fname=portMale17.jpg&rname=myOtherRepo&path=&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&folderID=0&encrypt=0%22,%22checkSum%22:%22cc97009add696816ff58af3f34a9a44c615d8a8ef529fe21696de957d9eeecd3%22,%22ftype%22:%22image/jpeg%22,%22PIN%22:%22TEST_PIN_2x49fg16%22}';
-
+    if (!icon) icon =  'http://localhost/netREQ/msg=%7B%22req%22:%22getFileFromRepo%22,%22url%22:%22/whzon/bitMiner/getFileFromRepo.php?wzID=DESKTOP&fname=myIcon.jpg&rname=MyFiles&path=%2F&ownerMUID=1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ&folderID=0&encrypt=0%22,%22checkSum%22:%22acc84ad4437e6d9008a2f084584845ef44033ff9731a162cfeb0efa88f411d44%22,%22ftype%22:%22image/jpeg%22,%22PIN%22:%22TEST_PIN_2x49fg16%22}';
+/*
+http://localhost/netREQ/msg=%7B%22req%22:%22getFileFromRepo%22,%22url%22:%22/whzon/bitMiner/getFileFromRepo.php?wzID=DESKTOP&fname=portMale17.jpg&rname=myOtherRepo&path=&ownerMUID=1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ&folderID=0&encrypt=0%22,%22checkSum%22:%22cc97009add696816ff58af3f34a9a44c615d8a8ef529fe21696de957d9eeecd3%22,%22ftype%22:%22image/jpeg%22,%22PIN%22:%22TEST_PIN_2x49fg16%22}';
+*/
     // Return to HUI
     const j = {
       action  : "sendAccountInfo",

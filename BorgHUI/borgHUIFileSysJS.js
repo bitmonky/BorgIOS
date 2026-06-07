@@ -251,7 +251,7 @@ function doBorgRFolderAdd(rname, foldname, foldID, parentID,owner){
   const newDiv = document.createElement("div");
   newDiv.id    = "folder:" + foldname;
   newDiv.innerHTML =
-    `<a href="javascript:openFolder('${rname}',${foldID},'${foldname},'${owner}');">
+    `<a href="javascript:openFolder('${rname}',${foldID},'${foldname}','${owner}');">
       <div style="width:100%;padding:.0em .5em .5em 1.5em;">/${foldname}</div>
     </a>`;
 
@@ -272,27 +272,16 @@ function handlerCreateRepoFolder(j){
   var spot = document.getElementById(j.res);
   sbut.disabled = false;
   spot.innerHTML = '';
-  let parms = parseQuery(j.url);
-  var res = j.html;
-  try {
-    let r = JSON.parse(res);
-    let d = JSON.parse(r.data);
-    if (d.result){
-      console.log('parseQuery():: parms', parms);
-      console.log('parseQuery():: res:', res);
-      console.log('parseQuery():: data:', r.data);
-      if (d.msg !== 'OK' || r.error !== false){
-        alert(`Problem d.msg: ${d.msg} res.error: ${r.error}`);
-      }
-      let newFolderID = d.result;
-      console.log('parseQuery():: newFolderID:', newFolderID);
-      doBorgRFolderAdd(parms.rname, parms.folder, newFolderID, parms.parentID,parms.owner);
-      return;
-    }
-    alert(j.data.error);
-  } catch(err){
-    alert('JSON Error: ' + res + err);
+  const parms = j.meta;
+
+  console.log('parseQuery():: parms', j.meta);
+  if (parms.result !== 'OK'){
+    alert(`Problem Repo Folder Crete Failed ${j.html}`);
   }
+  let newFolderID = j.meta.newRepo;
+  console.log('CreateRepoFolder():: newFolderID:', newFolderID);
+  doBorgRFolderAdd(parms.name, parms.folder, newFolderID, parms.parent,parms.owner);
+  return;
 }
 
 function startRepoUpload(){

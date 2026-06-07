@@ -1017,12 +1017,14 @@ class bitMonkyWallet{
 
      // Try streaming file to the shardTreeCell network.
      let doTry = await this.net.DStream.streamTo(service);
-     //console.log(`doUploadFile():: doTry`,doTry);
-     if (doTry.res.result !== 'STREAM_META_ACK'){
+     console.log(`doUploadFile():: doTry`,doTry);
+
+     if (doTry.result === 'xhrFail' || doTry?.res?.result !== 'STREAM_META_ACK'){
         let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
         console.log(errorMsg);
-        j.result = false;
+        j.result = true;
         j.data = `Error - ${errorMsg}`;
+        j.response = `Error - ${errorMsg}`;
         res.end(JSON.stringify(j));
         return;
      }
@@ -1031,12 +1033,21 @@ class bitMonkyWallet{
 
      // File stored OK so send meta data to the ftreeFileMgrCell
      doTry = await this.ftreeInsertFileToRepo(doTry.stream, r.ownerMUID, r.rname, r.filename,j.mimeType, r.path, r.folderID, 3,r.encrypt);
-     //console.log(`ftreeInsertFileToRepo():: doTry is `, doTry);
+     console.log(`ftreeInsertFileToRepo():: doTry is `, doTry);
      if (!doTry){
         let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
-        console.log(errorMsg);
-        j.result = false;
-        j.data = `Error - ${errorMsg}`;
+        j.result     = true;
+        j.data       = `Error - ${errorMsg}`;
+        j.response   = `Error - ${errorMsg}`;
+        res.end(JSON.stringify(j));
+        return;
+     }
+     if (doTry.result === false){
+        let errorMsg = doTry.msg;
+        j.result     = true;
+        j.data       = `Error - ${errorMsg}`;
+        j.response   = errorMsg;
+        console.log(`doTry:: false`,j);       
         res.end(JSON.stringify(j));
         return;
      }
@@ -1171,11 +1182,21 @@ class bitMonkyWallet{
     const j = {
       action : m.req,
       result : true,
+      res : {
+        result  : 'OK',
+        url     : m.url,
+        folder  : doTry.folder,
+        name    : doTry.name,
+        parent  : doTry.parent,
+        newRepo : doTry.newRepo.json.result,
+        owner   : this.ownMUID
+      }, 
       html   : html,
       js     : "",
       jsID   : this.calculateHash(JSON.stringify(doTry)),
       pMUID  : this.ownMUID
     }
+    console.log(`doCreateRepoFolder():: sending j`,j);
     res.end(JSON.stringify(j));
     return;
   }

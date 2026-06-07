@@ -107,7 +107,7 @@ async createRepoFolderGET(queryString) {
   //
   // 6. Return JSON (same as PHP echo json_encode)
   //
-  return newRepo;
+  return {result:'OK',newRepo,name,folder,parent};
 }
 async deleteFileFromRepoGET(queryString) {
   //

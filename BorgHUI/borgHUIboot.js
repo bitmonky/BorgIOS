@@ -628,6 +628,7 @@ function doShowBorgFileSys(j) {
 }
 
 function doUpdateResByUrl(j) {
+  console.log(`doUpdateResByUrl():: j`,j);
   var spot = document.getElementById(j.res);
   if (!spot) {
     alert("Inserting Target DIV " + j.res + " Failed");
@@ -750,6 +751,7 @@ function sendRequest(msg,extendedTime=50){
               action   : 'updateResByUrl',
               res      : msg.res || msg.parms.res,
               callback : msg.callbck,
+              meta     : r.res,
               html     : r.html || xml.responseText,
               js       : r.js || '',
               jsID     : r.jsID || ''

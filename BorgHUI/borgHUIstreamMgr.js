@@ -535,6 +535,7 @@ class BorgHUIstreamMgr {
       fstream.on("error", reject);
     });
   }
+/*
   gatherShards(stream) {
   // Create a per-stream queue if it doesn't exist
   if (!stream._queue) {
@@ -584,8 +585,8 @@ class BorgHUIstreamMgr {
   this.net.on('requestBinShardOk', handler);
   stream._shardHandler = handler;
 }
-/*
-gatherShards(stream) {
+*/
+  gatherShards(stream) {
     const handler = async (data) => {
       if (data.streamId !== stream.streamId) return;
 
@@ -609,7 +610,7 @@ gatherShards(stream) {
     this.net.on('requestBinShardOk', handler);
     stream._shardHandler = handler;
   }
-*/
+
   closeIncomingStream(stream,withError=false) {
     // Remove shard event listener
     if (stream._shardHandler) {
