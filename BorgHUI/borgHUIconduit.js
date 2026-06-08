@@ -21,6 +21,7 @@ const ec      = new EC('secp256k1');
 const bitcoin = require('bitcoinjs-lib');
 const crypto  = require('crypto');
 const mime    = require('mime-types');
+const sodium  = require('libsodium-wrappers');
 const ALGO    = "aes-256-cbc"
 const port    = 80;
 const wfile   = 'keys/myBMGPWallet.key';
@@ -40,6 +41,15 @@ const sanitize = require('sanitize-filename');
 const baseDir = path.join(__dirname, 'uploads');
 const allowedExtensions = ['.jpg', '.png', '.txt'];
 
+function deriveFileKey(masterKey) {
+  return crypto.hkdfSync(
+    'sha256',
+    Buffer.from(masterKey, 'hex'),
+    Buffer.alloc(0),                 // no salt
+    Buffer.from("borg-file-key"),    // info
+    32
+  );
+}
 function sanitizeFilename(filename) {
   const safeFilename = sanitize(filename);
 
@@ -982,24 +992,42 @@ class bitMonkyWallet{
         const key = ec.genKeyPair();
         this.publicKey = key.getPublic('hex');
         this.privateKey = key.getPrivate('hex');
+
         console.log('Generate a new wallet key pair and convert them to hex-strings');
-        var mkybc = bitcoin.payments.p2pkh({ pubkey: new Buffer.from(''+this.publicKey, 'hex') });
+
+        let mkybc = bitcoin.payments.p2pkh({ pubkey: Buffer.from(this.publicKey, 'hex')});
         this.ownMUID = mkybc.address;
 
-        const pmc = ec.genKeyPair();
-        this.pmCipherKey  = pmc.getPublic('hex');
+        // Derive cipher key deterministically from private key
+        const cipherSeed = this.calculateHash(this.privateKey); // 32-byte hash
+        const pmc = ec.keyFromPrivate(cipherSeed);
+        this.pmCipherKey = pmc.getPublic('hex');
 
-        console.log('Generate a new wallet cipher key');
-        mkybc = bitcoin.payments.p2pkh({ pubkey: new Buffer.from(''+this.pmCipherKey, 'hex') });
+        console.log('Derive wallet cipher key from private key');
+
+        mkybc = bitcoin.payments.p2pkh({ pubkey: Buffer.from(this.pmCipherKey, 'hex')});
         this.walletCipher = mkybc.address;
+        this.fileKey = deriveFileKey(this.privateKey);
 
+        // RSA mail identity tied to walletCipher
         const rsaMail = new mkyRSAMail(this.walletCipher);
         this.rsaKeys = rsaMail.generateKeys();
+
         this.writeWallet();
       }
    }
    async doUploadFile(j, res) {
      console.log('doUploadFile::',j);
+  
+     const r = j.repoInfo;
+     if (r.ownerMUID !== this.ownMUID){
+       j.result     = true;
+       j.data       = `Error`;
+       j.response   = `This Repo Is Read Only... Access Denied.`;
+       res.end(JSON.stringify(j));
+       return;
+     }
+
      const https    = require('https');
      const FormData = require('form-data');
 
@@ -1028,7 +1056,7 @@ class bitMonkyWallet{
         res.end(JSON.stringify(j));
         return;
      }
-     const r = j.repoInfo;
+     
      let doWait = await this.net.DStream.uploadResult(doTry.stream.streamId);
 
      // File stored OK so send meta data to the ftreeFileMgrCell
@@ -1060,63 +1088,6 @@ class bitMonkyWallet{
 
      res.end(JSON.stringify(j));
 
-/*
-     const remoteUrl = j.targetURL;
-
-     const form = new FormData();
-     form.append('photo', fs.createReadStream(filePath), {
-        filename: j.fileName, 
-        contentType: j.mimeType
-     });
-
-     const options = {
-        hostname : 'www.bitmonky.com',
-        port     : 443,
-        path     : '/whzon/bitMiner/storeRepoFileOnTree.php',
-        method: 'POST',
-        headers: form.getHeaders(),
-     };
-
-     const req = https.request(options, serverRes => {
-        console.log(options);
-        let responseData = '';
-
-        serverRes.on('data', (chunk) => {
-            responseData += chunk;
-        });
-
-        serverRes.on('end', () => {
-            try {
-                console.log('ResponseData is::',responseData);
-                const response = JSON.parse(responseData);
-                if (response.result) {
-                    console.log('Upload successful:', response);
-                    j.result = true;
-                    j.msg = 'File uploaded successfully.';
-                    j.response = response;
-                } else {
-                    console.log('Upload failed:', response);
-                    j.result = false;
-                    j.msg = `Error on file upload: ${response.message}`;
-                }
-            } catch (error) {
-                console.log('Failed to parse server response:',responseData, error);
-                j.result = false;
-                j.msg = `Error on file upload: ${responseData}`;
-            }
-            res.end(JSON.stringify(j));
-        });
-    });
-
-    req.on('error', (error) => {
-        console.log('Request error:', error);
-        j.result = false;
-        j.data = `Error on file upload: ${error.message}`;
-        res.end(JSON.stringify(j));
-    });
-
-    form.pipe(req);
-*/
   }
   buildShardMap(stream) {
     const shards = [];
@@ -1172,18 +1143,19 @@ class bitMonkyWallet{
   }
   async doCreateRepoFolder(m,res){
     console.log(`doCreateRepoFolder():: m.url`,m.url);
-
+    let result = 'OK'
     let doTry = await this.net.UI.createRepoFolderGET(m.url);
     let html  = JSON.stringify(doTry);
     if  (doTry.status === null){
       html = JSON.stringify(doTry);
+      result = 'FAIL'
     }
     console.log(`doCreateRepoFolder():: doTry`,doTry);
     const j = {
       action : m.req,
       result : true,
       res : {
-        result  : 'OK',
+        result  : result,
         url     : m.url,
         folder  : doTry.folder,
         name    : doTry.name,
@@ -1408,6 +1380,46 @@ class bitMonkyWallet{
      j.msgRsaToken = this.rsaMail.encryptString(randTok,j.parms.msg.toPubKey);
      j.msgRsaIV    = this.rsaMail.encryptString(randIV,j.parms.msg.toPubKey);
      res.end(JSON.stringify(j));
+   }
+   async encryptXChaCha20(msg, key) {
+     await sodium.ready;
+
+     // Convert message to Uint8Array
+     const messageBytes = Buffer.isBuffer(msg)
+      ? new Uint8Array(msg)
+      : sodium.from_string(msg);
+
+     // 24-byte XChaCha20 nonce
+     const nonce = sodium.randombytes_buf(
+        sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
+     );
+
+     // AEAD encrypt
+     const ciphertext = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+       messageBytes,
+       null,   // no additional authenticated data
+       null,   // no secret nonce
+       nonce,
+       key
+     );
+
+     return {
+       nonce: Buffer.from(nonce),
+       ciphertext: Buffer.from(ciphertext)
+     };
+   }
+   async decryptXChaCha20(ciphertext, nonce, key) {
+     await sodium.ready;
+
+     const plaintext = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+       null,   // no secret nonce
+       new Uint8Array(ciphertext),
+       null,   // no AAD
+       new Uint8Array(nonce),
+       key
+     );
+
+     return Buffer.from(plaintext).toString("utf8");
    }
    enCrypt(msg,msgToken,msgIV){
      let cipher = crypto.createCipheriv(ALGO, msgToken, msgIV);
