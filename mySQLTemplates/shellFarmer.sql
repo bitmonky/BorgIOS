@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS borg_replay_log (
   tokTime BIGINT NOT NULL,
   borgHUID VARCHAR(100) NOT NULL,
   service VARCHAR(100),
-
+  request VARCHAR(100),
   borgToken TEXT NOT NULL,            -- full JSON borgToken
   borgTokenSig VARCHAR(200) NOT NULL, -- j.sesSig
   signedPayload TEXT NOT NULL,        -- j.sesTok
