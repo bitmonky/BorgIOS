@@ -268,12 +268,12 @@ class peerPaysCellReceptor{
     return sig;
   }
   async reqCreateOpeningBalance(j,res,borgToken){
-    console.log(`reqCreateOpeningBalance():: `,j);
+    console.log(`reqCreateOpeningBalance():: `,j,borgToken);
 
     // examin transaction to ensure it amounts contain zeros only and  is for the correct user.
     let trans = j.trans;
-    if (trans.from !== trans.payment.to || trans.from !== borgToken.Address || trans.payment.amount !== 0){
-      res.end('{"result":"tranFail","trans": JSON.stringify(trans),"error" : "Invalid Opening Balance Transaction..."}');
+    if (trans.from !== trans.payment.to || trans.from !== borgToken.Address || trans.payment.amount !== '0.000000000'){
+      res.end('{"result":"tranFail","trans": '+ JSON.stringify(trans) +',"error" : "Invalid Opening Balance Transaction..."}');
       return;
     }
 
@@ -308,7 +308,7 @@ class peerPaysCellReceptor{
       console.log('n is:',n,'length:: ',IPs.length);
       if (n==IPs.length -1){
         await this.reqConfirmUserTrans(IPs,j);  // notify hosts it is safe to set the confirmation status for the the txID
-        res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":'+j.trans.payment.tx+',"hosts":'+JSON.stringify(hosts)+'}');
+        res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":"'+j.trans.auth.tx+'","hosts":'+JSON.stringify(hosts)+'}');
         return;
       }
       n = n + 1;
@@ -355,7 +355,7 @@ class peerPaysCellReceptor{
       console.log('n is:',n,'length:: ',IPs.length);
       if (n==IPs.length -1){
         await this.reqConfirmUserTrans(IPs,j);  // notify hosts it is safe to set the confirmation status for the the txID
-        res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":'+j.trans.payment.tx+',"hosts":'+JSON.stringify(hosts)+'}');
+        res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":"'+j.trans.auth.tx+'","hosts":'+JSON.stringify(hosts)+'}');
         return;
       }
       n = n + 1;
@@ -653,7 +653,7 @@ class peerPaysObj {
           this.doSendUserTransactions(j.msg,j.remIp);
         }
         if (j.msg.req == 'sendNodeList'){
-          console.log('DOPOW xxxx',j.remIp);
+          console.log('DOPOW xxxx',j.remIp,j);
           this.doPow(j.msg,j.remIp,j.msg.reqId);
         }
         if (j.msg.req == 'hello'){
@@ -757,7 +757,7 @@ class peerPaysObj {
   doConfirmUserTrans(j,remIp){
     const checkSQL = `
         update pLedger set pledTxStatus = 1
-        WHERE pledTx = '${j.trans.payment.tx}';
+        WHERE pledTx = '${j.trans.auth.tx}';
     `;
     console.log('doConfirmUserTrans::SQL:',checkSQL,j);
     con.query(checkSQL, async (err, result) => {
@@ -765,7 +765,7 @@ class peerPaysObj {
         console.log('Error confirming transaction: ', err);
         this.net.sendReply(remIp, {
           req     : 'confirmUserTransRes',
-          txId    : j.trans.payment.tx,
+          txId    : j.trans.auth.tx,
           status  : 'error',
           message : 'Database error'
         });
@@ -773,14 +773,14 @@ class peerPaysObj {
       }
       this.net.sendReply(remIp, {
         req    : 'confirmUserTransRes',
-        txId   : j.trans.payment.tx,
+        txId   : j.trans.auth.tx,
         status : 'success'
       });
     });
   }
   async doMakeUserTrans(j,remIp){  //verifyAndInsertTransaction(j, remIp) {
     // 1. Verify the signature
-    const isSignatureValid = this.verifySignature(j.trans.payment);
+    const isSignatureValid = this.verifySignature(j.trans.payment,j.trans.auth);
     if (!isSignatureValid) {
         console.log('Invalid signature. Transaction rejected.');
         this.net.sendReply(remIp, {
@@ -796,7 +796,7 @@ class peerPaysObj {
     const checkSQL = `
         SELECT COUNT(*) AS count 
         FROM pLedger 
-        WHERE pledTx = '${j.trans.payment.tx}';
+        WHERE pledTx = '${j.trans.auth.tx}';
     `;
 
     con.query(checkSQL, async (err, result) => {
@@ -824,6 +824,17 @@ class peerPaysObj {
 
         // 3. Get Transantion User Current Balances
         const bFrom = await this.receptorReqUserBalance(j);
+
+        // Check for opening balance   
+
+        if (bFrom.confirms == 0 && j.trans.payment.to === j.trans.payment.from && j.trans.payment.amount === '0.000000000'){
+          console.log('Inserting New Borg User opening account');
+          j.trans.payment.toBalance = '0.000000000';
+          j.trans.payment.frBalance = '0.000000000';
+          this.doInsertTransaction(j, remIp);
+          return;
+        }
+  
         const bTo   = await this.receptorReqUserBalance(j,j.trans.payment.to);
 
         if (bFrom.confirms == 0 || bTo.confirms == 0){
@@ -857,14 +868,14 @@ class peerPaysObj {
   }
 
   // Helper function to verify the signature
-  verifySignature(payment) {
+  verifySignature(payment,auth) {
     const crypto = require('crypto');
     return true; //CDDDDG REMOVE IN PROD XXXXX
     try {
-      const publicKey = payment.signKey; // Assuming signKey is the public key
-      const verifier = crypto.createVerify('SHA256');
-      verifier.update(payment.tx + payment.from + payment.to + payment.amount + payment.unixTime);
-      return verifier.verify(publicKey, payment.signature, 'hex');
+      const publicKey = auth.publicKey; // Assuming signKey is the public key
+      const verifier  = crypto.createVerify('SHA256');
+      verifier.update(JSON.stringify(j.payment));
+      return verifier.verify(publicKey, auth.signature, 'hex');
     }
     catch(err) {
       console.log('Verify Signature Error::', err);
@@ -879,10 +890,10 @@ class peerPaysObj {
             pledUnixTime, pledDate, pledToBalance,pledFrBalance, pledTxStatus, 
             pledSignature, pledSignKey
         ) VALUES (
-            ${j.trans.payment.pacID}, '${j.trans.payment.tx}', '${j.trans.payment.to}', '${j.trans.payment.from}', 
+            ${j.trans.payment.pacID}, '${j.trans.auth.tx}', '${j.trans.payment.to}', '${j.trans.payment.from}', 
             ${j.trans.payment.amount}, ${j.trans.payment.unixTime}, '${j.trans.payment.date}', 
-            ${j.trans.payment.toBalance},${j.trans.payment.frBalance}, 0, '${j.trans.payment.signature}', 
-            '${j.trans.payment.signKey}'
+            ${j.trans.payment.toBalance},${j.trans.payment.frBalance}, 0, '${j.trans.auth.signature}', 
+            '${j.trans.auth.pubKey}'
         );
     `;
 
@@ -985,7 +996,7 @@ class peerPaysObj {
         console.log('Send Node List Request Timeout:');
         this.net.removeListener('mkyReply', mkyReply);
         resolve(IPs);
-      },17*1000);
+      },3*1000);
 
       const reqId = crypto.randomUUID();
       var req = {
@@ -998,6 +1009,7 @@ class peerPaysObj {
 
       this.net.broadcast(req);
       this.net.on('mkyReply', mkyReply = (r)=>{
+         console.log(`broadcast heard:: `, r);
         if (r.req == 'pNodeListGenIP' && r.reqId == reqId){
           console.log('mkyReply NodeGen is:',r);
           if (IPs.length < maxIP){
@@ -1017,7 +1029,7 @@ class peerPaysObj {
     this.net.gpow.doStop(remIp);
   }
   doPow(j,remIp){
-    this.net.gpow.doPow(2,j.work,remIp);
+    this.net.gpow.doPow(2,j.work,remIp,j.reqId);
   }
   doReplyHelloBack(remIp){
     var reply = {
