@@ -782,7 +782,7 @@ class peerPaysObj {
     // 1. Verify the signature
     const isSignatureValid = this.verifySignature(j.trans.payment,j.trans.auth);
     if (!isSignatureValid) {
-        console.log('Invalid signature. Transaction rejected.');
+        console.log('Invalid signature. Transaction rejected.',isSignatureValid);
         this.net.sendReply(remIp, {
             req     : 'makeUserTransRes', 
             reqId   : j.reqId,
@@ -870,12 +870,13 @@ class peerPaysObj {
   // Helper function to verify the signature
   verifySignature(payment,auth) {
     const crypto = require('crypto');
-    return true; //CDDDDG REMOVE IN PROD XXXXX
+    //return true; //CDDDDG REMOVE IN PROD XXXXX
     try {
-      const publicKey = auth.publicKey; // Assuming signKey is the public key
-      const verifier  = crypto.createVerify('SHA256');
-      verifier.update(JSON.stringify(j.payment));
-      return verifier.verify(publicKey, auth.signature, 'hex');
+      const publicKey = ec.keyFromPublic(auth.pubKey, 'hex');
+      const msgHash   = calculateHash(JSON.stringify(payment));
+
+      console.log(`verifySignature():: `,msgHash,JSON.stringify(payment));
+      return  publicKey.verify(msgHash, auth.signature);
     }
     catch(err) {
       console.log('Verify Signature Error::', err);
