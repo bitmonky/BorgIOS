@@ -7,6 +7,16 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 
+function formatAmount(amount) {
+  const s = String(amount);
+  let [intPart, decPart = ""] = s.split(".");
+
+  if (!intPart) intPart = "0";
+  decPart = (decPart + "000000000").slice(0, 9);
+
+  return `${intPart}.${decPart}`;
+}
+
 class BorgHUIptreeAPI {
   constructor(net) {
     this.net = net;
@@ -177,61 +187,69 @@ class BorgHUIptreeAPI {
     const unixTime = Date.now();
 
     const payment = {
-      pacID: 1,
-      to: muid,
-      from: muid,
-      amount: 0,
-      unixTime: unixTime,
-      date: new Date(unixTime).toISOString().replace('T', ' ').replace('Z', ''),
-      status: 0,
-      signature: "",     // no signature needed for opening balance
-      signKey: "system", // or whatever you want to mark system-created entries
-      nCopies: 2
+      pacID    : 1,
+      to       : muid,
+      from     : muid,
+      amount   : formatAmount(0),
+      unixTime : unixTime,
+      date     : new Date(unixTime).toISOString().replace('T', ' ').replace('Z', ''),
     };
 
-    // Compute tx hash (same as PHP makeTx)
-    payment.tx = await this._sha256(JSON.stringify(payment));
+    // Compute tx hash
+    const txHash = await this.net.wallet.calculateHash(JSON.stringify(payment));
+
+    const auth = {
+      tx        : txHash,
+      signature : this.net.wallet.signToken(txHash),
+      pubKey    : this.net.wallet.publicKey,
+    }
 
     const trans = {
-      from: muid,
-      payment: payment
+      from    : muid,
+      payment : payment,
+      auth    : auth,
+      status    : 0,
+      nCopies   : 3
     };
 
     return this._postJSON("peerPaysCell", {
       msg: {
         req: "createOpeningBalance",
-        userUID: muid,
         trans: trans
       }
     });
   }
-  async peerPaysMakeUserTrans(fromMuid, toMuid, amount, signature) {
+  async peerPaysMakeUserTrans(fromMuid, toMuid, amount) {
     const unixTime = Date.now();
     const payment = {
-      pacID: 1,
-      to: toMuid,
-      from: fromMuid,
-      amount: amount,
-      unixTime: unixTime,
-      date: new Date(unixTime).toISOString().replace('T', ' ').replace('Z', ''),
-      status: 0,
-      signature: signature,
-      signKey: "xxxxx",
-      nCopies: 2
+      pacID    : 1,
+      to       : toMuid,
+      from     : fromMuid,
+      amount   : formatAmount(amount),
+      unixTime : unixTime,
+      date     : new Date(unixTime).toISOString().replace('T', ' ').replace('Z', ''),
     };
 
-    // Compute tx hash (same as PHP makeTx)
-    payment.tx = await this._sha256(JSON.stringify(payment));
+    // Compute tx hash 
+    const txHash = await this.net.wallet.calculateHash(JSON.stringify(payment));
+
+    const auth = {
+      tx        : txHash,
+      signature : this.net.wallet.signToken(txHash),
+      pubKey    : this.net.wallet.publicKey,
+    }
 
     const trans = {
-      from: fromMuid,
-      payment: payment
+      from    : fromMuid,
+      payment : payment,
+      auth    : auth,
+      status  : 0,
+      nCopies : 3
     };
 
     return this._postJSON("peerPaysCell", {
       msg: {
         req: "makeUserTransaction",
-        userUID: fromMuid,
         trans: trans
       }
     });

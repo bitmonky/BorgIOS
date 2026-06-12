@@ -279,6 +279,8 @@ class bitMonkyWSrv extends  EventEmitter {
     this.UI         = new BorgHUIFileMgrUI(this);
     this.BPay       = new BorgHUIBorgPay(this);
     this.wallet     = new bitMonkyWallet(this);
+    this.wcj        = null; // wallet conf json data;
+
     this.clockPulse = 60*1000;
     this.init();
     //setInterval(() => { this.pushEvent('borg-event',{hello:"hello"});console.log(`borg-event`);},8000);
@@ -287,10 +289,15 @@ class bitMonkyWSrv extends  EventEmitter {
     //console.log(this.wallet);
     this.allow = ["127.0.0.1"];
     this.recPort = 1385;
-    this.readConfigFile();
+ 
     const wp  = await this.portal.selectPortal('borgApacheCell');
     this.webPortal = `${wp.host}:${wp.port}`;
-    this.applyCronoTreeTime();
+
+    await this.applyCronoTreeTime();
+
+    this.readConfigFile();
+    if (!this.wcj.openBal)   this.wallet.doCreateOpeningBalance();
+    if (!this.wcj.userRoot)  this.wallet.doCreateNewUserRootRepo();
 
     console.log('USINGING WEB PORTAL',this.webPortal);
    
@@ -911,11 +918,16 @@ async getFileFromRepo(req, msg, res) {
      catch {console.log('no config file found');}
      if (conf){
        try {
-         conf = conf.toString();
-         const j = JSON.parse(conf);
+         conf     = conf.toString();
+         const j  = JSON.parse(conf);
+         this.wcj = j;
+
          this.recPort       = j.receptor.port;
          this.allow         = j.receptor.allow;
          this.nicName       = j.nicName;
+         this.icon          = j.icon || null;
+         this.openBal       = j.openBal || false;
+         console.log(`readConfigFile():: this.wcj`, this.wcj);
        }
        catch(err) {
          console.log('conf file not valid', err);
@@ -933,6 +945,7 @@ class bitMonkyWallet{
       this.privateKey  = null;
       this.signingKey  = null;
       this.rsaKeys     = null;
+      this.newWallet   = null;
       this.openWallet();
             
    }
@@ -989,9 +1002,11 @@ class bitMonkyWallet{
         }
       }
       else {
-        const key = ec.genKeyPair();
-        this.publicKey = key.getPublic('hex');
+        const key       = ec.genKeyPair();
+        this.publicKey  = key.getPublic('hex');
         this.privateKey = key.getPrivate('hex');
+
+        this.signingKey = ec.keyFromPrivate(this.privateKey);
 
         console.log('Generate a new wallet key pair and convert them to hex-strings');
 
@@ -1014,7 +1029,43 @@ class bitMonkyWallet{
         this.rsaKeys = rsaMail.generateKeys();
 
         this.writeWallet();
+        this.newWallet = true;  
       }
+   }
+   async doCreateOpeningBalance(){
+     let doTry = await this.net.PTree.peerPaysCreateOpeningBalance(this.ownMUID);
+     console.log(`doCreateOpeningBalance():: doTry`,doTry);
+
+     if (doTry.error === false){
+       try {
+         const j = JSON.parse(doTry?.raw);
+         if (j.result === "tranOK"){
+           this.net.wcj.openBal = true;
+           // Persist to disk
+           fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
+             if (err) console.log(`updateWallet.conf:: `,err);
+           });
+         }
+       } catch(e){
+         console.log(`doCreateOpeningBalance():: JSON er`,e);
+       } 
+     }       
+   }
+   async doCreateNewUserRootRepo(){
+
+     const newRepo = await this.net.PTree.ftreeCreateRepo(this.ownMUID,'myRoot',3);
+     
+     console.log(`doCreateNewUserRootRepo():: newRepo`,newRepo);   
+     if (newRepo && newRepo?.error === false && newRepo?.json?.result === 'repoOK'){
+       this.net.wcj.userRoot = true;
+       fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
+         if (err) console.log(`updateWallet.conf:: `,err);
+       });
+       console.log(`doCreateNewUserRootRepo():: myRoot repo created`);
+       return;
+     }     
+     console.error(`doCreateNewUserRootRepo():: failed`,rewRepo);
+     return;
    }
    async doUploadFile(j, res) {
      console.log('doUploadFile::',j);
@@ -1202,7 +1253,7 @@ class bitMonkyWallet{
     return;
   }
   async doCreateRepo(m,res){
-    console.log(`doDeleteFile():: m.url`,m.url);
+    console.log(`doCreateRepo():: m.url`,m.url);
 
     let doTry = await this.net.UI.createRepoGET(m.url);
     let html  = JSON.stringify(doTry);
