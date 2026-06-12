@@ -1064,7 +1064,7 @@ class bitMonkyWallet{
        console.log(`doCreateNewUserRootRepo():: myRoot repo created`);
        return;
      }     
-     console.error(`doCreateNewUserRootRepo():: failed`,rewRepo);
+     console.error(`doCreateNewUserRootRepo():: failed`,newRepo);
      return;
    }
    async doUploadFile(j, res) {

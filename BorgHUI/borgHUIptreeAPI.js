@@ -197,13 +197,13 @@ class BorgHUIptreeAPI {
 
     // Compute tx hash
     const txHash = await this.net.wallet.calculateHash(JSON.stringify(payment));
-
+ 
     const auth = {
       tx        : txHash,
-      signature : this.net.wallet.signToken(txHash),
+      signature : this.net.wallet.signToken(JSON.stringify(payment)),
       pubKey    : this.net.wallet.publicKey,
     }
-
+    console.log(`peerPaysCreateOpeningBalanc():: `,auth,JSON.stringify(payment));
     const trans = {
       from    : muid,
       payment : payment,
@@ -235,7 +235,7 @@ class BorgHUIptreeAPI {
 
     const auth = {
       tx        : txHash,
-      signature : this.net.wallet.signToken(txHash),
+      signature : this.net.wallet.signToken(JSON.stringify(payment)),
       pubKey    : this.net.wallet.publicKey,
     }
 
