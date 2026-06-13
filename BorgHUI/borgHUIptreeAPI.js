@@ -288,8 +288,9 @@ class BorgHUIptreeAPI {
   }
 
   async ftreeGetMyRepos(muid) {
+     const borgMasterUID = this.net.borgMasterID;
     return this._postJSON("ftreeFileMgrCell", {
-      msg: { req: "getMyRepoList", repo: { from: muid } }
+      msg: { req: "getMyRepoList", borgMasterUID:borgMasterUID,repo: { from: muid } }
     });
   }
 

@@ -662,8 +662,8 @@ function doUpdateResByUrl(j) {
 function getAddressSpot(j) {
   return (
     "<div onmouseOver='showDiv(\"changeWLink\",\"inline\");' onmouseout='hideDiv(\"changeWLink\");'>" +
-    "Borg Identity: " +
-    format(j.pMUID) +
+    "Borg Identity: <span ID='borgIdentity'>" +
+    format(j.pMUID) + "</span>" +
     " <a ID='changeWLink' style='display:none;' href='javascript:showDiv(\"walletForm\");'>Change Wallet</a></div>" +
     "<div class='infoCardClear' ID='walletForm' style='display:none;'><form> " +
     "Change Wallet <a href='javascript:hideDiv(\"walletForm\");'>Cancel</a> | " +
@@ -684,7 +684,7 @@ function doShowAccountInfo(j) {
   if (!spot) return;
 
   var htm = "<div ID='doShowAcc' class='infoCardClear' style='width:100%'>";
-  htm += "<img style='width:5em;height:6em;margin:0em 0em 1.5em 1.5em;float:right;border-radius:50%;' src='" + j.icon + "'/>";
+  htm += "<img ID='borgMyICON' style='width:5em;height:6em;margin:0em 0em 1.5em 1.5em;float:right;border-radius:50%;' src='" + j.icon + "'/>";
   htm += "Account Owner: " + format(j.name);
   htm += getAddressSpot(j) +
          "<br/>Balance: " + format(j.balance) +

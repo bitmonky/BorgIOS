@@ -401,6 +401,7 @@ var cSpotID   = null;
 var cSpotIDtx = null;
 
 function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, chkSum){
+  hide('avitarButton');
   hide('photoIMG');
   hide('videoSpot');
   hide('textSpot');
@@ -411,8 +412,11 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
   if (!ftype){ ftype = 'image/png'; }
   showSearching();
 
-  var id = 'photoIMG';
-  if      (ftype.substr(0,5) == 'image')     { id = 'photoIMG'; }
+  let id = 'photoIMG';
+  let av = null;
+
+  if      (ftype.substr(0,5) == 'image')     { id = 'photoIMG'; av = 'avitarButton';   show('avitarButton'); }
+
   else if (ftype.substr(0,5) == 'video')     { id = 'videoSpot'; }
   else if (ftype.indexOf('download') !== -1) { id = 'download'; }
   else                                        { id = 'textSpot'; }
@@ -433,7 +437,7 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
   cfileName = fName;
 
   var url  = '/whzon/bitMiner/getFileFromRepo.php?' + data;
-  var murl = `/netREQ/msg={"req":"getFileFromRepo","url":"${url}","checkSum":"${chkSum}","ftype":"${ftype}","PIN":"TEST_PIN_2x49fg16"}`;
+  var murl = `/netREQ/msg={"req":"getFileFromRepo","url":"${url}","checkSum":"${chkSum}","ftype":"${ftype}"}`;
 
   if (id == 'download'){
     hideSearching();
@@ -458,12 +462,18 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
   } else {
     hideSearching();
     spot.src = murl;
+    if (av) {
+      let avb = document.getElementById(av);
+      console.log('avitarButton found');
+      avb.onclick = function () { updateMyIcon(murl)};
+    }
     if (id == 'videoSpot'){
       show(id);
       spot.type = ftype;
     }
     show(id);
   }
+  hideSearching();
 }
 
 function handlerTextSpot(j){
@@ -510,7 +520,30 @@ function downloadRepoFile(){
   link.click();
   document.body.removeChild(link);
 }
+function addslashes(str) {
+  return (str + '')
+    .replace(/[\\"']/g, '\\$&')
+    .replace(/\u0000/g, '\\0');
+}
+function updateMyIcon(url){
+  var conf = confirm('Use Image As User Avitar?');
+  if (!conf){ return; }
 
+  const ico = document.getElementById('borgMyICON')
+  ico.src = url;
+  hideSearching();
+
+  hide('photoIMG');
+  hide('videoSpot');
+  hide('textSpot');
+  hide('fileActionSpot');
+  scrollToTop();
+
+  sendRequest({
+    req: "updateMyIcon",
+    iconFile: encodeURIComponent(encodeURIComponent(url))
+  });
+}
 function deleteRepoFile(){
   console.log('/whzon/bitMiner/borgDelFileFromRepo.php?' + cfileData);
   var conf = confirm('Delete This File From Your Repo?');

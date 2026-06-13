@@ -291,7 +291,7 @@ async getBorgFileSys(url) {
 
     <div class='infoCardClear' style='background:#151515;' id='imgDisplaySpot'>
       <div id='fileActionSpot' align='right' style='display:none;padding:.5em;color:#777777;'>
-        <input type='button' value=' Display Memory File ' onclick='displayMemoryFile();'/>
+        <input ID='avitarButton' type='button' value=' Use As User Avitar '/>
         <input type='button' value=' Delete Repo File ' onclick='deleteRepoFile();'/>
         <input type='button' value=' Download ' onclick='downloadRepoFile();'/>
       </div>

@@ -279,8 +279,8 @@ class bitMonkyWSrv extends  EventEmitter {
     this.UI         = new BorgHUIFileMgrUI(this);
     this.BPay       = new BorgHUIBorgPay(this);
     this.wallet     = new bitMonkyWallet(this);
-    this.wcj        = null; // wallet conf json data;
-
+    this.wcj        = null; // wallet conf json data; 
+    this.borgMasterID = this.getBorgMasterID();
     this.clockPulse = 60*1000;
     this.init();
     //setInterval(() => { this.pushEvent('borg-event',{hello:"hello"});console.log(`borg-event`);},8000);
@@ -452,6 +452,9 @@ class bitMonkyWSrv extends  EventEmitter {
     this.srv.listen(port,'localhost');
     console.log('bitMonky Wallet Server running at http://localhost:'+port);
   }
+  async getBorgMasterID(){
+    return '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ';
+  }
   handleSSE(req, res) {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -577,7 +580,7 @@ class bitMonkyWSrv extends  EventEmitter {
           
      try {
        j = JSON.parse(msg);
-       //console.log(`handleRequest():: values:`,j);
+       //console.log(`handleRequest():: values:`,msg);
        if (j.req){
          if (j.req == 'useNewWallet'){
            this.wallet.changeWallet(j,res);
@@ -609,6 +612,14 @@ class bitMonkyWSrv extends  EventEmitter {
             this.startBorgBrowser(res);
             return;
          }  
+         if (j.req === 'updateMyIcon'){
+           await this.wallet.doUpdateMyIcon(j,res);
+           return;
+         }
+         if (j.req === 'createAccount'){
+           await this.wallet.doCreateAccount(j,res);
+           return;
+         }
          if (j.req === 'sendWalletOptions'){
            await this.wallet.doSendWalletOptions(j,res);
            return;
@@ -637,6 +648,7 @@ class bitMonkyWSrv extends  EventEmitter {
      }
      catch(err) {
        console.log("json parse error:",err);
+       console.log(`handleRequest():: values:`,msg);
        res.end("JSON PARSE Errors: \n\n"+msg+"\n\n"+err);
      }
   }
@@ -1031,6 +1043,55 @@ class bitMonkyWallet{
         this.writeWallet();
         this.newWallet = true;  
       }
+   }
+   async doUpdateMyIcon(j,res){
+     const newIcon = decodeURIComponent(j.iconFile);
+     this.net.wcj.icon = newIcon;
+
+     this.net.wcj.hasAccIcon = true;
+     j.result = true;
+     j.msg    = 'Account Icon Updated';
+
+     // Persist to disk
+     fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
+       if (err){
+         console.log(`doUpdateMyIcon():: updateWallet.conf:: `,err);
+       }
+       j.result = false;
+       j.msg    = `Failed To Save... Try Again Please`;
+       this.net.icon = newIcon;
+     });
+    
+     j.response = j.msg;
+
+     console.log(`doUpdateMyIcon():: final`,j);
+
+     res.end(JSON.stringify(j));
+   }
+   async doCreateAccount(j,res){
+     const ac = j.parms;
+     this.net.wcj.nicName = ac.firstname;
+     this.net.wcj.age     = ac.age;
+     this.net.wcj.sex     = ac.sex;
+
+     this.net.wcj.hasAccInfo      = true;
+     j.result = true;
+     j.msg    = 'Account Updated';
+
+     // Persist to disk
+     fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
+       if (err){
+         console.log(`updateWallet.conf:: `,err);
+       }      
+       j.result = false;
+       j.msg    = `Failed To Save... Try Again Please`;
+     });
+
+     j.response = j.msg;
+
+     console.log(`doCreateAccount():: final`,j);
+
+     res.end(JSON.stringify(j)); 
    }
    async doCreateOpeningBalance(){
      let doTry = await this.net.PTree.peerPaysCreateOpeningBalance(this.ownMUID);
