@@ -179,6 +179,10 @@ class mailTreeCellReceptor{
 		console.log('json error : ',body);
                 return;
 	      }	 
+              if (this.checkBorgToken(j,res) === false){
+                return;
+              }
+
 	      res.setHeader('Content-Type', 'application/json');
               res.writeHead(200);
               if (j.msg.req == 'getInBoxKey'){
@@ -219,6 +223,19 @@ class mailTreeCellReceptor{
     });
     bserver.listen(this.port);
     console.log('peerTree Mail Receptor running on port:'+this.port);
+  }
+  checkBorgToken(j,res) {
+
+    let doTry = this.peer.net.verifyLogin(j);
+    if (doTry.result === true){
+      return true;
+    }
+    // Reject Request.
+    console.log(`checkBorgToken():: doTry`,doTry,j);
+    res.setHeader('Content-Type', 'application/json');
+    res.writeHead(450);
+    res.end(`{"result":false,"error": "Invalid BorgToken Request Rejected","msg":"${doTry.msg}"}`);
+    return false;
   }
   readConfigFile(){
      var conf = null;
@@ -781,21 +798,73 @@ class mailTreeObj {
    }
    doRegisterInBox(j,remIp){
      var res = {
-       req : 'registerInBoxResult',
+       req    : 'registerInBoxResult',
+       reqId  : j.reqId,
        result : false
      }
      if (this.isValidSig(j.sig)){
-       //*store the public key and reply true
-       const SQL = `insert into mailTree.mailSubscriber (msubMUID,msubPubKey) values ('${j.sig.ownMUID}','${j.sig.pubKey}')`;
-       con.query(SQL , (err, result,fields)=>{
-         if (err){
-           console.log(err);
-           result.msg = err;
+       //*store or update the Borg User Mail Registry.
+       const checkSQL = `SELECT msubID FROM mailTree.mailSubscriber WHERE msubMUID = ?`;
+
+       con.query(checkSQL, [j.sig.ownMUID], (err, rows) => {
+         if (err) {
+           console.error("mailSubscriber pre-check error:", err);
+           this.endResCX(remIp, JSON.stringify(res));
+           return;
          }
-         else {
-           res.result = true;
+         const values = [
+           j.icon?.fname  || null,
+           j.icon?.fcsum  || null,
+           j.icon?.rname  || null,
+           j.icon?.folder || null,
+           j.icon?.path   || null,
+           j.icon?.ftype  || null,
+           j.nic          || null,
+           j.sig.ownMUID
+         ];
+
+         if (rows.length > 0) {
+           // -----------------------------------------
+           // USER EXISTS → UPDATE
+           // -----------------------------------------
+           const updateSQL = ` UPDATE mailTree.mailSubscriber SET msubIconFName  = ?, msubIconFCSum  = ?, msubIconRName  = ?, msubIconFolder = ?,
+              msubIconPath   = ?, msubIconFType  = ?, msubBorgNic  = ?  WHERE msubMUID = ? `;
+
+           con.query(updateSQL, values, (err2, result2) => {
+             if (err2) {
+               console.error("mailSubscriber update error:", err2);
+             } else {
+               res.result = true;
+             }
+             this.endResCX(remIp, JSON.stringify(res));
+           });
+ 
+         } else {
+           const SQL = ` INSERT INTO mailTree.mailSubscriber (msubMUID, msubPubKey,msubIconFName, msubIconFCSum, msubIconRName,
+             msubIconFolder, msubIconPath, msubIconFType, msubBorgNic)  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+           const values = [
+             j.sig.ownMUID,
+             j.sig.pubKey,
+             j.icon?.fname  || null,
+             j.icon?.fcsum  || null,
+             j.icon?.rname  || null,
+             j.icon?.folder || null,
+             j.icon?.path   || null,
+             j.icon?.ftype  || null,
+             j.nic          || null
+           ];
+
+           con.query(SQL ,values, (err, result,fields)=>{
+             if (err){
+               console.log(err);
+               result.msg = err;
+             }
+             else {
+               res.result = true;
+             }
+             this.net.sendReply(remIp,JSON.stringify(res));
+           });
          }
-         this.net.sendReply(remIp,JSON.stringify(res));
        });
      } 
      else {
@@ -979,16 +1048,20 @@ class mailTreeObj {
         resolve(null);
       },1000);
       //console.log('bcasting reques for mail data: ',j);
+
+      const reqID = crypto.randomUUI();
+
       var req = {
-        to   : 'mailCells',
-        req  : 'registerInBox',
-        data : j
+        to    : 'mailCells',
+        req   : 'registerInBox',
+        reqId : reqId,
+        data  : j
       }
 
       this.net.sendMsg(toIp,req);
       this.net.once('mkyReply', r =>{
         //console.log('mkyReply is:',r);
-        if (r.req == 'registerInBoxResult' && r.remIp == toIp){
+        if (r.req == 'registerInBoxResult' && r.reqId === reqId){
           //console.log('mailData Request',r);
           clearTimeout(gtime);
           resolve(r);
