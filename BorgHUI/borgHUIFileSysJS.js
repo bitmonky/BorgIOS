@@ -439,6 +439,15 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
   var url  = '/whzon/bitMiner/getFileFromRepo.php?' + data;
   var murl = `/netREQ/msg={"req":"getFileFromRepo","url":"${url}","checkSum":"${chkSum}","ftype":"${ftype}"}`;
 
+  const icon = {
+    fname : fName,
+    fcsum : chkSum,
+    rname : rname,
+    folder: folderID,
+    path  : path,
+    ftype : ftype
+  }
+
   if (id == 'download'){
     hideSearching();
     const fconf = confirm('download file .: ' + fName + ' now?\nFrom .:' + murl);
@@ -465,7 +474,7 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
     if (av) {
       let avb = document.getElementById(av);
       console.log('avitarButton found');
-      avb.onclick = function () { updateMyIcon(murl)};
+      avb.onclick = function () { updateMyIcon(murl,icon)};
     }
     if (id == 'videoSpot'){
       show(id);
@@ -525,7 +534,7 @@ function addslashes(str) {
     .replace(/[\\"']/g, '\\$&')
     .replace(/\u0000/g, '\\0');
 }
-function updateMyIcon(url){
+function updateMyIcon(url,icon){
   var conf = confirm('Use Image As User Avitar?');
   if (!conf){ return; }
 
@@ -540,8 +549,9 @@ function updateMyIcon(url){
   scrollToTop();
 
   sendRequest({
-    req: "updateMyIcon",
-    iconFile: encodeURIComponent(encodeURIComponent(url))
+    req      : "updateMyIcon",
+    iconFile : encodeURIComponent(encodeURIComponent(url)),
+    icon     : icon
   });
 }
 function deleteRepoFile(){

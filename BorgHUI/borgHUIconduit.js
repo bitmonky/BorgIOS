@@ -173,7 +173,7 @@ class BorgPortal {
     console.log('INDEX', index, netName);
 
     if (index === -1) {
-      return { host: 'web.bitmonky.com', port: 443 };
+      return { host: 'localhost', port: 80 };
     }
 
     let activeNodes = [...this.portals[index].activeNodes]; // Copy active nodes
@@ -298,6 +298,7 @@ class bitMonkyWSrv extends  EventEmitter {
     this.readConfigFile();
     if (!this.wcj.openBal)   this.wallet.doCreateOpeningBalance();
     if (!this.wcj.userRoot)  this.wallet.doCreateNewUserRootRepo();
+    if (!this.wcj.borgReg)   this.wallet.doUpdateBorgRegistry();
 
     console.log('USINGING WEB PORTAL',this.webPortal);
    
@@ -878,8 +879,8 @@ async getFileFromRepo(req, msg, res) {
       jsCode =
         `// Injected by BorgHUI\n` +
         `var MODE        = "PC";        // or "Mobile"\n` +
-        `var ROOT_DOMAIN = "bitmonky.com";\n` +
-        `var SERVICE_HOST = "www.bitmonky.com";\n` +
+        `var ROOT_DOMAIN = "localhost";\n` +
+        `var SERVICE_HOST = "localhost";\n` +
         `var NET_PORT     = "" //80;\n` +
         `var PIN          = "TEST_PIN_2x49fg16";\n` +
         `\n` + jsCode; 
@@ -1044,9 +1045,19 @@ class bitMonkyWallet{
         this.newWallet = true;  
       }
    }
+   async doUpdateBorgRegistry(){
+     const regInfo   = this.net.wcj.imeta;
+     regInfo.nicName = this.net.wcj.nicName;
+
+     console.log(`doUpdateMyIcon() registry info`,regInfo);
+
+     this.net.wcj.borgReg = false;
+     return false;
+   }
    async doUpdateMyIcon(j,res){
      const newIcon = decodeURIComponent(j.iconFile);
      this.net.wcj.icon = newIcon;
+     this.net.wcj.imeta = j.icon;
 
      this.net.wcj.hasAccIcon = true;
      j.result = true;
@@ -1061,7 +1072,10 @@ class bitMonkyWallet{
        j.msg    = `Failed To Save... Try Again Please`;
        this.net.icon = newIcon;
      });
-    
+
+     // Do Update BorgMail User Registry with j.icon data
+     let doTry = await this.doUpdateBorgRegistry();
+
      j.response = j.msg;
 
      console.log(`doUpdateMyIcon():: final`,j);
