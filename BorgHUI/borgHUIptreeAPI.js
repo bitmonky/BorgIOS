@@ -281,6 +281,9 @@ class BorgHUIptreeAPI {
     });
   }
 
+  async mailTreeRegisterBorgUser(msg) {
+    return this._postJSON("mailTreeCell",{msg:msg});
+  }
   async ftreeCreateRepoFolder(muid, name, folder, parent) {
     return this._postJSON("ftreeFileMgrCell", {
       msg: { req: "createRepoFolder", repo: { from: muid, name, folder, parent } }

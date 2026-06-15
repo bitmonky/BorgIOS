@@ -1046,12 +1046,30 @@ class bitMonkyWallet{
       }
    }
    async doUpdateBorgRegistry(){
-     const regInfo   = this.net.wcj.imeta;
-     regInfo.nicName = this.net.wcj.nicName;
+     const regInfo   = this.net.wcj.imeta || {};
+     regInfo.nicName = this.net.wcj.nicname;
 
-     console.log(`doUpdateMyIcon() registry info`,regInfo);
-
-     this.net.wcj.borgReg = false;
+     const msg = {
+       req   : 'registerInBox',
+       reqId : crypto.randomUUID(),
+       icon  : regInfo,
+       nic   : regInfo.nicName
+     }
+     console.log(`doUpdateBorgRegistry():: `,msg);
+     let doTry = await this.net.PTree.mailTreeRegisterBorgUser(msg);
+     
+     console.log(`doUpdateBorgRegistry():: doTry`,doTry);
+     if (doTry?.error === false && doTry?.status === 200 && doTry?.json?.result === true){
+       this.net.wcj.borgReg = true;
+       console.log(`doUpdateBorgRegistry():: `,this.net.wcj.borgReg);
+       // Persist to disk
+       fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
+         if (err){
+           console.log(`doUpdateMyIcon():: updateWallet.conf:: `,err);
+         }
+       });
+       return true;
+     }
      return false;
    }
    async doUpdateMyIcon(j,res){
@@ -1063,6 +1081,10 @@ class bitMonkyWallet{
      j.result = true;
      j.msg    = 'Account Icon Updated';
 
+     // Do Update BorgMail User Registry with j.icon data
+     let doTry = await this.doUpdateBorgRegistry();
+     if (doTry ) this.net.wcj.borgReg = true;
+       
      // Persist to disk
      fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
        if (err){
@@ -1073,11 +1095,7 @@ class bitMonkyWallet{
        this.net.icon = newIcon;
      });
 
-     // Do Update BorgMail User Registry with j.icon data
-     let doTry = await this.doUpdateBorgRegistry();
-
      j.response = j.msg;
-
      console.log(`doUpdateMyIcon():: final`,j);
 
      res.end(JSON.stringify(j));
@@ -1641,7 +1659,7 @@ class bitMonkyWallet{
            port     : ''
          }
        }
-       //console.log('sendPostRequest():: sending msg :',msg,service);
+       console.log('sendPostRequest():: sending msg :',msg,service);
        const https = require('https');
 
        const data = JSON.stringify(msg);
