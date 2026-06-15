@@ -183,10 +183,20 @@ class mailTreeCellReceptor{
                 return;
               }
 
+              if (!j.msg.sig){
+                j.msg.sig = {
+                  ownMUID   : j.borgToken.Address, 
+                  token     : j.borgToken.sesTok,
+                  pubKey    : j.borgToken.pubKey,
+                  signature : j.borgToken.sesSig
+                }
+              } 
+              console.log(`Heard j.msg`,j.msg);
+
 	      res.setHeader('Content-Type', 'application/json');
               res.writeHead(200);
               if (j.msg.req == 'getInBoxKey'){
-                 this.reqInBoxKey(j.msn,res);
+                 this.reqInBoxKey(j.msg,res);
                  return;
               }
               if (j.msg.req == 'registerInBox'){
@@ -289,19 +299,28 @@ class mailTreeCellReceptor{
     res.end(JSON.stringify({result:false}));
   }
   async reqRegisterInBox(j,res){
-    const isRegistered = await this.peer.receptorReqInBoxKey({ownMUID:j.ownMUID});
-    if (isRegistered){
-      res.end(JSON.stringify({result:true}));
+    console.log(`reqRegisterInBox():: heard j`,j);
+    j.ownMUID  = j.sig.ownMUID;
+    let maxIPs = j.nCopies || 3;
+    j.nCopies  = maxIPs;
+
+    let regIPs = await this.peer.receptorReqInBoxKeyIPs(j);
+    if (regIPs.length === 0){
+      regIPs = await this.peer.receptorReqNodeList(j);
+      if (regIPs.length == 0){
+        console.log(`reqRegisterInBox():: no available`,regIPs);
+        res.end('{"result":false,"nRecs":0,"repo":"No Nodes Available"}');
+        return;
+      }
     }
-    var IPs = await this.peer.receptorReqNodeList(j);
-    if (IPs.length == 0){
-      res.end('{"result":false,"nRecs":0,"repo":"No Nodes Available"}');
-      return;
+    if (regIPs < maxIPs){
+      let IPs = await this.peer.receptorReqNodeList(j,regIps);
+      IPs.forEach((ip) => { regIPs.push(ip);});
     }
     var n = 0;
     var hosts = [];
     var nStored = 0;
-    for (var IP of IPs){
+    for (var IP of regIPs){
       try {
         var qres = await this.peer.receptorReqRegisterInBox(j,IP);
         if (qres){
@@ -310,10 +329,10 @@ class mailTreeCellReceptor{
         }
       }
       catch(err) {
-        console.log('repo storage failed on:',IP);
+        console.log('Borg User Update failed on:',IP,err);
       }
-      if (n==IPs.length -1){
-        console.log('{"result":"repoOK","nStored":'+nStored+',"request":'+JSON.stringify(j)+',"hosts":'+JSON.stringify(hosts)+'}');
+      if (n === regIPs.length -1){
+        console.log('{"result":"regOK","nStored":'+nStored+',"request":'+JSON.stringify(j)+',"hosts":'+JSON.stringify(hosts)+'}');
         res.end('{"result":true,"nStored":'+nStored+'}');
         return;
       }
@@ -554,7 +573,8 @@ class mailTreeObj {
     return new Promise( (resolve,reject)=>{
       console.log('receptorReqNodeList::',j);
       var mkyReply = null;
-      const maxIP = j.nCopies;
+      const maxIP = j.nCopies || 3;
+      
       var   IPs = [];
       const gtime = setTimeout( ()=>{
         console.log('Send Node List Request Timeout:');
@@ -562,23 +582,26 @@ class mailTreeObj {
         resolve(IPs);
       },1.5*1000);
 
+      const reqId = crypto.randomUUID();
       var req = {
         to     : 'mailCells',
         req    : 'sendNodeList',
+        reqId  : reqId,
         nodes  : maxIP,
         xnodes : excludeIps,
         work   : crypto.randomBytes(20).toString('hex')
       }
-
+      console.log(`receptorReqNodeList():: bcast`,req);
       this.net.broadcast(req);
       this.net.on('mkyReply', mkyReply = (r)=>{
-        if (r.req == 'pNodeListGenIP'){
+        if (r.req === 'pNodeListGenIP'){
           console.log('mkyReply NodeGen is:',r.remIp);
           if (IPs.length <= maxIP){
+            console.log('mkyReply maxIP ${maxIP} NodeGen is: ',r.remIp);
             IPs.push(r.remIp);
           }
           else {
-            this.receptorReqStopIPGen(req.work);
+            //this.receptorReqStopIPGen(req.work);
             clearTimeout(gtime);
             this.net.removeListener('mkyReply', mkyReply);
             resolve(IPs);
@@ -716,7 +739,7 @@ class mailTreeObj {
           this.net.sendReply(j.remIp,qres);
         }
         if (j.msg.req == 'sendInBoxKey'){
-          this.doSendInBoxKey(j.msg,r.remIp);
+          this.doSendInBoxKey(j.msg,j.remIp);
         }
         if (j.msg.req == 'sendMail'){
           this.doSendMailToOwner(j.msg,j.remIp);
@@ -770,13 +793,16 @@ class mailTreeObj {
     return publicKey.verify(calculateHash(sig.token), sig.signature);
   }
   doSendInBoxKey(j,remIp){
+     console.log(`doSendInBoxKey`,j);
      var res = {
-       req : 'sendInBoxKeyResult',
+       req    : 'sendInBoxKeyResult',
+       reqId  : j.reqId,
        result : false
      }
      if (this.isValidSig(j.sig)){
        //*store the public key and reply true
-       const SQL = `select msubPubKey from mailTree.mailSubscriber where msubMUID = '${j.ownMUID}'`;
+       const SQL = `select msubPubKey from mailTree.mailSubscriber where msubMUID = '${j.MUID}'`;
+       console.log(SQL);
        con.query(SQL , (err, result,fields)=>{
          if (err){
            console.log(err);
@@ -786,22 +812,24 @@ class mailTreeObj {
            if (result.length > 0){
              res.result = true;
              res.publicKey = result[0].msubPubKey;
+             console.log(`doSendInBoxKey():: `,result[0]);
+             this.net.sendReply(remIp,res);
            }
          }
-         this.net.sendReply(remIp,JSON.stringify(res));
        });
      }
      else {
-        res.msg = 'invalid signature mailBox not created';
-        this.net.sendReply(remIp,JSON.stringify(res));
+       console.log('invalid signature... no access');
      }
    }
    doRegisterInBox(j,remIp){
-     var res = {
+     var reply = {
        req    : 'registerInBoxResult',
        reqId  : j.reqId,
        result : false
      }
+     j = j.data;
+
      if (this.isValidSig(j.sig)){
        //*store or update the Borg User Mail Registry.
        const checkSQL = `SELECT msubID FROM mailTree.mailSubscriber WHERE msubMUID = ?`;
@@ -809,7 +837,7 @@ class mailTreeObj {
        con.query(checkSQL, [j.sig.ownMUID], (err, rows) => {
          if (err) {
            console.error("mailSubscriber pre-check error:", err);
-           this.endResCX(remIp, JSON.stringify(res));
+           this.net.sendReply(remIp, reply);
            return;
          }
          const values = [
@@ -834,9 +862,9 @@ class mailTreeObj {
              if (err2) {
                console.error("mailSubscriber update error:", err2);
              } else {
-               res.result = true;
+               reply.result = true;
              }
-             this.endResCX(remIp, JSON.stringify(res));
+             this.net.sendReply(remIp, reply);
            });
  
          } else {
@@ -857,19 +885,19 @@ class mailTreeObj {
            con.query(SQL ,values, (err, result,fields)=>{
              if (err){
                console.log(err);
-               result.msg = err;
+               reply.msg = err;
              }
              else {
-               res.result = true;
+               reply.result = true;
              }
-             this.net.sendReply(remIp,JSON.stringify(res));
+             this.net.sendReply(remIp,reply);
            });
          }
        });
      } 
      else {
-        res.msg = 'invalid signature mailBox not created';
-        this.net.sendReply(remIp,JSON.stringify(res));
+        reply.msg = 'invalid signature mailBox not created';
+        this.net.sendReply(remIp,reply);
      }  
   }
   doSendMailToOwner(j,remIp){
@@ -1017,23 +1045,60 @@ class mailTreeObj {
        }
      });
   }
+  receptorReqInBoxKeyIPs(j){
+    return new Promise( (resolve,reject)=>{
+      const reqId = crypto.randomUUID();
+      const IPs = [];
+      let mkyReply = null;
+
+      const gtime = setTimeout( ()=>{
+        console.log('max reply time completed:',j,IPs);
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve(IPs);
+      },1000);
+      
+      const bcast = {
+        to    : 'mailCells',
+        req   : 'sendInBoxKey',
+        reqId : reqId,
+        MUID  : j.ownMUID,
+        sig   : j.sig
+      }
+      console.log(`receptorReqInBoxKeyIPs():: `,bcast);
+      this.net.broadcast(bcast);
+      this.net.on('mkyReply',mkyReply = (r) =>{
+        console.log('ptorReqInBoxKeyIPs():: heard:',r);
+        if (r.req === 'sendInBoxKeyResult' && reqId === r.reqId){
+          console.log('receptorReqInBoxKeyIPs():: mkyReply is:',r.remIp);
+          IPs.push(r.remIp);
+        }
+      });
+    });
+  }
   receptorReqInBoxKey(j){
     return new Promise( (resolve,reject)=>{
+      const reqId = crypto.randomUUID();
+      let mkyReply = null;
+
       const gtime = setTimeout( ()=>{
         console.log('Request User InBoxKey Request Timeout:',j);
+        this.net.removeListener('mkyReply', mkyReply);
         resolve(null);
       },1000);
 
       const bcast = {
-        to   : 'mailCells',
-        req  : 'sendInBoxKey',
-        MUID : j.ownMUID
+        to    : 'mailCells',
+        req   : 'sendInBoxKey',
+        reqId : reqId,
+        MUID  : j.ownMUID,
+        sig   : j.sig
       }
-      this.net.broadcast(req);
-      this.net.once('mkyReply', r =>{
+      this.net.broadcast(bcast);
+      this.net.on('mkyReply',mkyReply = (r) =>{
         //console.log('mkyReply is:',r);
-        if (r.req == 'sendInBoxKeyResult'){
+        if (r.req == 'sendInBoxKeyResult' && reqId === r.reqId){
           if (r.result === true){
+            this.net.removeListener('mkyReply', mkyReply);
             clearTimeout(gtime);
             resolve(r.publicKey);
           } 
@@ -1043,13 +1108,15 @@ class mailTreeObj {
   }
   receptorReqRegisterInBox(j,toIp){
     return new Promise( (resolve,reject)=>{
+      let mkyReply = null;
+     
       const gtime = setTimeout( ()=>{
         console.log('Register User InBox Request Timeout:',j);
         resolve(null);
       },1000);
       //console.log('bcasting reques for mail data: ',j);
 
-      const reqID = crypto.randomUUI();
+      const reqId = crypto.randomUUID();
 
       var req = {
         to    : 'mailCells',
@@ -1059,9 +1126,9 @@ class mailTreeObj {
       }
 
       this.net.sendMsg(toIp,req);
-      this.net.once('mkyReply', r =>{
+      this.net.on('mkyReply',mkyReply = (r) =>{
         //console.log('mkyReply is:',r);
-        if (r.req == 'registerInBoxResult' && r.reqId === reqId){
+        if (r.req === 'registerInBoxResult' && r.reqId === reqId){
           //console.log('mailData Request',r);
           clearTimeout(gtime);
           resolve(r);
