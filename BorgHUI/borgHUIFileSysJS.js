@@ -400,6 +400,8 @@ var cfileName = null;
 var cSpotID   = null;
 var cSpotIDtx = null;
 
+var videoObj = null;
+
 function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, chkSum){
   hide('avitarButton');
   hide('photoIMG');
@@ -477,6 +479,11 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
       avb.onclick = function () { updateMyIcon(murl,icon)};
     }
     if (id == 'videoSpot'){
+      videoObj = spot;
+      if (!videoObj._hasMetaListener) {
+        videoObj.addEventListener("loadedmetadata", onMetaLoaded);
+        videoObj._hasMetaListener = true;
+      }
       show(id);
       spot.type = ftype;
     }
@@ -484,7 +491,23 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
   }
   hideSearching();
 }
+function onMetaLoaded() {
+  const video = videoObj
 
+  console.log("metadata loaded");
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+
+  if (h > w) {
+    console.log("Portrait");
+    video.classList.add("portraitVideo");
+    video.classList.remove("landscapeVideo");
+  } else {
+    console.log("Landscape");
+    video.classList.add("landscapeVideo");
+    video.classList.remove("portraitVideo");
+  }
+}
 function handlerTextSpot(j){
   console.log('handlerTextSpot::Fired', j);
   hideSearching();

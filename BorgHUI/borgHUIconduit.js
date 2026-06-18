@@ -609,6 +609,10 @@ class bitMonkyWSrv extends  EventEmitter {
             this.wallet.doRsaDecodeMsg(j,res);
             return;
          }
+         if (j.req  === 'qryMemberSendTo'){
+           this.wallet.doQryMemberSendTo(j,res);
+           return;
+         }
          if (j.req  == 'startBorgBrowser'){
             this.startBorgBrowser(res);
             return;
@@ -1072,6 +1076,68 @@ class bitMonkyWallet{
      }
      return false;
    }
+   async doQryMemberSendTo(j,res){
+     console.log(`doQryMemberSendTo():: `,j);
+
+     const msg = {
+       req     : 'findUsers',
+       qry     : j.parms.qry,
+       maxRows : j.parms.maxRows,
+       reqId : crypto.randomUUID()
+     }
+     console.log(`doUpdateBorgRegistry():: `,msg);
+     let doTry = await this.net.PTree.mailTreeRegisterBorgUser(msg);
+
+     console.log(`doUpdateBorgRegistry():: doTry`,doTry);
+     const html = this.buildUserRows(doTry.json.tRec);
+     console.log(`doUpdateBorgRegistry():: html`,html);
+     j.html   = html;
+     j.result = true;
+     j.action = j.req;
+
+     res.end(JSON.stringify(j));
+   }
+   buildUserRows(tRec) {
+     let html = "";
+
+     tRec.forEach(rec => {
+
+      // Build the raw repo file URL from record fields
+      const rawURL =
+        `/whzon/bitMiner/getFileFromRepo.php` +
+        `?wzID=DESKTOP` +
+        `&fname=${encodeURIComponent(rec.msubIconFName)}` +
+        `&rname=${encodeURIComponent(rec.msubIconRName)}` +
+        `&path=${encodeURIComponent(rec.msubIconPath)}` +
+        `&ownerMUID=${encodeURIComponent(rec.msubMUID)}` +
+        `&folderID=${encodeURIComponent(rec.msubIconFolder)}` +
+        `&encrypt=0`;
+
+      // Build the Borg file-fetch JSON payload
+      const fileReq = {
+        req: "getFileFromRepo",
+        url: rawURL,  
+        checkSum : rec.msubIconFCSum,
+        ftype    : rec.msubIconFType
+      };
+
+      // Encode it for the netREQ/msg= format
+      const iconURL = `http://localhost/netREQ/msg=${JSON.stringify(fileReq)}`;
+
+      html += `
+        <div class="borgUserRow" style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid #333;">
+        <img src="${iconURL}" style="width:32px;height:32px;border-radius:50%;margin-right:10px;object-fit:cover;">
+        <div style="display:flex;flex-direction:column;">
+        <span style="font-weight:bold;color:#fff;">${rec.msubBorgNic}</span>
+        <span style="font-size:0.85em;color:#aaa;">${rec.msubMUID}</span>
+        </div>
+        </div>
+      `;
+     });
+
+     return html;
+   }
+
    async doUpdateMyIcon(j,res){
      const newIcon = decodeURIComponent(j.iconFile);
      this.net.wcj.icon = newIcon;

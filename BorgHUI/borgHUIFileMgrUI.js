@@ -298,7 +298,7 @@ async getBorgFileSys(url) {
 
       <div id='dispMemorySpot'></div>
 
-      <video id='videoSpot' style='display:none;width:100%' controls>
+      <video id='videoSpot' style='display:none;' controls>
         <source src="" type="video/mp4">
       </video>
 

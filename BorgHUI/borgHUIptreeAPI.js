@@ -310,6 +310,7 @@ class BorgHUIptreeAPI {
   }
 
   async ftreeGetFileFromRepo(muid, name, file, path, folderID) {
+    if (!path) path = "/";
     if (path !== "/") path = path.replace(/^\//, "");
     if (path === "") path = "/";
 

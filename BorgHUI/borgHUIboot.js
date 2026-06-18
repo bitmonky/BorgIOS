@@ -878,11 +878,11 @@ function doClick(e, action) {
 function getMatchingList(action) {
   var qry = document.getElementById("getLocation").elements["flocation"].value;
   qry = mkyTrim(qry).replace(/,/g, '').replace(/-/g, '').replace(/  /g, ' ');
-
+  const maxRows = 20;
   if (qry !== "") {
     sendRequest({
       req: action,
-      parms: { mode: MODE, qry }
+      parms: { mode: MODE, qry, maxRows }
     });
   } else {
     document.getElementById("putQryResults").innerHTML = "";
