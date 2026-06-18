@@ -182,19 +182,23 @@ class mailTreeCellReceptor{
               if (this.checkBorgToken(j,res) === false){
                 return;
               }
-
-              if (!j.msg.sig){
-                j.msg.sig = {
+     
+               console.log(`Heard j.msg`,j);
+               j.msg.sig = {
                   ownMUID   : j.borgToken.Address, 
                   token     : j.borgToken.sesTok,
                   pubKey    : j.borgToken.pubKey,
                   signature : j.borgToken.sesSig
                 }
-              } 
+              
               console.log(`Heard j.msg`,j.msg);
 
 	      res.setHeader('Content-Type', 'application/json');
               res.writeHead(200);
+              if (j.msg.req == 'findUsers'){
+                this.reqQryBorgUsers(j.msg,res);
+                return;
+              }
               if (j.msg.req == 'getInBoxKey'){
                  this.reqInBoxKey(j.msg,res);
                  return;
@@ -297,6 +301,18 @@ class mailTreeCellReceptor{
       return;
     }
     res.end(JSON.stringify({result:false}));
+  }
+  async reqQryBorgUsers(j,res){
+     const msg = {
+       to    : 'mailCells',
+       req   : 'sendMatchingUsers',
+       reqId : crypto.randomUUID(),
+       qry   : j.qry,
+       max   : j.maxRows
+     }
+     const result = await this.peer.doQryBorgUsers(msg);
+     res.end(JSON.stringify({result:true,tRec : result}));
+     return;
   }
   async reqRegisterInBox(j,res){
     console.log(`reqRegisterInBox():: heard j`,j);
@@ -755,6 +771,10 @@ class mailTreeObj {
           console.log('DOPOW stopNodeGenIP-XX Received:',j.remIp);
           this.doPowStop(j.remIp);
         }
+        if (j.msg.req == 'sendMatchingUsers'){
+          this.doSendUserQryResult(j.msg,j.remIp);
+          return;
+        }
       }
     } 
     return;
@@ -900,6 +920,75 @@ class mailTreeObj {
         this.net.sendReply(remIp,reply);
      }  
   }
+  doQryBorgUsers(msg) {
+    return new Promise((resolve) => {
+      const results = new Map();
+
+      const mkyReply = (r) => {
+        if (r.req === 'endMatchingUsersResult' && r.reqId === msg.reqId) {
+          if (r.result === true && Array.isArray(r.tRec)) {
+            r.tRec.forEach((rec) => {
+              if (!results.has(rec.msubMUID)) {
+                if (rec.msubBorgNic === null) rec.msubBorgNic = `BORG-${rec.msubMUID.slice(0, 15)}`;
+                console.log(`doQryBorgUsers():: setting `,rec.msubBorgNic);
+                results.set(rec.msubMUID, rec);
+              }
+            });
+          }
+
+          // Stop early if we reached max
+          if (results.size >= msg.max) {
+            clearTimeout(gtime);
+            this.net.removeListener("mkyReply", mkyReply);
+
+            // Convert to sorted array
+            const sorted = [...results.values()]
+              .sort((a, b) => a.msubBorgNic.localeCompare(b.msubBorgNic));
+
+            resolve(sorted);
+          }
+        }
+      };
+
+      const gtime = setTimeout(() => {
+        console.log("Qry max time Timeout:");
+        this.net.removeListener("mkyReply", mkyReply);
+
+        // Convert to sorted array on timeout too
+        const sorted = [...results.values()]
+          .sort((a, b) => a.msubMUID.localeCompare(b.msubMUID));
+
+          resolve(sorted);
+      }, 300);
+
+      // Avoid duplicate listeners
+      this.net.removeListener("mkyReply", mkyReply);
+      this.net.on("mkyReply", mkyReply);
+
+      this.net.broadcast(msg);
+    });
+  }
+  doSendUserQryResult(j,remIp){
+     var reply = {
+       req    : 'endMatchingUsersResult',
+       reqId  : j.reqId,
+       result : false
+     }
+     const SQL = `select * from mailSubscriber where msubBorgNic like ? or msubBorgNic is null order by msubBorgNic limit ?`;
+     const params = [`%${j.qry}%`,j.max];
+     con.query(SQL ,params, async(err, result,fields)=>{
+       if (err){
+         console.log(err);
+       }
+       else {
+         reply.result = true;
+         reply.tRec   = result;
+
+         if (result.length > 0 ) this.net.sendReply(remIp,reply);
+       }
+     }); 
+  }
+
   doSendMailToOwner(j,remIp){
      //console.log('mail request from: ',remIp);
      //console.log('here is the req..',j);
