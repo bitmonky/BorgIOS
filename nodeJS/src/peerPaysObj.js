@@ -1161,7 +1161,7 @@ class peerPaysObj {
         resolve(bal);
       },1500);
 
-      var reqAdr = j.userUID ?? j.user;
+      var reqAdr = j?.trans?.from ?? j.userUID ?? j.user;
       if (adrTo) {
         reqAdr = adrTo;
       } 
@@ -1172,7 +1172,7 @@ class peerPaysObj {
         user  : reqAdr
       }
 
-      //console.log('bcasting request: ',req);
+      console.log('bcasting request: ',req);
       this.net.broadcast(req);
 
       // Handle bcast replies;
