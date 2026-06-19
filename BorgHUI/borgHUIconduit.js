@@ -609,6 +609,10 @@ class bitMonkyWSrv extends  EventEmitter {
             this.wallet.doRsaDecodeMsg(j,res);
             return;
          }
+         if (j.req  === 'doSendShells'){
+           this.wallet.doSendShells(j,res);
+           return;
+         }
          if (j.req  === 'qryMemberSendTo'){
            this.wallet.doQryMemberSendTo(j,res);
            return;
@@ -617,6 +621,14 @@ class bitMonkyWSrv extends  EventEmitter {
             this.startBorgBrowser(res);
             return;
          }  
+         if (j.req === 'getUserByMUID'){
+           await this.wallet.doGetUserByMUID(j,res);
+           return;
+         }
+         if (j.req === 'getSendShellsToMbr'){
+           await this.wallet.doGetSendShellsToMbr(j,res);
+           return;
+         }
          if (j.req === 'updateMyIcon'){
            await this.wallet.doUpdateMyIcon(j,res);
            return;
@@ -1076,6 +1088,31 @@ class bitMonkyWallet{
      }
      return false;
    }
+   async doGetSendShellsToMbr(j,res){
+     const p = j.parms
+     j.html   = await this.net.BPay.getSendBorgForm(p.muid, p.nic, 0, p.icon);
+     j.result = true;
+     j.action = j.req;
+     console.log(`doGetSendShellsToMbr():: `,j);
+     res.end(JSON.stringify(j));
+   }
+   async doSendShells(j,res){
+     let p = j.parms;
+     let doTry = await this.net.PTree.peerPaysMakeUserTrans(this.ownMUID, p.mbrMUID, p.amt);
+     console.log(`doSendShells():: send result`,doTry);
+     if (doTry.error === false && doTry.status === 200 && doTry?.json?.result === 'tranOK'){
+       j.info      = doTry.json;
+       j.result    = true;
+       j.actionRes = true;
+     }
+     else {
+       j.result    = false;
+       j.actionRes = false;
+       j.msg       = 'Transaction Failed... Try Later';
+     }
+     j.action = j.req;
+     res.end(JSON.stringify(j));
+   }
    async doQryMemberSendTo(j,res){
      console.log(`doQryMemberSendTo():: `,j);
 
@@ -1106,11 +1143,11 @@ class bitMonkyWallet{
       const rawURL =
         `/whzon/bitMiner/getFileFromRepo.php` +
         `?wzID=DESKTOP` +
-        `&fname=${encodeURIComponent(rec.msubIconFName)}` +
-        `&rname=${encodeURIComponent(rec.msubIconRName)}` +
-        `&path=${encodeURIComponent(rec.msubIconPath)}` +
-        `&ownerMUID=${encodeURIComponent(rec.msubMUID)}` +
-        `&folderID=${encodeURIComponent(rec.msubIconFolder)}` +
+        `&fname=${rec.msubIconFName}` +
+        `&rname=${rec.msubIconRName}` +
+        `&path=${rec.msubIconPath}` +
+        `&ownerMUID=${rec.msubMUID}` +
+        `&folderID=${rec.msubIconFolder}` +
         `&encrypt=0`;
 
       // Build the Borg file-fetch JSON payload
@@ -1125,8 +1162,9 @@ class bitMonkyWallet{
       const iconURL = `http://localhost/netREQ/msg=${JSON.stringify(fileReq)}`;
 
       html += `
+        <a href="javascript:getSendShellsToMbr('${rec.msubMUID}','${rec.msubBorgNic}','${encodeURIComponent(iconURL)}');">
         <div class="borgUserRow" style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid #333;">
-        <img src="${iconURL}" style="width:32px;height:32px;border-radius:50%;margin-right:10px;object-fit:cover;">
+        <img src='${iconURL}' style="width:32px;height:32px;border-radius:50%;margin-right:10px;object-fit:cover;">
         <div style="display:flex;flex-direction:column;">
         <span style="font-weight:bold;color:#fff;">${rec.msubBorgNic}</span>
         <span style="font-size:0.85em;color:#aaa;">${rec.msubMUID}</span>

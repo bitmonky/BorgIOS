@@ -246,7 +246,7 @@ class BorgHUIptreeAPI {
       status  : 0,
       nCopies : 3
     };
-
+    console.log(`peerPaysMakeUserTrans():: trans`,trans);
     return this._postJSON("peerPaysCell", {
       msg: {
         req: "makeUserTransaction",

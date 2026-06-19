@@ -109,10 +109,11 @@ function getAccountInfo() {
   sendRequest({ req: "sendAccountInfo" });
 }
 
-function getSendGoldToMbr(muid) {
+function getSendShellsToMbr(muid,nic,icon) {
+  icon =  encodeURIComponent(encodeURIComponent(icon));
   sendRequest({
-    req: "getSendGoldToMbr",
-    parms: { mode: MODE, muid }
+    req: "getSendShellsToMbr",
+    parms: { mode: MODE, muid,nic,icon }
   });
 }
 
@@ -120,18 +121,18 @@ function doCloseWalletOpt() {
   showDiv("transactionSpot");
 }
 
-function cancelSendGold() {
+function cancelSendShells() {
   showDiv("transactionSpot");
 }
 
-function doSendGoldNow() {
+function doSendShellsNow() {
   var bmgp = document.getElementById("sendBMGPAmt").value;
   var mnic = document.getElementById("sendToNic").value;
   var muid = document.getElementById("sendToMUID").value;
 
   if (confirm("Send " + bmgp + " BORG Shells To " + mnic + " Now?")) {
     sendRequest({
-      req: "doSendBMGP",
+      req: "doSendShells",
       parms: {
         mode: MODE,
         address: null,
@@ -393,8 +394,8 @@ function handleResponse(j) {
   }
 
   if (j.action === qryAction) doPutQryResults(j);
-  if (j.action === "getSendGoldToMbr") doPutQryResults(j);
-  if (j.action === "doSendBMGP") doShowSendBMGResult(j);
+  if (j.action === "getSendShellsToMbr") doPutQryResults(j);
+  if (j.action === "doSendShells") doShowSendShellsResult(j);
   if (j.action === "sendTrendingList") doShowTrendingList(j);
   if (j.action === "sendServiceList") doShowStoresList(j);
   if (j.action === "getRegServiceFrm") doShowStoresList(j);
@@ -489,7 +490,7 @@ function format(value) {
  *  FILE SYS / STORE / TRENDING / QUERY RESULTS
  ************************************************************/
 
-function doShowSendBMGResult(j) {
+function doShowSendShellsResult(j) {
   if (j.actionRes) {
     getAccountInfo();
     alert("Transaction Complete");

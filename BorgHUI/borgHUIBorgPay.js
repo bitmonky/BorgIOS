@@ -2,6 +2,55 @@ class BorgHUIBorgPay {
    constructor(net) {
      this.net = net;
    }
+   async getSendBorgForm( muidTo, fanName, goldOnHand, icon ) {
+
+     return `
+       <div class='infoCardClear' style='background:#151617;margin-top:1.5em;'>
+
+       <img title="${fanName}" onerror="this.display=none;"
+         style='float:left;border-radius:50%;margin:0;margin-right:10px;'
+         src='${icon}'>
+
+       <b>You are about to send ${fanName} some shells:</b>
+       <p></p>
+
+       <form id='bitWalletSendBMGP'>
+       <input id="sendToMUID" type="hidden" name="mbrID" value="${muidTo}">
+       <input id="sendToNic" type="hidden" value="${fanName}">
+
+       <p>Enter Amount Of Shells To Send</p>
+
+       <input type="text"
+             id="sendBMGPAmt"
+             value="${goldOnHand}"
+             maxlength="29"
+             size="14" 
+             width="20"> Borg Shells
+       <p></p>
+
+       <table border="0">
+       <tr>
+       <td>
+       <h3 style='color:darkKhaki;'>
+       Warning You Can Not Get Your Shells Back After You Send Them!
+       </h3>
+
+       Confirm Send This Amount Of Shells To <b>${fanName}</b><br/>
+
+       <div id='displayCost'></div>
+
+       <input id="sendGoldBut" type="button" value=" Send Now " onclick="doSendShellsNow()"/>
+       <input type='button'  onclick='cancelSendShells();' value=' Cancel '/>
+       </td>
+       </tr>
+       </table>
+       </form>
+
+       <br><br><br><br><br>
+       </div>
+     `;
+   }
+
    async doSendBorgPayRecentTrans(m) {
     const borgAdr = this.net.wallet.ownMUID;
     const uAdr    = m.wAdr || borgAdr;
