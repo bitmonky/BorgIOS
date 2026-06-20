@@ -309,6 +309,12 @@ class BorgHUIptreeAPI {
     });
   }
 
+  async ftreeGetFileFromRepoById(muid,fileId) {
+
+    return this._postJSON("ftreeFileMgrCell", {
+      msg: { req: "getRepoFileDataById", repo: { from: muid, fileId } }
+    });
+  }
   async ftreeGetFileFromRepo(muid, name, file, path, folderID) {
     if (!path) path = "/";
     if (path !== "/") path = path.replace(/^\//, "");

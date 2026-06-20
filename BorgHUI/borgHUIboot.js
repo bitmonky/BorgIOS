@@ -848,6 +848,7 @@ function createAutoSelect(opt) {
       "</span></h2>" +
       "<form ID='getLocation' name='wzLocationFrm'>" +
       "<input type='text' style='font-size:larger;' name='flocation' " +
+      " autocomplete='off' autocorrect='off' autocapitalize='off' spellcheck='false' " +
       "placeholder='" + opt.promt + "' " +
       "oninput='doClick(event, \"" + opt.action + "\");'>" +
       "<div ID='putQryResults'></div>";

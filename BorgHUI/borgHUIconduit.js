@@ -392,6 +392,12 @@ class bitMonkyWSrv extends  EventEmitter {
      }
      else {
 
+       if (req.url.indexOf('/netREQ/file=') == 0){
+         var file = req.url.replace('/netREQ/file=','');
+         file = urldecode(file);
+         this.doGetFileById(file,res);
+         return;
+       }
        if (req.url.indexOf('/netREQ/msg=') == 0){
           var msg = req.url.replace('/netREQ/msg=','');
           msg = urldecode(msg);
@@ -690,6 +696,42 @@ async doCheckSumLookup(msg, service,checksum) {
     return null;
   }
 }
+async doGetFileById(file,res){
+  const rawUrl = `/getFile?fileId=${file}`;
+  const u = new URL(rawUrl, 'http://localhost');
+  const fileId = u.searchParams.get('fileId');
+  console.log('getFileFromRepo():: fileId ',  fileId);
+
+  let doTry = await this.PTree.ftreeGetFileFromRepoById(this.wallet.ownMUID,fileId);
+  console.log(`doTry`,doTry);
+  if (doTry.status === 200){
+    console.log(`getFileFromRepo():: doTry is `,doTry.json);
+  }
+  if (doTry?.json?.result === false){
+    console.log(`doTry error: `,doTry.error);
+    res.end(`Get File Failed... details: ${JSON.stringify(doTry)}\n`);
+    return;
+  }
+  if (doTry?.json?.file.fileInfo.fileSize > 0) {
+    const p = await this.portal.selectPortal('shardTreeCell');
+
+    const service = {
+      endPoint : '/netREQ/',
+      filename : `./downloads/${doTry.json.file.fileInfo.checkSum}.tmp`,
+      host     : p.host,
+      port     : p.port,
+      raw      : true
+    };
+
+    doTry = await this.DStream.streamRepoFileFrom(service,doTry.json,res);
+    //console.log('getFileFromRepo():: ',doTry);
+    return;
+  }
+  console.log(`doTry error: `,doTry.error);
+  res.end(`Get File Failed To Stream... details: ${JSON.stringify(doTry)}\n`);
+  return;
+
+}
 async getFileFromRepo(req, msg, res) {
   const rawUrl = msg.url;
   const ftype  = msg.ftype;
@@ -723,6 +765,7 @@ async getFileFromRepo(req, msg, res) {
     res.end(`Get File Failed... details: ${JSON.stringify(doTry)}\n`);
     return;
   }  
+
   if (doTry?.json?.file.fileInfo.fileSize > 0) {
     const p = await this.portal.selectPortal('shardTreeCell');
 

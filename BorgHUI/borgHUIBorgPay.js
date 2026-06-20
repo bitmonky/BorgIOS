@@ -20,12 +20,8 @@ class BorgHUIBorgPay {
 
        <p>Enter Amount Of Shells To Send</p>
 
-       <input type="text"
-             id="sendBMGPAmt"
-             value="${goldOnHand}"
-             maxlength="29"
-             size="14" 
-             width="20"> Borg Shells
+       <input type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+       id="sendBMGPAmt" value="${goldOnHand}" maxlength="29" size="14" width="20" style="width:9em;"> Borg Shells
        <p></p>
 
        <table border="0">
