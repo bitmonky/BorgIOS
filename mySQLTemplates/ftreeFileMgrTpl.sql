@@ -72,7 +72,7 @@ CREATE TABLE `tblRepoFolder` (
 DROP TABLE IF EXISTS `tblShardFileMgr`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `tblShardFileMgr` (
+ CREATE TABLE `tblShardFileMgr` (
   `smgrID` bigint(20) NOT NULL AUTO_INCREMENT,
   `repoID_master` varchar(48) DEFAULT NULL,
   `smgrID_master` bigint(20) DEFAULT NULL,
@@ -90,14 +90,18 @@ CREATE TABLE `tblShardFileMgr` (
   `smgrShardList` varchar(84) DEFAULT NULL,
   `smgrFileFolderID` bigint(20) DEFAULT 0,
   `smgrFilePath` varchar(1045) DEFAULT '',
+  `smgrFilePrivate` int(11) DEFAULT NULL,
+  `smgrFileShaFUID` varchar(84) DEFAULT NULL,
   PRIMARY KEY (`smgrID`),
   KEY `ndxSmgrFVersionNbr` (`smgrFVersionNbr`),
   KEY `ndxSmgrFileName` (`smgrFileName`(191)),
   KEY `ndxSmgrDate` (`smgrDate`),
   KEY `ndxSmgrFileFolder` (`smgrFileFolderID`),
   KEY `idx_repoID_master` (`repoID_master`),
-  KEY `idx_smgrID_master` (`smgrID_master`)
-) ENGINE=InnoDB AUTO_INCREMENT=878 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_czech_ci;
+  KEY `idx_smgrID_master` (`smgrID_master`),
+  KEY `idx_smgrFilePrivate` (`smgrFilePrivate`),
+  KEY `idx_smgrFileShaFUID` (`smgrFileShaFUID`)
+) ENGINE=InnoDB AUTO_INCREMENT=378 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_czech_ci
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
