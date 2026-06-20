@@ -223,6 +223,7 @@ class ftreeFileMgrCellReceptor{
   processRequest(j,res){
      res.setHeader('Content-Type', 'application/json');
      res.writeHead(200);
+     j.msg.borgToken = j.borgToken;
 
      const handlers = {
        createRepo          : this.reqCreateRepo,
@@ -234,6 +235,7 @@ class ftreeFileMgrCellReceptor{
        getMyRepoList       : this.reqReadMyRepoList,
        getMyRepoFiles      : this.reqReadMyRepoFiles,
        getRepoFileData     : this.reqGetRepoFileData,
+       getRepoFileDataById : this.reqGetRepoFileDataById,
        insertRSfile        : this.reqInsertRSfile,
        deleteRSfile        : this.reqDeleteRSfile,
        requestShard        : this.reqRetrieveShard,
@@ -820,6 +822,7 @@ class ftreeFileMgrCellReceptor{
     return mToken;
   }
   async reqDeleteShard(j,res){
+
     var dres = {result : 0, msg : 'no shards deleted'};
 
     j.shard.token = this.openShardKeyFile(j);
@@ -895,7 +898,7 @@ class ftreeFileMgrCellReceptor{
   async reqReadMyRepoList(j,res){
     const result = {
       result  : true,
-      list    : await this.doReadMyRepoList()
+      list    : await this.reqDoReadMyRepoList(j)
     }
     res.end(JSON.stringify(result));
   }
@@ -921,9 +924,23 @@ class ftreeFileMgrCellReceptor{
       });
     });
   }
+  reqDoReadMyRepoList(j){
+    return new Promise((resolve,reject)=>{
+      console.log(`doReadMyRepoList():: `,j);
+      var SQL = "select * FROM `ftreeFileMgr`.`tblRepo` where (repoOwner = '"+j.borgMasterUID+"'  or repoOwner = '"+j.repo.from+"') and repoType = 'Master'";
+      con.query(SQL , (err, result,fields)=>{
+        if (err){
+         //console.log(err);
+          resolve(null);
+          return;
+        }
+        resolve(result);
+      });
+    });
+  }
   doReadMyRepoList(){
     return new Promise((resolve,reject)=>{
-      var SQL = "select * FROM `ftreeFileMgr`.`tblRepo` where NOT repoType = 'Public'";
+      var SQL = "select * FROM `ftreeFileMgr`.`tblRepo` where repoType = 'Master'";
       con.query(SQL , (err, result,fields)=>{
         if (err){
          //console.log(err);
@@ -975,6 +992,20 @@ class ftreeFileMgrCellReceptor{
     }
     res.end(JSON.stringify(result));
   }
+  async reqGetRepoFileDataById(j,res){
+    var fdata = await this.doReadRepoLocalFileShardsById(j);
+    var result = null;
+    if (fdata){
+      result = {
+        result  : true,
+        file    : fdata
+      }
+    }
+    else {
+      result = {result : false,error:'File not found.'}
+    }
+    res.end(JSON.stringify(result));
+  }
   doReadRepoLocalFileShards(j){
     return new Promise(async (resolve,reject)=>{
       var repoID_master = await this.repoIsMaster(j.repo.name,j.repo.from);
@@ -982,7 +1013,7 @@ class ftreeFileMgrCellReceptor{
         resolve(null);
         return;
       }
-     //console.log(j);
+      console.log(j);
       var fileInfo = await this.getFileCheckSum(j.repo.file,j.repo.path,j.repo.name,j.repo.from);
       if (!fileInfo){
         resolve(null);
@@ -993,16 +1024,69 @@ class ftreeFileMgrCellReceptor{
       var SQL = "select sfilShardHash shardID,sfilShardID shardHID,sfilNCopies as nStored,sfilCheckSum as fposition FROM `ftreeFileMgr`.`tblRepo` " +
         "inner join `ftreeFileMgr`.`tblShardFileMgr` on  `tblRepo`.`repoID_master` = `tblShardFileMgr`.`repoID_master` " +
         "inner join `ftreeFileMgr`.`tblShardFiles` on sfilFileMgrID = smgrID_master " +
-        "where `tblRepo`.`repoID_master` = '"+repoID_master+"' and smgrFileName = '"+j.repo.file+"' and smgrFilePath = '"+outpath+"' " +
+        "where `tblRepo`.`repoID_master` = ? and smgrFileFolderID = ? and smgrFileName = ? and smgrFilePath = ? " +
         "order by fposition";
-      con.query(SQL , (err, result,fields)=>{
+
+      const params = [repoID_master,j.repo.folderID,j.repo.file,outpath];
+      con.query(SQL ,params, (err, result,fields)=>{
         if (err){
-         //console.log(err);
+          console.log(err);
           resolve(null);
           return;
         }
        //console.log(SQL,result);
         resolve({owner:j.repo.from,filename:outpath+'/'+j.repo.file,shards:result,fileInfo:fileInfo});
+      });
+    });
+  }
+  doReadRepoLocalFileShardsById(j){
+    return new Promise(async (resolve,reject)=>{
+      let SQL;
+      SQL = "select smgrID_master, repoOwner, smgrFilePath,smgrFileName,smgrFileType,smgrFileSize,smgrShardSize from ftreeFileMgr.tblShardFileMgr " +
+            "inner join tblRepo on `tblRepo`.`repoID_master` = `tblShardFileMgr`.`repoID_master` " +
+            "where smgrFileShaFUID = ? and NOT (smgrFileSize is null or smgrFileSize=0) limit 1";
+
+      con.query(SQL ,[j.repo.fileId], (err, resultM,fields)=>{
+        if (err){
+          console.log(SQL,err);
+          resolve(null);
+          return;
+        }
+        if (resultM.length === 0){
+          console.log(`doReadRepoLocalFileShardsById():: not found`,SQL);
+          resolve(null);
+          return;
+        } 
+        // Get The Shard Map
+        SQL = "select sfilShardHash shardID,sfilShardID shardHID,sfilNCopies as nStored,sfilCheckSum as fposition FROM `ftreeFileMgr`.`tblShardFiles` " +
+          "where sfilFileMgrID = ? " +
+          "order by fposition";
+    
+        con.query(SQL ,[resultM[0].smgrID_master], (err, result,fields)=>{
+           if (err){
+             console.log(SQL,err);
+             resolve(null);
+             return;
+           }
+
+           // Return file Info and Shard Map
+           let outpath =  resultM[0].smgrFilePath;
+           if (outpath === '/' ) outpath = '';
+     
+           resolve({
+             owner    : resultM[0].repoOwner,
+             filename : outpath + '/' + resultM[0].smgrFileName,
+             fileInfo:{
+               checkSum  : j.repo.fileId,
+               filename  : resultM[0].smgrFileName,
+               fileType  : resultM[0].smgrFileType,
+               fileSize  : resultM[0].smgrFileSize,
+               shardSize : resultM[0].smgrShardSize
+             },
+             shards:result
+           });
+           return;
+        });
       });
     });
   }
@@ -1138,13 +1222,20 @@ class ftreeFileMgrCellReceptor{
     });
   }
   async reqCreateRepoFolder(j,res){
+    console.log(`reqCreateRepoFolder():: j`,j);
+    if (j.borgToken.Address !== j.repo.from){
+      res.end(JSON.stringify({result:false,msg:'Only Owner Can Update... Access Refused'}));
+      return;
+    }
+
     const tryRes = {
       result : await this.createLocalFolder(j.repo),
       msg : "OK"
     }
+    console.log(`reqCreateRepoFolder():: tryRes`,tryRes);
     if (!tryRes.result){
       tryRes.msg = "Failed To Create Master Repo Folder";
-      res.end(JSON.stringify(result));
+      res.end(JSON.stringify(tryRes));
       return;
     }
     res.end(JSON.stringify(tryRes));
@@ -1184,6 +1275,11 @@ class ftreeFileMgrCellReceptor{
     }
   }
   async reqDeleteRepoFolder(j,res){
+    if (j.borgToken.Address !== j.repo.from){
+      res.end(JSON.stringify({result:false,msg:'Only Owner Can Update... Access Refused'}));
+      return;
+    }
+
     const result = {
       result : await this.deleteLocalFolder(j.repo,j.remFolderID),
       msg : "OK"
@@ -1285,10 +1381,14 @@ class ftreeFileMgrCellReceptor{
   }
   createLocalFolder(repo){
     return new Promise(async (resolve,reject)=>{
-      if (repo.parent === null){
+      if (repo.parent === null || repo.parent == 0){
         repo.parent = 'null';
       }
       const repoID_master = await this.getRepoID(repo);
+      if (repoID_master === null){
+        resolve(false);
+        return;
+      }
       repo.nCopys  = await this.getRepoNCopys(repo);
       var SQL = "INSERT INTO `ftreeFileMgr`.`tblRepoFolder` (`repoID_master`,`rfoldName`,`rfoldParentID`) "+
         "VALUES ('"+repoID_master+"','"+repo.folder+"',"+repo.parent+");" +
@@ -1400,14 +1500,14 @@ class ftreeFileMgrCellReceptor{
 
     var SQL = `INSERT INTO ftreeFileMgr.tblShardFileMgr 
       (repoID_master, smgrID_master, smgrRepoID, smgrFileName, smgrCheckSum, smgrDate, smgrExpires, smgrEncrypted, smgrFileType, smgrFileSize,smgrShardSize, 
-      smgrFVersionNbr, smgrSignature, smgrShardList, smgrFileFolderID, smgrFilePath) 
+      smgrFVersionNbr, smgrSignature, smgrShardList, smgrFileFolderID, smgrFilePath,smgrFileShaFUID) 
       VALUES ('${rec.repoID_master}', ${rec.smgrID_master}, ${rec.smgrRepoID}, '${rec.smgrFileName}', '${rec.smgrCheckSum}',${rec.smgrDate ? `'${rec.smgrDate}'` : 'NULL'}, 
       ${rec.smgrExpires ? `'${rec.smgrExpires}'` : 'NULL'}, ${rec.smgrEncrypted}, '${rec.smgrFileType}', ${rec.smgrFileSize},${rec.smgrShardSize}, ${rec.smgrFVersionNbr}, '${rec.smgrSignature}', 
-      '${rec.smgrShardList}', ${rec.smgrFileFolderID}, '${rec.smgrFilePath}');`;
-     //console.log(SQL);
+      '${rec.smgrShardList}', ${rec.smgrFileFolderID}, '${rec.smgrFilePath}',${rec.smgrFileShaFUID});`;
+      //console.log(SQL);
       con.query(SQL, (err, result, fields) => {
         if (err) {
-         //console.log('Error inserting folder:', err);
+          console.log('Error inserting folder:', err);
           resolve(null);
           return;
         }
@@ -1603,7 +1703,7 @@ class ftreeFileMgrCellReceptor{
     return new Promise(async (resolve,reject)=>{
       var fileID = null;
       var repoID_master = null;
-     //console.log('getRepFileID::',repo);
+      //console.log('getRepFileID::',repo);
       var f = repo.file;
       var SQL = "SELECT tblRepo.repoID_master,smgrID_master FROM ftreeFileMgr.tblRepo " + 
         "inner join ftreeFileMgr.tblShardFileMgr on `tblRepo`.`repoID_master` = `tblShardFileMgr`.`repoID_master` " +
@@ -1636,11 +1736,16 @@ class ftreeFileMgrCellReceptor{
 	repoFileID = qr.value.fileID;
         repoID_master     = qr.value.repoID_master;
       }
+      if (repoID_master === null){
+        console.log(`deleteLocalRepoFile():: Delete Failed... NOT Repo Owner`,repoID_master);
+        resolve(false);
+        return;
+      }
       var f = repo.file;
       var SQL = "Delete From `ftreeFileMgr`.`tblShardFileMgr` where repoID_master = '"+repoID_master+"' and smgrID_master = "+repoFileID+";"+
         "Delete From `ftreeFileMgr`.`tblShardFiles` where repoID_master = '"+repoID_master+"' and sfilFileMgrID = "+repoFileID;
 
-     //console.log('deleteLocalRepoFile::',SQL);
+      //console.log('deleteLocalRepoFile::',SQL);
 
       return pool.getConnection((err, con)=>{
         if (err){ return dbConFail(resolve,'DeleteLocalRepFile::getConnection Failed');}
@@ -1689,12 +1794,15 @@ class ftreeFileMgrCellReceptor{
       
       const SQL = `INSERT INTO tblShardFileMgr 
         (repoID_master, smgrFileName, smgrCheckSum, smgrDate, smgrExpires, smgrEncrypted, 
-        smgrFileType, smgrFileSize,smgrShardSize, smgrFVersionNbr, smgrSignature, smgrShardList, smgrFileFolderID, smgrFilePath) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'NA', 'NA', ?, ?);
+        smgrFileType, smgrFileSize,smgrShardSize, smgrFVersionNbr, smgrSignature, smgrShardList, smgrFileFolderID, smgrFilePath,smgrFileShaFUID) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'NA', 'NA', ?, ?,?);
       `;
 
       // Parameters to safely pass values
       let ptDate = new Date(Date.now());
+      if (!repo.FUID){
+        repo.FUID = calculateHash(`${this.reqInsertRSfile}-${f.filename}-${ptDate}-${f.ftype}-${repo.path}-${repo.folderID}-${repo.from}`);
+      }
       const params = [
         repoID_master,
         f.filename,
@@ -1706,13 +1814,17 @@ class ftreeFileMgrCellReceptor{
         f.fileSize,
         f.shardSize,
         repo.folderID === 'null' || repo.folderID === undefined ? null : repo.folderID,
-        repo.path
+        repo.path,
+        repo.FUID
       ];
       return pool.getConnection((err, con)=>{
-        if (err){ return dbConFail(resolve,'InsertLocalRepFile::getConnection Failed');}
+        if (err){
+          console.log(`InsertLocalRepFile():: db connect err`,err);
+          return dbConFail(resolve,'InsertLocalRepFile::getConnection Failed');
+        }
         return con.query(SQL,params, async (err, result,fields)=>{
           if (err){
-           //console.log(err,SQL,params);
+            console.log(err,SQL,params);
             return dbFail(con,resolve,'Insert File Record Failed'+SQL);
           }
           var newRFileID = result.insertId;
@@ -1738,7 +1850,13 @@ class ftreeFileMgrCellReceptor{
     });
   }
   async reqInsertRSfile(j,res){
-   //console.log('Insert Repo Shard File:',j);
+    //console.log('Insert Repo Shard File:',j);
+ 
+    if (j.borgToken.Address !== j.repo.from){
+      res.end(JSON.stringify({result:false,msg:'Only Owner Can Update... Access Refused'}));
+      return;
+    }
+
     var newFileRepoID = null;
     if (await this.repoFileExists(j.repo.file.filename,j.repo.name,j.repo.from,j.repo.path) > 0){
       res.end('{"result":false,"nRecs":0,"repo":"Repo'+j.repo.name+' File Aready Exists: '+j.repo.file+'"}');
@@ -1782,7 +1900,13 @@ class ftreeFileMgrCellReceptor{
     return;
   }
   async reqDeleteRSfile(j,res){
-   //console.log('Delete Repo Shard File:',j);
+    //console.log('Delete Repo Shard File:',j);
+
+    if (j.borgToken.Address !== j.repo.from){
+      res.end(JSON.stringify({result:false,msg:'Only Owner Can Update... Access Refused'}));
+      return;
+    }
+
     var delFileRepoID = null;
     const pj = await this.deleteLocalRepoFile(j.repo);
     if (!pj.result){
@@ -1790,12 +1914,12 @@ class ftreeFileMgrCellReceptor{
       return;
     }
     delFileRepoID = pj.value;
-   //console.log('Got delFileID: ',delFileRepoID);
+    //console.log('Got delFileID: ',delFileRepoID);
 
     j.repo.data = await this.getLocalRepoRec(delFileRepoID);
 
     var IPs = await this.peer.getActiveRepoList(j);
-   //console.log('activeRepoList::',IPs);
+    //console.log('activeRepoList::',IPs);
     if (IPs.length == 0){
       res.end('{"result":false,"nRecs":0,"repo":"No Nodes Available For File Delete"}');
       return;
@@ -2860,7 +2984,7 @@ class ftreeFileMgrObj {
     });
   }
   verifyActiveRepo(r){
-     console.log('verifyActiveRepo: ',r);
+     //console.log('verifyActiveRepo: ',r);
 /*X?X NOT FINISHED needs borgHUI_sig
      var signature = this.composeRepoSig(r.repo);
      console.log('building ActiveRep Signature',signature);
