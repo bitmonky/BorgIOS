@@ -80,20 +80,42 @@ DROP TABLE IF EXISTS `mailSubscriber`;
 CREATE TABLE `mailSubscriber` (
   `msubID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `msubMUID` varchar(64) DEFAULT NULL,
-  `msubPubKey` text,
+  `msubPubKey` text DEFAULT NULL,
+  `msubIconFName` varchar(284) DEFAULT NULL,
+  `msubIconFCSum` varchar(84) DEFAULT NULL,
+  `msubIconRName` varchar(284) DEFAULT NULL,
+  `msubIconFolder` bigint(20) DEFAULT NULL,
+  `msubIconPath` varchar(1045) DEFAULT NULL,
+  `msubIconFType` varchar(50) DEFAULT NULL,
+  `msubBorgNic` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`msubID`),
   KEY `ndxMsubMUID` (`msubMUID`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
+
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
 -- Dumping data for table `mailSubscriber`
 --
 
-LOCK TABLES `mailSubscriber` WRITE;
-/*!40000 ALTER TABLE `mailSubscriber` DISABLE KEYS */;
-/*!40000 ALTER TABLE `mailSubscriber` ENABLE KEYS */;
+LOCK TABLES `shellFarmerRegistry` WRITE;
+/*!40000 ALTER TABLE `shellFarmerRegistry` DISABLE KEYS */;
+/*!40000 ALTER TABLE `shellFarmerRegistry` ENABLE KEYS */;
 UNLOCK TABLES;
+
+DROP TABLE IF EXISTS `shellFarmerRegistry`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `shellFarmerRegistry` (
+  `sregID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `sregFarmerMUID` varchar(84) NOT NULL,
+  `sregFarmerFIP`  varchar(130) NOT NULL,
+  `sregRegDate` datetime DEFAULT NULL,
+  PRIMARY KEY (`sregID`),
+  KEY `ndxSregFarmerMUID` (`sregFarmerMUID`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
 --
 -- Table structure for table `tblwzMUID`
 --
