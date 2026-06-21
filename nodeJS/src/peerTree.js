@@ -1,42 +1,5 @@
 /*
 Dust Removed: Date: Dec 28, 2022
-
-PASSWDDB="$(openssl rand -hex 18)"
-USERID="shellFarmerDBA"
-DBNAME="shellFarmer"
-
-echo "{\"user\":\"${USERID}\",\"pass\":\"${PASSWDDB}\"}" > btraderdbconf
-
-mysql -e "DROP DATABASE IF EXISTS ${DBNAME};"
-mysql -e "CREATE DATABASE ${DBNAME};"
-
-mysql -e "DROP USER IF EXISTS '${USERID}'@'localhost';"
-mysql -e "CREATE USER '${USERID}'@'localhost' IDENTIFIED BY '${PASSWDDB}';"
-mysql -e "GRANT ALL PRIVILEGES ON ${DBNAME}.* TO '${USERID}'@'localhost';"
-mysql -e "FLUSH PRIVILEGES;"
-
-USE shellFarmer;
-
-CREATE TABLE IF NOT EXISTS borg_replay_log (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-
-  replayKey VARCHAR(200) NOT NULL,
-  tokTime BIGINT NOT NULL,
-  borgHUID VARCHAR(100) NOT NULL,
-  service VARCHAR(100),
-
-  borgToken TEXT NOT NULL,            -- full JSON borgToken
-  borgTokenSig VARCHAR(200) NOT NULL, -- j.sesSig
-  signedPayload TEXT NOT NULL,        -- j.sesTok
-
-  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-  UNIQUE KEY unique_replay (replayKey),
-
-  -- Indexes for performance
-  KEY idx_borgHUID_tokTime (borgHUID, tokTime DESC),
-  KEY idx_tokTime (tokTime DESC)
-);
 */
 
 const EventEmitter = require('events');
