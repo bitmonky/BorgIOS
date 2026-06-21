@@ -203,6 +203,14 @@ class mailTreeCellReceptor{
                  this.reqInBoxKey(j.msg,res);
                  return;
               }
+              if (j.msg.req == 'registerMyFarm'){
+                this.reqRegisterMyFarm(j.msg,res);
+                return;
+              }
+              if (j.msg.req == 'qryMyFarms'){
+                this.reqQryMyFarms(j.msg,res);
+                return;
+              }
               if (j.msg.req == 'registerInBox'){
                 this.reqRegisterInBox(j.msg,res);
                 return;
@@ -356,6 +364,62 @@ class mailTreeCellReceptor{
     }   
     return;
   } 
+  async reqQryMyFarms(j,res){
+    console.log(`reqQryMyFarms():: heard j`,j);
+    j.ownMUID  = j.sig.ownMUID;
+
+    let regIPs = await this.peer.receptorReqMyFarmIPs(j);
+    if (regIPs.length === 0){
+      console.log(`reqRegisterMyFarm():: no available`,regIPs);
+      res.end('{"result":false,"nRecs":0,"msg":"No Farms Found.. Try later"}');
+      return;
+    }
+    res.end('{"result":true,"nRecs":reqIPs.length,farms:reqIPs,"msg":"Farms Found...OK"}');
+  }
+  async reqRegisterMyFarm(j,res){
+    console.log(`reqRegisterInBox():: heard j`,j);
+    j.ownMUID  = j.sig.ownMUID;
+    let maxIPs = j.nCopies || 3;
+    j.nCopies  = maxIPs;
+
+    let regIPs = []; // needs to be an IP look up for any existing farm of the same IP NOT...await this.peer.receptorReqMyFarmIPs(j);
+                     // if any are found the reject the registration.
+
+    if (regIPs.length === 0){
+      regIPs = await this.peer.receptorReqNodeList(j);
+      if (regIPs.length == 0){
+        console.log(`reqRegisterMyFarm():: no available`,regIPs);
+        res.end('{"result":false,"nRecs":0,"repo":"No Nodes Available"}');
+        return;
+      }
+    }
+    if (regIPs < maxIPs){
+      let IPs = await this.peer.receptorReqNodeList(j,regIps);
+      IPs.forEach((ip) => { regIPs.push(ip);});
+    }
+    var n = 0;
+    var hosts = [];
+    var nStored = 0;
+    for (var IP of regIPs){
+      try {
+        var qres = await this.peer.receptorReqRegisterMyFarm(j,IP);
+        if (qres){
+          nStored = nStored +1;
+          hosts.push({host:qres.remMUID,ip:qres.remIp});
+        }
+      }
+      catch(err) {
+        console.log('Borg Farmer Update failed on:',IP,err);
+      }
+      if (n === regIPs.length -1){
+        console.log('{"result":"regOK","nStored":'+nStored+',"request":'+JSON.stringify(j)+',"hosts":'+JSON.stringify(hosts)+'}');
+        res.end('{"result":true,"nStored":'+nStored+'}');
+        return;
+      }
+      n = n + 1;
+    }
+    return;
+  }
   async reqRegisterInbox(j, res) {
     try {
         const IPs = await this.peer.receptorReqNodeList(j);
@@ -710,6 +774,9 @@ class mailTreeObj {
     if (j.req == 'registerInBox'){
       this.doRegisterInBox(j,remIp);
     }
+    if (j.req == 'registerMyFarm'){
+      this.doRegisterMyFarm(j,remIp);
+    }
     if (j.req == 'pMailQryResult'){
       this.pushQryResult(j,remIp);
       return true;
@@ -756,6 +823,9 @@ class mailTreeObj {
         }
         if (j.msg.req == 'sendInBoxKey'){
           this.doSendInBoxKey(j.msg,j.remIp);
+        }
+        if (j.msg.req == 'sendMyFarmIP'){
+          this.doSendMyFarmIP(j.msg,j.remIp);
         }
         if (j.msg.req == 'sendMail'){
           this.doSendMailToOwner(j.msg,j.remIp);
@@ -841,6 +911,94 @@ class mailTreeObj {
      else {
        console.log('invalid signature... no access');
      }
+   }
+   doSendMyFarmIP(j,remIp){
+     console.log(`doSendMyFarmIP`,j);
+     var res = {
+       req    : 'sendMyFarmIPResult',
+       reqId  : j.reqId,
+       result : false
+     }
+     if (this.isValidSig(j.sig)){
+       //*store the public key and reply true
+       const SQL = `select sregFarmerFIP from mailTree.shellFarmerRegistry where sregFarmerMUID = '${j.MUID}'`;
+       console.log(SQL);
+       con.query(SQL , (err, result,fields)=>{
+         if (err){
+           console.log(err);
+           result.msg = err;
+         }
+         else {
+           if (result.length > 0){
+             res.result  = true;
+             res.myFarmIPs = result;
+             console.log(`doSendInBoxKey():: `,result);
+             this.net.sendReply(remIp,res);
+           }
+         }
+       });
+     }
+     else {
+       console.log('invalid signature... no access to farm data');
+     }
+   }
+   doRegisterMyFarm(j,remIp){
+     var reply = {
+       req    : 'registerMyFarmResult',
+       reqId  : j.reqId,
+       result : false
+     }
+     j = j.data;
+
+     if (this.isValidSig(j.sig)){
+       //*store or update the Borg User Mail Registry.
+       const checkSQL = `SELECT sregFarmerMUID nRec FROM mailTree.shellFarmerRegistry WHERE sregFarmerFIP = ?`;
+
+       con.query(checkSQL, [j.farmerFIP], (err, rows) => {
+         if (err) {
+           console.error("mailSubscriber pre-check error:", err);
+           reply.msg = 'Register Farm DB error.. try later'; 
+           this.net.sendReply(remIp, reply);
+           return;
+         }
+         if (rows.length > 0){
+           if (rows[0].farmerMUID !== j.farmerFIP){
+             console.error("mailSubscriber pre-check error:", err);
+             reply.msg = 'Farm Registered to another Shell Farmer... Check IP and try again';
+             this.net.sendReply(remIp, reply);
+             return;
+           }
+           reply.msg = 'Farm Already Registered.';
+           reply.result = true;
+           this.net.sendReply(remIp, reply);
+           return;
+         }
+
+         // Create New Farm Registration
+
+         const values = [
+           j.farmerMUID,
+           j.farmerFIP,
+           j.date
+         ];
+
+         const SQL = `INSERT into mailTree.shellFarmerRegistry (sregFarmerMUID,sregFarmerFIP,sregRegDate) values (?, ?, ?)`;
+         con.query(SQL ,values, (err, result,fields)=>{
+           if (err){
+             console.log(err);
+             reply.msg = err;
+           }
+           else {
+             reply.result = true;
+           }
+           this.net.sendReply(remIp,reply);
+         });
+       });
+     }
+     else {
+        reply.msg = 'invalid signature farm not created';
+        this.net.sendReply(remIp,reply);
+     }     
    }
    doRegisterInBox(j,remIp){
      var reply = {
@@ -1164,6 +1322,36 @@ class mailTreeObj {
       });
     });
   }
+  receptorReqMyFarmIPs(j){
+    return new Promise( (resolve,reject)=>{
+      const reqId = crypto.randomUUID();
+      let IPs = [];
+      let mkyReply = null;
+
+      const gtime = setTimeout( ()=>{
+        console.log('max reply time completed:',j,IPs);
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve(IPs);
+      },1000);
+
+      const bcast = {
+        to    : 'mailCells',
+        req   : 'sendMyFarmIP',
+        reqId : reqId,
+        MUID  : j.ownMUID,
+        sig   : j.sig
+      }
+      console.log(`receptorReqMyFarmIPs():: `,bcast);
+      this.net.broadcast(bcast);
+      this.net.on('mkyReply',mkyReply = (r) =>{
+        //console.log('recptorReqMyFarmPs():: heard:',r);
+        if (r.req === 'sendMyFarmIPResult' && reqId === r.reqId){
+          console.log('receptorReqMyFarmIPs():: mkyReply is:',r.remIp);
+          IPs = [...new Set([...IPs, ...r.myFarmIPs])];
+        }
+      });
+    });
+  }
   receptorReqInBoxKey(j){
     return new Promise( (resolve,reject)=>{
       const reqId = crypto.randomUUID();
@@ -1219,6 +1407,34 @@ class mailTreeObj {
         //console.log('mkyReply is:',r);
         if (r.req === 'registerInBoxResult' && r.reqId === reqId){
           //console.log('mailData Request',r);
+          clearTimeout(gtime);
+          resolve(r);
+        }
+      });
+    });
+  }
+  receptorReqRegisterMyFarm(j,toIp){
+    return new Promise( (resolve,reject)=>{
+      let mkyReply = null;
+
+      const gtime = setTimeout( ()=>{
+        console.log('Register User Farm Request Timeout:',j);
+        resolve(null);
+      },1000);
+      //console.log('bcasting reques for mail data: ',j);
+
+      const reqId = crypto.randomUUID();
+
+      var req = {
+        to    : 'mailCells',
+        req   : 'registerMyFarm',
+        reqId : reqId,
+        data  : j
+      }
+
+      this.net.sendMsg(toIp,req);
+      this.net.on('mkyReply',mkyReply = (r) =>{
+        if (r.req === 'registerMyFarmResult' && r.reqId === reqId){
           clearTimeout(gtime);
           resolve(r);
         }
