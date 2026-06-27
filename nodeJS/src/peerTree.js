@@ -5006,6 +5006,11 @@ class PeerTreeNet extends  EventEmitter {
       this.minPulse    = 350;    // fastest allowed heartbeat (ms)
       this.maxPulse    = 5000;   // slowest allowed heartbeat (ms)
 
+      this.uStats = {
+         requests : 0,
+         data     : 0
+      }
+
       this.maxPeers = maxPeers;
       this.rootIp   = null;
       this.isRoot   = false;
@@ -5031,11 +5036,6 @@ class PeerTreeNet extends  EventEmitter {
       this.db           = db.getConnectionSF();
       this.loginMap     = await this.loadLoginsFromFile();
       setInterval(() => {this.pruneLoginMapTimer();}, 60_000);
-
-      this.uStats = {
-         requests : 0,
-         data     : 0
-      }
    } 
    doHotStartInitialize(){
       this.isStreaming = new Map;
@@ -5045,7 +5045,7 @@ class PeerTreeNet extends  EventEmitter {
    } 
 
    verifyLogin(r) {
-     console.log(`verifyLogin():: `,r);
+     //console.log(`verifyLogin():: `,r);
 
      if (!r.hasOwnProperty('borgToken')) {
        return { result:false, msg:'BorgToken NOT set' };
