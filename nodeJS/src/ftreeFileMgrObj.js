@@ -574,10 +574,10 @@ class ftreeFileMgrCellReceptor{
       j.repo.data = await this.getLocalRepoRec(repoID_master);
       j.repo.data.repoCopies = maxClones - excludeIps.length;
       j.repo.nCopys = j.repo.data.repoCopies;
-     //console.log('cloning Repo Folder .: ',j.repo);
+      //console.log('cloning Repo Folder .: ',j.repo);
 
       var IPs = await this.peer.receptorReqNodeList(j,excludeIps);
-     //console.log('XXRANDNODES:',IPs);
+      //console.log('XXRANDNODES:',IPs);
       if (IPs.length == 0){
        //console.log('{"result":"folderOK","nCloned":0,"folder":"'+j.repo.folder.name+' No Nodes Available"}');
       var fid = null;
@@ -727,7 +727,7 @@ class ftreeFileMgrCellReceptor{
           }
         };
         const IPs = await this.peer.getActiveRepoShard(j);
-       //console.log('getActiveRepoShardList::result:', IPs);
+        //console.log('getActiveRepoShardList::result:', IPs);
         const cloned = await this.hckReqCloneRepoShard(j, IPs);
       }
       await sleep(1500);
