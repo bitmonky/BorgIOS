@@ -683,10 +683,11 @@ function doShowAccountInfo(j) {
   console.log(`Borg Identity():: `,j);
   var spot = document.getElementById('accountInfo');
   if (!spot) return;
-
+  if (!j.nFarms) j.nFarms = 'No Farms Registerd ';
   var htm = "<div ID='doShowAcc' class='infoCardClear' style='width:100%'>";
   htm += "<img ID='borgMyICON' style='width:5em;height:6em;margin:0em 0em 1.5em 1.5em;float:right;border-radius:50%;' src='" + j.icon + "'/>";
   htm += "Account Owner: " + format(j.name);
+  htm += "🌾 Shell Farms: " +  format(j.nFarms) + "<span style='font-size:larger;'></span>"; 
   htm += getAddressSpot(j) +
          "<br/>Balance: " + format(j.balance) +
          "<br/>" + getSearchHTML() +

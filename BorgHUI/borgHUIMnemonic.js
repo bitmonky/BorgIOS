@@ -107,7 +107,44 @@ function mnemonicToPrivateKey(mnemonic) {
 
   return key;
 }
-
+// Add encryption for mnemonic storage
+class SecureMnemonicStorage {
+    constructor(wallet) {
+        this.wallet = wallet;
+    }
+    
+    // Encrypt mnemonic before writing to disk
+    encryptMnemonic(mnemonic, password) {
+        const salt = crypto.randomBytes(32);
+        const key = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256');
+        const iv = crypto.randomBytes(16);
+        
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+        let encrypted = cipher.update(mnemonic, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        const authTag = cipher.getAuthTag();
+        
+        return {
+            encrypted,
+            salt: salt.toString('hex'),
+            iv: iv.toString('hex'),
+            authTag: authTag.toString('hex')
+        };
+    }
+    
+    // Decrypt mnemonic
+    decryptMnemonic(encryptedData, password) {
+        const { encrypted, salt, iv, authTag } = encryptedData;
+        const key = crypto.pbkdf2Sync(password, Buffer.from(salt, 'hex'), 100000, 32, 'sha256');
+        
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'));
+        decipher.setAuthTag(Buffer.from(authTag, 'hex'));
+        
+        let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    }
+}
 module.exports = {
   privateKeyToMnemonic,
   mnemonicToPrivateKey,

@@ -298,9 +298,11 @@ async getBorgFileSys(url) {
 
       <div id='dispMemorySpot'></div>
 
-      <video id='videoSpot' style='display:none;' controls>
+      <center>
+      <video id='videoSpot' style='display:none;text-align: center;width:100%;height:45em;' controls>
         <source src="" type="video/mp4">
       </video>
+      </center>
 
       <div id='textSpot' style='display:none;max-width:100%;overflow:auto;'></div>
 
@@ -324,8 +326,9 @@ async getBorgFileSys(url) {
             <span style='color:darkKhaki;'>See left sidebar...</span>
           `
         : `
-            <h2>Try Uploading An Image</h2>
-            *** Warning *** uploads are public and can be seen by anyone!<br/><br/>
+            <h2>Try Uploading A File</h2>
+            *** Warning *** uploads are for now still public and can be seen by anyone!<br/>
+            Private files with full encryption will be available soon.<br/><br/>
 
             <form style='margin-top:1.5em;' id="wzPLoadFrm" enctype="multipart/form-data">
               <b>
@@ -440,7 +443,7 @@ async buildRepoSidebarHTML(ctx) {
 
   // HEADER + CREATE REPO FORM
   html += `
-    <div class='infoCardClear' style='background:#151515;'>
+    <div class='infoCardClear' style='background:#151515;color:white;'>
       <div align='right'>
         <input type='button' value=' Refresh ' onclick='refreshSideBar();'/>
       </div>
@@ -465,7 +468,7 @@ async buildRepoSidebarHTML(ctx) {
     const result = myRepos.json;
 
     if (result.list?.length > 0) {
-      html += `<h2>Local Repos Found</h2><div style='color:gray'>`;
+      html += `<div class="infoCardClear" style="background:#333333;color:darkKhaki;margin-top:.5em;"><h2>Local Repos Found</h2><div style='color:gray'>`;
 
       result.list.forEach(rec => {
         html += `
@@ -535,13 +538,13 @@ async buildRepoSidebarHTML(ctx) {
           `;
         });
       }
-
+      html += '</div>';
       html += this.drawFolderFormHTML();
     }
   }
 
   // OTHER FILES
-  html += `<h2>Other Files In Storage On The PeerTree Network</h2><ol id="otherFilesList"></ol>`;
+  //html += `<h2>Other Files In Storage On The PeerTree Network</h2><ol id="otherFilesList"></ol>`;
 
   return html;
 }

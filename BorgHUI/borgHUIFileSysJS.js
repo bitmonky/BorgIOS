@@ -113,6 +113,7 @@ function processFile(j){
   html += "<h3>Exploded File And Sent Shards To The PeerTree...</h3>";
   html += fdata + "</div>";
   spot.innerHTML = html;
+  openFolder(rname, folderID, foldName,mbrMUID);
 }
 
 function handlerProcessFile(j){
@@ -170,6 +171,7 @@ function startPhotoUpload(){
             processFile(j);
           } else {
             spot.innerHTML = "<h2>" + j.msg + "</h2>";
+            openFolder(rname, folderID, foldName,mbrMUID);
           }
         } catch(err){
           spot.innerHTML = "<h2>JSON Error In Upload Response</h2>is::" + err + xhr.responseText;
@@ -324,6 +326,8 @@ function handlerCreateRepo(j){
 }
 
 function refreshSideBar(){
+  openFolder(rname, folderID, foldName,mbrMUID);
+  return;
   var url = '/whzon/bitMiner/demoRepoRefreshSB.php?' + queryString;
   borgSendUpdateResByUrl(url, 'sideBar');
 }

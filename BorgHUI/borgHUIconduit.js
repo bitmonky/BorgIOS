@@ -31,7 +31,7 @@ const {BorgHUIstreamMgr} = require('./BorgHUIstreamMgr.js');
 const {BorgHUIptreeAPI}  = require("./borgHUIptreeAPI.js");
 const {BorgHUIFileMgrUI} = require("./borgHUIFileMgrUI.js");
 const {BorgHUIBorgPay}   = require("./borgHUIBorgPay.js");
-
+const {borgHUIMnemonic}  = require("./borgHUIMnemonic.js");
 const maxUpLoadSize = 100000000000; // 1Gig
 
 const { generateKeyPairSync } = require('crypto')
@@ -309,6 +309,17 @@ class bitMonkyWSrv extends  EventEmitter {
        res.setHeader('Content-Type', 'image/x-icon');
        fs.createReadStream('favicon.ico').pipe(res);
        return;
+     }
+     if (req.method === 'POST' && pathname === '/api/wallet/restore') {
+       return this.handleRestoreWallet(req, res);
+     }
+
+     if (req.method === 'GET' && pathname === '/api/wallet/mnemonic') {
+       return this.handleExportMnemonic(req, res);
+     }
+
+     if (req.method === 'POST' && pathname === '/api/wallet/verify-mnemonic') {
+       return this.handleVerifyMnemonic(req, res);
      }
      
        if (req.url === "/borgEvents") {
@@ -588,6 +599,7 @@ class bitMonkyWSrv extends  EventEmitter {
      try {
        j = JSON.parse(msg);
        //console.log(`handleRequest():: values:`,msg);
+
        if (j.req){
          if (j.req == 'useNewWallet'){
            this.wallet.changeWallet(j,res);
@@ -597,7 +609,7 @@ class bitMonkyWSrv extends  EventEmitter {
          //  this.wallet.doUploadFile(j, res);
          //  return;
          //}
-         if (j.req  == 'signToken'){
+        if (j.req  == 'signToken'){
            j.signedToken = this.wallet.signMsg(j.sigTokenData);
            res.end(JSON.stringify(j));
            return;
@@ -675,7 +687,78 @@ class bitMonkyWSrv extends  EventEmitter {
        res.end("JSON PARSE Errors: \n\n"+msg+"\n\n"+err);
      }
   }
-async doCheckSumLookup(msg, service,checksum) {
+  async handleRestoreWallet(req, res) {
+    try {
+        const { mnemonic } = req.body;
+
+        if (!mnemonic) {
+            throw new Error('Mnemonic phrase required');
+        }
+
+        const result = this.wallet.restoreFromMnemonic(mnemonic);
+
+        if (result.success) {
+            res.json({
+                success: true,
+                muid: result.muid,
+                publicKey: result.publicKey,
+                message: 'Wallet restored successfully'
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                error: result.error
+            });
+        }
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            error: error.message
+        });
+    }
+  }
+
+  // Handle mnemonic export
+  async handleExportMnemonic(req, res) {
+    try {
+        // Verify authentication first
+        const token = req.headers.authorization;
+        if (!this.verifyAuth(token)) {
+            throw new Error('Authentication required');
+        }
+
+        const mnemonic = this.wallet.getMnemonic();
+        res.json({
+            success: true,
+            mnemonic,
+            warning: 'Store this mnemonic securely! It can restore your entire identity.'
+        });
+    } catch (error) {
+        res.status(401).json({
+            success: false,
+            error: error.message
+        });
+    }
+  }
+  // Handle mnemonic verification
+  async handleVerifyMnemonic(req, res) {
+    try {
+        const { mnemonic } = req.body;
+        const isValid = this.wallet.verifyMnemonic(mnemonic);
+
+        res.json({
+            success: true,
+            isValid,
+            message: isValid ? 'Mnemonic matches wallet' : 'Mnemonic does not match wallet'
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            error: error.message
+        });
+    }
+  }
+  async doCheckSumLookup(msg, service,checksum) {
   try {
     // Build new service object without shadowing the argument
     const lookupService = {
@@ -1103,6 +1186,181 @@ class bitMonkyWallet{
         this.writeWallet();
         this.newWallet = true;  
       }
+   }
+   openWallet_nem() {
+        var keypair = null;
+        try {
+            keypair = fs.readFileSync(wfile);
+        } catch {
+            console.log('No wallet file found');
+        }
+
+        this.publicKey = null;
+
+        if (keypair) {
+            try {
+                const pair = keypair.toString();
+                const j = JSON.parse(pair);
+                this.publicKey = j.publicKey;
+                this.privateKey = j.privateKey;
+                this.ownMUID = j.ownMUID;
+                this.walletCipher = j.walletCipher;
+                this.mnemonic = j.mnemonic || null;  // Load mnemonic if saved
+
+                if (j.rsaKeys) {
+                    this.rsaKeys = j.rsaKeys;
+                } else {
+                    const rsaMail = new mkyRSAMail(this.walletCipher);
+                    this.rsaKeys = rsaMail.generateKeys();
+                    this.writeWallet();
+                }
+
+                this.signingKey = ec.keyFromPrivate(this.privateKey);
+                console.log(`✅ Wallet loaded: ${this.ownMUID}`);
+                if (this.mnemonic) {
+                    console.log('🔑 Mnemonic backup available');
+                }
+            } catch(err) {
+                console.log('Wallet file not valid', err);
+                process.exit();
+            }
+        } else {
+            // Generate new wallet
+            this.generateNewWallet();
+        }
+   }
+   // New method: Generate new wallet with mnemonic
+   generateNewWallet() {
+        const key = ec.genKeyPair();
+        this.privateKey = key.getPrivate('hex');
+        this.signingKey = ec.keyFromPrivate(this.privateKey);
+        this.publicKey = key.getPublic('hex');
+
+        // Generate BORG address
+        let mkybc = bitcoin.payments.p2pkh({
+            pubkey: Buffer.from(this.publicKey, 'hex')
+        });
+        this.ownMUID = mkybc.address;
+
+        // Derive cipher key
+        const cipherSeed = this.calculateHash(this.privateKey);
+        const pmc = ec.keyFromPrivate(cipherSeed);
+        this.pmCipherKey = pmc.getPublic('hex');
+
+        mkybc = bitcoin.payments.p2pkh({
+            pubkey: Buffer.from(this.pmCipherKey, 'hex')
+        });
+        this.walletCipher = mkybc.address;
+        this.fileKey = deriveFileKey(this.privateKey);
+
+        // Generate RSA keys
+        const rsaMail = new mkyRSAMail(this.walletCipher);
+        this.rsaKeys = rsaMail.generateKeys();
+
+        // Generate mnemonic from private key
+        const privateKeyBuffer = Buffer.from(this.privateKey, 'hex');
+        this.mnemonic = borgMnemonic.privateKeyToMnemonic(privateKeyBuffer);
+
+        // Save wallet
+        this.writeWallet();
+        this.newWallet = true;
+
+        console.log(`🆕 New wallet generated: ${this.ownMUID}`);
+        console.log('🔑 IMPORTANT: Save your mnemonic phrase:');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(this.mnemonic);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('⚠️  Store this mnemonic securely!');
+        console.log('⚠️  It can restore your entire identity!');
+   }
+   restoreFromMnemonic(mnemonic) {
+      try {
+            // Convert mnemonic back to private key
+            const privateKeyBuffer = borgMnemonic.mnemonicToPrivateKey(mnemonic);
+            this.privateKey = privateKeyBuffer.toString('hex');
+
+            // Generate public key from private key
+            this.signingKey = ec.keyFromPrivate(this.privateKey);
+            this.publicKey = this.signingKey.getPublic('hex');
+
+            // Generate BORG address
+            let mkybc = bitcoin.payments.p2pkh({
+                pubkey: Buffer.from(this.publicKey, 'hex')
+            });
+            this.ownMUID = mkybc.address;
+
+            // Derive cipher key
+            const cipherSeed = this.calculateHash(this.privateKey);
+            const pmc = ec.keyFromPrivate(cipherSeed);
+            this.pmCipherKey = pmc.getPublic('hex');
+
+            mkybc = bitcoin.payments.p2pkh({
+                pubkey: Buffer.from(this.pmCipherKey, 'hex')
+            });
+            this.walletCipher = mkybc.address;
+            this.fileKey = deriveFileKey(this.privateKey);
+
+            // Generate RSA keys
+            const rsaMail = new mkyRSAMail(this.walletCipher);
+            this.rsaKeys = rsaMail.generateKeys();
+
+            // Store mnemonic
+            this.mnemonic = mnemonic;
+
+            // Save wallet
+            this.writeWallet();
+            this.newWallet = false;
+
+            return {
+                success: true,
+                muid: this.ownMUID,
+                publicKey: this.publicKey,
+                message: 'Wallet restored from mnemonic'
+            };
+        } catch (error) {
+            console.error('Failed to restore wallet from mnemonic:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+   }
+   writeWallet_nem() {
+        const wallet = {
+            ownMUID: this.ownMUID,
+            publicKey: this.publicKey,
+            privateKey: this.privateKey,
+            walletCipher: this.walletCipher,
+            rsaKeys: this.rsaKeys,
+            mnemonic: this.mnemonic,  // Save mnemonic
+            created: Date.now(),
+            version: '2.0'  // Version bump
+        };
+
+        fs.writeFileSync(wfile, JSON.stringify(wallet, null, 2));
+        console.log('💾 Wallet saved with mnemonic backup');
+   }
+
+   // New method: Export mnemonic
+   getMnemonic() {
+        if (!this.mnemonic) {
+            // Generate from existing private key
+            const privateKeyBuffer = Buffer.from(this.privateKey, 'hex');
+            this.mnemonic = borgMnemonic.privateKeyToMnemonic(privateKeyBuffer);
+            this.writeWallet();
+        }
+        return this.mnemonic;
+   }
+
+   // New method: Verify mnemonic matches current wallet
+   verifyMnemonic(mnemonic) {
+        try {
+            const privateKeyBuffer = borgMnemonic.mnemonicToPrivateKey(mnemonic);
+            const recoveredPrivateKey = privateKeyBuffer.toString('hex');
+            return recoveredPrivateKey === this.privateKey;
+        } catch (error) {
+            return false;
+        }
    }
    async doUpdateBorgRegistry(){
      const regInfo   = this.net.wcj.imeta || {};
@@ -1574,6 +1832,9 @@ class bitMonkyWallet{
   }
   async doSendAccountInfo(m,res){
     let j = await this.net.BPay.doSendBorgPayRecentTrans(m);
+    if (this.net.wcj?.hasFarm === true){
+      j.myFarms = this.net.PTree.mailTreeGetFarms(this.ownMUID);
+    }
     res.end(JSON.stringify(j));
     return;    
   }
