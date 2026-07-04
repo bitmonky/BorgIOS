@@ -74,17 +74,42 @@ class BorgHUIstreamMgr {
   prepareTempFile(filepath, fileSize) {
     const file = filepath;
 
-    // Remove old file if it exists
+    // Check if cache file already exists
+    let cacheExists = false;
+    let cacheSize = 0;
     try {
-      if (fs.existsSync(file)) fs.unlinkSync(file);
+      if (fs.existsSync(file)) {
+        const stats = fs.statSync(file);
+        cacheSize = stats.size;
+        cacheExists = true;
+        console.log(`prepareTempFile():: cache file exists: ${file} (${cacheSize} bytes)`);
+      }
     } catch (err) {
-      console.error("Failed to remove old temp file:", err);
+      console.error("Failed to check cache file:", err);
+    }
+
+    // If cache exists and matches expected size, keep it
+    if (cacheExists && cacheSize === fileSize) {
+      console.log(`prepareTempFile():: using existing cache file (${fileSize} bytes)`);
+      return file;
+    }
+
+    // Otherwise, create new file or truncate existing
+    // Remove old file if it exists and size doesn't match
+    if (cacheExists) {
+      try {
+        fs.unlinkSync(file);
+        console.log(`prepareTempFile():: removed stale cache file (size mismatch: ${cacheSize} vs ${fileSize})`);
+      } catch (err) {
+        console.error("Failed to remove old temp file:", err);
+      }
     }
 
     // Pre-allocate the file to full size
     const fd = fs.openSync(file, 'w');
     fs.ftruncateSync(fd, fileSize);
     fs.closeSync(fd);
+    console.log(`prepareTempFile():: created new file (${fileSize} bytes)`);
 
     return file;
   }
@@ -117,15 +142,6 @@ class BorgHUIstreamMgr {
     const remaining = fileSize - offset;
     const isFinal   = (index === stream.count - 1);
 
-/*
-    console.log(`writeShardToFile():: shardSize`,shardSize);
-    console.log(`writeShardToFile():: fileSize`,fileSize);
-    console.log(`writeShardToFile():: index`,index);
-    console.log(`writeShardToFile():: offset`,offset);
-    console.log(`writeShardToFile():: expectedShardId`,expectedShardId);
-    console.log(`writeShardToFile():: remaining`,remaining);
-    console.log(`writeShardToFile():: isFinal`,isFinal);
-*/
     // 1. Size validation
     if (!isFinal) {
       // Non-final shard must match shardSize exactly
@@ -535,57 +551,6 @@ class BorgHUIstreamMgr {
       fstream.on("error", reject);
     });
   }
-/*
-  gatherShards(stream) {
-  // Create a per-stream queue if it doesn't exist
-  if (!stream._queue) {
-    stream._queue = [];
-    stream._processing = false;
-  }
-
-  const processQueue = async () => {
-    if (stream._processing) return;
-    stream._processing = true;
-
-    while (stream._queue.length > 0) {
-      const task = stream._queue.shift();
-      try {
-        await task();
-      } catch (err) {
-        console.log(`gatherShards().processQueue():: err `,err);
-        this.closeIncomingStream(stream,true);
-        break;
-      }
-    }
-
-    stream._processing = false;
-  };
-
-  const handler = (data) => {
-    if (data.streamId !== stream.streamId) return;
-
-    // Push shard-processing task into queue
-    stream._queue.push(async () => {
-      await this.onShardReceived({
-        streamId: stream.streamId,
-        shard: {
-          portal   : data.toHost,
-          shardId  : data.hash,
-          shardIdx : data.index,
-          error    : data.error,
-          shard    : data.data
-        }
-      });
-    });
-
-    // Kick the queue
-    processQueue();
-  };
-
-  this.net.on('requestBinShardOk', handler);
-  stream._shardHandler = handler;
-}
-*/
   gatherShards(stream) {
     const handler = async (data) => {
       if (data.streamId !== stream.streamId) return;
@@ -611,155 +576,163 @@ class BorgHUIstreamMgr {
     stream._shardHandler = handler;
   }
 
-  closeIncomingStream(stream,withError=false) {
+  closeIncomingStream(stream, withError = false) {
     // Remove shard event listener
     if (stream._shardHandler) {
       this.net.removeListener('binShard', stream._shardHandler);
       stream._shardHandler = null;
     }
+  
     // Mark stream as completed
     stream.inProgress = false;
-    stream.completed  = true;
-    stream.status     = "completed";
+    stream.completed = true;
+    stream.status = "completed";
 
     // Diagnostics
     stream.timeElapsed = Date.now() - stream.startAt;
 
-    // Build local request for app layer
-    const buildLocalReq = {
-      req      : stream.request,
-      reqId    : stream.reqId,
-      remIp    : stream.remIp,
-      response : stream.response,
-      fileInfo : stream.filename,
-      file     : stream.tempFilePath,   // for file streams
-      buffer   : stream.buffer          // for memFile/dsBuffer streams
-    };
-
     // Remove from active streams
     console.log(`Stream ${stream.streamId} completed in ${stream.timeElapsed}ms`);
-    let httpRes  = stream.httpRes;
+    let httpRes = stream.httpRes;
     let filePath = stream.tempFilePath;
     let mimeType = stream.mimeType;
-    console.log(`closeIncomingStream():: mimeType`,mimeType);
+    console.log(`closeIncomingStream():: mimeType`, mimeType);
 
     if (mimeType.startsWith("video/")) {
       console.log(`closeIncomingStream():: is video true`);
-      for (const client of stream.videoClients) {
-        console.log(`closeIncomingStream():: ending video client stream`);
-        client.end();
+      // Only end clients if they still exist and stream wasn't already closed
+      if (stream.videoClients && stream.videoClients.length > 0) {
+        for (const client of stream.videoClients) {
+          try {
+            console.log(`closeIncomingStream():: ending video client stream`);
+            client.end();
+          } catch (err) {
+            console.warn("Video client already ended", err);
+          }
+        }
+      }
+      //this.dstreams.delete(stream.streamId);
+      return;
+    }
+
+    if (withError) {
+      console.error("getFileFromRepo():: File read error: MAX_TRIES");
+      if (httpRes && !httpRes.headersSent) {
+        httpRes.writeHead(500);
+        httpRes.end("File read error");
       }
       this.dstreams.delete(stream.streamId);
       return;
     }
 
-    if (withError){
-      console.error("getFileFromRepo():: File read error: MAX_TRIES");
-      httpRes.writeHead(500);
-      httpRes.end("File read error");
-      this.dstreams.delete(stream.streamId);
-      return;
-    } 
+    // For non-video files, deliver file
+    if (httpRes && !httpRes.headersSent) {
+      const headers = {
+        "Content-Type": stream.mimeType,
+        "Content-Length": stream.totalSize,
+        "Accept-Ranges": "bytes"
+      };
 
-    // Deliver file or Buffer to the browser
+      headers["ETag"] = `"${stream.streamId}"`;
+      headers["Content-Disposition"] = `inline; filename="${stream.origName}"`;
 
-    const headers = {
-      "Content-Type": stream.mimeType,
-      "Content-Length": stream.totalSize,
-      "Accept-Ranges": "bytes"
-    };
+      // Send headers
+      httpRes.writeHead(200, headers);
 
-    headers["ETag"] = `"${stream.streamId}"`;
-    headers["Content-Disposition"] = `inline; filename="${stream.origName}"`;
+      // Create a read stream and pipe it out
+      const fileStream = fs.createReadStream(filePath);
 
-    // remove stream;
+      fileStream.on("error", err => {
+        console.error("getFileFromRepo():: File read error:", err);
+        if (!httpRes.headersSent) {
+          httpRes.writeHead(500);
+          httpRes.end("File read error");
+        }
+      });
+
+      // Pipe file to client
+      fileStream.pipe(httpRes);
+    }
+
+    // remove stream
     this.dstreams.delete(stream.streamId);
-
-
-    // Send headers
-    httpRes.writeHead(200, headers);
-
-    // Create a read stream and pipe it out
-    const fileStream = fs.createReadStream(filePath);
-
-    fileStream.on("error", err => {
-      console.error("getFileFromRepo():: File read error:", err);
-      httpRes.writeHead(500);
-      httpRes.end("File read error");
-    });
-
-    // Pipe file to client
-    fileStream.pipe(httpRes);
   }
-  async doOpenStream(repo,service,httpRes,winSize=12) {
+  async doOpenStream(repo, service, httpRes, winSize = 12) {
     let j = repo.file;
     let shards = [];
-    j.shards.forEach( (shard) => shards.push({hash:shard.shardID,shardHID:shard.shardHID}));
+    j.shards.forEach((shard) => shards.push({ hash: shard.shardID, shardHID: shard.shardHID }));
     const input = j.filename;
     const origName = input.split('/').pop();
 
     const fmap = {
-      httpRes      : httpRes,
-      requestMutex : new Mutex(), 
-      videoClients : [],
-      videoShardBuffer  : new Map(), // idx -> Buffer
-      inRetry      : new Map(),      // retry watcher
-      nextToSend   : 0,
-      service      : service,
-      streamId     : j.fileInfo.checkSum,
-      filename     : service.filename,
-      origName     : origName,
-      mimeType     : j.fileInfo.fileType,
-      reqId        : crypto.randomUUID(),
-      response     : 'na',
-      request      : 'sendShard',
-      shardSize    : j.fileInfo.shardSize,
-      shardHashes  : shards,
-      count        : shards.length,
-      totalSize    : j.fileInfo.fileSize,
-      type         : 'file',
+      httpRes: httpRes,
+      requestMutex: new Mutex(),
+      videoClients: [],
+      videoShardBuffer: new Map(),
+      inRetry: new Map(),
+      nextToSend: 0,
+      service: service,
+      streamId: j.fileInfo.checkSum,
+      filename: service.filename,
+      origName: origName,
+      mimeType: j.fileInfo.fileType,
+      reqId: crypto.randomUUID(),
+      response: 'na',
+      request: 'sendShard',
+      shardSize: j.fileInfo.shardSize,
+      shardHashes: shards,
+      count: shards.length,
+      totalSize: j.fileInfo.fileSize,
+      type: 'file',
 
       // State machine
-      status      : "readyForShards",
-      acked       : true,
-      completed   : false,
+      status: "readyForShards",
+      acked: true,
+      completed: false,
 
       // Progress
-      shardsReceived : 0,
-      pendingShards  : new Set([...Array(shards.length).keys()]),
-      inFlight: new Set(),           // shardIdx values currently requested but not yet received
-      windowSize     : winSize ,     // or 8, or dynamic later
-      inProgress     : true,
+      shardsReceived: 0,
+      pendingShards: new Set([...Array(shards.length).keys()]),
+      inFlight: new Set(),
+      windowSize: winSize,
+      inProgress: true,
 
       // Diagnostics
-      startAt       : Date.now(),
-      timeElapsed   : 0,
+      startAt: Date.now(),
+      timeElapsed: 0,
+      _backgroundDownloadStarted: false
     };
-    
 
     // Storage
     if (fmap.type === 'memFile' || fmap.type === 'dsBuffer') {
       fmap.buffer = this.prepareBlobMemFile(fmap.streamId, fmap.totalSize);
-    }
-    else {
+    } else {
       fmap.tempFilePath = await this.prepareTempFile(fmap.filename, fmap.totalSize);
     }
-    if (fmap.mimeType.startsWith("video/")) {
-       console.log(`doOpenStream():: is video: sending response headers`);
-       fmap.videoClients.push(httpRes);
-       httpRes.writeHead(200, {
-         "Content-Type": fmap.mimeType,
-         "Transfer-Encoding": "chunked",
-         "Accept-Ranges": "bytes"
-       });
+    this.dstreams.set(fmap.streamId, fmap);
+
+    // 🔥 NEW: Try to stream from cache first (with range support)
+    const streamedFromCache = await this.streamFromCacheFast(fmap);
+    if (streamedFromCache) {
+      console.log(`doOpenStream():: streamed from cache for ${fmap.streamId}`);
+      return fmap;
     }
+
+    // If not fully cached, handle video streaming with range support
+    if (fmap.mimeType.startsWith("video/")) {
+      console.log(`doOpenStream():: is video: handling range request`);
+      await this.handleRangeRequest(fmap.streamId, httpRes);
+      return fmap;
+    }
+
+    // For non-video files, use normal shard retrieval
     this.dstreams.set(fmap.streamId, fmap);
 
     // Start requesting shards
     this.gatherShards(fmap);
 
     // Kick off the first batch of shard requests
-    this.requestShardBatch(fmap.streamId,service);
+    this.requestShardBatch(fmap.streamId, service);
     return fmap;
   }
   getNextPortal() {
@@ -785,12 +758,12 @@ class BorgHUIstreamMgr {
     );
   }
   async requestShardBatch(streamId,service) {
+    //console.log(`requestShardBatch():: `);
     const stream = this.dstreams.get(streamId);
     if (!stream) {
       console.log(`requestShardBatch():: stream NOT OPEN.`);
       return;
     }
-    console.log(`requestShardBatch():: stream`,stream.streamId);
 
     // If nothing left, close stream
     if (stream.pendingShards.size === 0 && stream.inFlight.size === 0) {
@@ -802,6 +775,7 @@ class BorgHUIstreamMgr {
     try {
       // Fill the window
       console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size} winSize${stream.windowSize} `);
+      let portal = {host:'localhost',port:80,endpoint:'/'};
       while (
         stream.inFlight.size < stream.windowSize &&
         stream.pendingShards.size > 0
@@ -809,13 +783,25 @@ class BorgHUIstreamMgr {
         const shardIdx = this.getLowestPendingShard(stream.pendingShards);
         if (shardIdx === null) return;
 
+        // Check if shard exists locally FIRST (acts as a cache)
+        const foundLocal = await this.checkLocalShard(streamId, shardIdx,portal);
+        if (foundLocal) {
+          // The shard was found locally and the event has been emitted
+          // The onShardReceived handler will process it
+          // Continue to the next shard without making a network request
+          console.log(`requestShardBatch():: shard ${shardIdx} found in local cache, skipping network request`);
+          continue;
+        }
+
+        // If not found locally, proceed with network request
         // Move shard from pending → inFlight
+
         stream.pendingShards.delete(shardIdx);
         stream.inFlight.add(shardIdx);
         let shard = stream.shardHashes[shardIdx];
 
         // 🔥 ROTATE PORTAL NODE HERE
-        const portal = this.getNextPortal();
+        portal = this.getNextPortal();
         if (portal) {
           service.host = portal.ip;
           service.port = this.shardPortals.port;  // shared port
@@ -839,6 +825,105 @@ class BorgHUIstreamMgr {
     } finally {
       mutex.unlock();
     }
+  }
+  async checkLocalShard(streamId, shardIdx,portal) {
+    const stream = this.dstreams.get(streamId);
+    if (!stream) {
+      console.log(`checkLocalShard():: stream not found ${streamId}`);
+      return false;
+    }
+
+    // Check if we have a local file or buffer that already contains this shard
+    const shard = stream.shardHashes[shardIdx];
+    if (!shard) {
+      console.log(`checkLocalShard():: shard ${shardIdx} not found in shardHashes`);
+      return false;
+    }
+
+    let shardData = null;
+
+    // CASE 1: Check if we have a buffer (memFile or dsBuffer)
+    if (stream.hasOwnProperty('buffer') && stream.buffer !== null && 
+       (stream.type === 'memFile' || stream.type === 'dsBuffer')) {
+      const start = shardIdx * stream.shardSize;
+      const end = Math.min(start + stream.shardSize, stream.totalSize);
+    
+      try {
+        shardData = stream.buffer.slice(start, end);
+      } catch (err) {
+        console.log(`checkLocalShard():: error reading from buffer: ${err}`);
+        return false;
+      }
+    }
+    // CASE 2: Check if we have a temporary file on disk
+    else if (stream.tempFilePath) {
+      try {
+        const start = shardIdx * stream.shardSize;
+        const end = Math.min(start + stream.shardSize, stream.totalSize);
+      
+        // Check if file exists
+        if (!fs.existsSync(stream.tempFilePath)) {
+          console.log(`checkLocalShard():: temp file not found ${stream.tempFilePath}`);
+          return false;
+        }
+
+        // Read the shard from the file
+        const fd = fs.openSync(stream.tempFilePath, 'r');
+        const buffer = Buffer.alloc(end - start);
+        const readBytes = fs.readSync(fd, buffer, 0, buffer.length, start);
+        fs.closeSync(fd);
+
+        if (readBytes === 0) {
+          console.log(`checkLocalShard():: no data read from file for shard ${shardIdx}`);
+          return false;
+        }
+
+        shardData = buffer;
+      } catch (err) {
+        console.log(`checkLocalShard():: error reading from file: ${err}`);
+        return false;
+      }
+    } else {
+      console.log(`checkLocalShard():: no storage available for stream ${streamId}`);
+      return false;
+    }
+
+    // Validate the shard data we read
+    if (!shardData || shardData.length === 0) {
+      console.log(`checkLocalShard():: shard data is empty for ${shardIdx}`);
+      return false;
+    }
+
+    // Verify the shard hash matches
+    const actualHash = this.sha256(shardData);
+    if (actualHash !== shard.hash) {
+      console.log(`checkLocalShard():: hash mismatch for shard ${shardIdx}`);
+      console.log(`  shard: `,shard);
+      console.log(`  expected: ${shard.hash}`);
+      console.log(`  actual:   ${actualHash}`);
+      return false;
+    }
+
+    // Move shard from pending → inFlight
+    stream.pendingShards.delete(shardIdx);
+    stream.inFlight.add(shardIdx);
+
+    // Construct the shard object as if it came from remote
+    const shardObj = {
+      streamId : streamId,
+      toHost   : portal.host,
+      hash     : shard.hash,
+      index    : shardIdx,
+      error    : false,
+      data     : shardData
+    };
+
+    console.log(`checkLocalShard():: found shard ${shardIdx} locally, emitting event`);
+
+    // Emit the same event as if it came from the remote node
+    this.net.emit('requestBinShardOk', shardObj);
+
+    return true;
   }
   getLowestPendingShard(pendingShards) {
     let lowest = Infinity;
@@ -883,7 +968,8 @@ class BorgHUIstreamMgr {
         // 🔥 HARD BAN: disable this portal for 2 minutes
         portal.bannedUntil = now + 2 * 60 * 1000;
 
-        console.log(`Portal ${portal.ip} banned until ${portal.bannedUntil}`);        portal.errors = (portal.errors || 0) + 1;
+        console.log(`Portal ${portal.ip} banned until ${portal.bannedUntil}`);
+        portal.errors = (portal.errors || 0) + 1;
       }
 
       stream.inFlight.delete(shard.shardIdx);
@@ -943,7 +1029,7 @@ class BorgHUIstreamMgr {
 
       // Try Re-request this shard
 
-      if (await this.maxTriesExceeded(stream,shard.Idx)){
+      if (await this.maxTriesExceeded(stream,shardIdx)){
         return;
       }
 
@@ -1031,6 +1117,331 @@ class BorgHUIstreamMgr {
         resolve(reqStreamId);
       });
     });
+  }
+
+  // Check if a range of shards is cached
+  async checkShardsCached(stream, startShard, endShard) {
+    // If we have shardsReceived count and it covers the range
+    if (stream.shardsReceived >= endShard + 1) {
+      return true;
+    }
+  
+    // More precise check - verify each shard
+    for (let i = startShard; i <= endShard; i++) {
+      if (!stream.shardsReceived || stream.shardsReceived <= i) {
+        // Check if shard exists in file
+        try {
+          const fd = fs.openSync(stream.tempFilePath, 'r');
+          const buffer = Buffer.alloc(stream.shardSize);
+          const readBytes = fs.readSync(fd, buffer, 0, stream.shardSize, i * stream.shardSize);
+          fs.closeSync(fd);
+        
+          if (readBytes === 0) {
+            return false;
+          }
+        
+          // Check if zeros (empty)
+          const isZero = !buffer.some(byte => byte !== 0);
+          if (isZero) {
+            return false;
+          }
+        } catch (err) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Stream from cache if valid (with range support)
+  async keepStreaming(streamId,res,fname,ftype){
+    console.log(`keepStreaming()::`,streamId);
+    const input = fname;
+    const origName = input.split('/').pop();
+
+    const stream = {
+      streamId     : streamId,
+      tempFilePath : `downloads/${streamId}.tmp`,
+      httpRes      : res,
+      origName     : origName,
+      filename     : origName,
+      mimeType     : ftype
+    }; //this.dstreams.get(streamId);
+
+    if ( await this.streamFromCacheFast(stream)){
+      return true;
+    }
+    console.log(`streamFromCacheFast():: failed to find stream`);
+    return false;
+  }
+  async streamFromCacheFast(stream) {
+    console.log(`streamFromCacheFast()::`);
+    // Check if cache file exists and has correct size
+    if (!stream.tempFilePath || !fs.existsSync(stream.tempFilePath)) {
+      return false;
+    }
+    const fhash = await this.getHash(stream.tempFilePath);
+    if (fhash !== stream.streamId) {
+      console.log(`streamFromCacheFast():: cache hash not matching streamId`,fhash,stream.streamId);
+      return false;
+    }
+
+    const fstats = fs.statSync(stream.tempFilePath);
+    stream.totalSize = fstats.size;
+
+    console.log(`streamFromCacheFast():: cache found for ${stream.streamId}, streaming directly!`);
+
+    const httpRes = stream.httpRes;
+    const fileSize = stream.totalSize;
+  
+    // Parse Range header if present
+    let range = httpRes.req.headers.range;
+    let start = 0;
+    let end = fileSize - 1;
+    let statusCode = 200;
+
+    console.log(`streamFromCacheFast():: range`,range);
+    if (range) {
+      // Range: bytes=start-end
+      const parts = range.replace(/bytes=/, "").split("-");
+      start = parseInt(parts[0], 10);
+      end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    
+      // Clamp to valid range
+      start = Math.max(0, start);
+      end = Math.min(fileSize - 1, end);
+    
+      // If start > end or out of range, send full file
+      if (start > end || start >= fileSize) {
+        start = 0;
+        end = fileSize - 1;
+        statusCode = 200;
+      } else {
+        statusCode = 206; // Partial Content
+      }
+    }
+
+    const contentLength = end - start + 1;
+  
+    // Build headers
+    const headers = {
+      "Content-Type": stream.mimeType,
+      "Content-Length": contentLength,
+      "Accept-Ranges": "bytes",
+      "ETag": `"${stream.streamId}"`,
+      "Content-Disposition": `inline; filename="${stream.origName}"`
+    };
+
+    // Add range-specific headers for 206 responses
+    if (statusCode === 206) {
+      headers["Content-Range"] = `bytes ${start}-${end}/${fileSize}`;
+    }
+    console.log(headers);
+    //if (more === false) 
+    httpRes.writeHead(statusCode, headers);
+  
+    // Create read stream for the specific range
+    const fileStream = fs.createReadStream(stream.tempFilePath, {
+      start: start,
+      end: end
+    });
+  
+    fileStream.on("error", err => {
+      console.error("streamFromCacheFast():: file read error:", err);
+      if (!httpRes.headersSent) {
+        httpRes.writeHead(500);
+        httpRes.end("File read error");
+      }
+    });
+
+    fileStream.pipe(httpRes);
+  
+    // Clean up stream after completion
+    fileStream.on("end", () => {
+      stream.inProgress = false;
+      stream.completed = true;
+      stream.status = "completed";
+      stream.timeElapsed = Date.now() - stream.startAt;
+      //this.dstreams.delete(stream.streamId);
+      console.log("streamFromCacheFast():: closing stream.timeElapsed",stream.timeElapsed);
+    });
+  
+    return true;
+  }
+
+  // Start initial video stream
+  async startVideoStream(stream, httpRes) {
+    console.log(`startVideoStream():: starting video stream for ${stream.streamId}`);
+  
+    // Send headers
+    httpRes.writeHead(200, {
+      "Content-Type": stream.mimeType,
+      "Transfer-Encoding": "chunked",
+      "Accept-Ranges": "bytes",
+      "ETag": `"${stream.streamId}"`,
+      "Content-Disposition": `inline; filename="${stream.origName}"`
+    });
+  
+    stream.videoClients.push(httpRes);
+  
+    // Start background download if not already started
+    if (!stream._backgroundDownloadStarted) {
+      stream._backgroundDownloadStarted = true;
+      this.gatherShards(stream);
+      this.requestShardBatch(stream.streamId, stream.service);
+    }
+  
+    return true;
+  }
+
+  // Stream a range by fetching shards on-demand
+  async streamRangeWithShardFetching(stream, httpRes, start, end, startShard, endShard) {
+    console.log(`streamRangeWithShardFetching():: fetching shards ${startShard}-${endShard} on-demand`);
+  
+    // Send headers for partial content
+    const contentLength = end - start + 1;
+    const headers = {
+      "Content-Type": stream.mimeType,
+      "Accept-Ranges": "bytes",
+      "ETag": `"${stream.streamId}"`,
+      "Content-Range": `bytes ${start}-${end}/${stream.totalSize}`,
+      "Transfer-Encoding": "chunked"
+    };
+    httpRes.writeHead(206, headers);
+  
+    // Create a queue for shard requests
+    let shardBuffer = new Map();
+    let nextShardToSend = startShard;
+  
+    // Listen for shard arrivals
+    const shardHandler = async (data) => {
+      console.log(` streamRangeWithShardFetching(`,data);
+      if (data.error) return;
+      if (data.streamId !== stream.streamId) return;
+    
+      const idx = data.index;
+      if (idx < startShard || idx > endShard) return;
+    
+      // Store shard data
+      shardBuffer.set(idx, data.data);
+    
+      // Send shards in order
+      while (shardBuffer.has(nextShardToSend)) {
+        const shardData = shardBuffer.get(nextShardToSend);
+        const shardStart = nextShardToSend * stream.shardSize;
+      
+        // Calculate offset within this shard for the range
+        let sliceStart = Math.max(0, start - shardStart);
+        let sliceEnd = Math.min(shardData.length, end - shardStart + 1);
+      
+        if (sliceStart < sliceEnd) {
+          const chunk = shardData.slice(sliceStart, sliceEnd);
+          try {
+            httpRes.write(chunk);
+          } catch (err) {
+            console.warn("Range stream client disconnected", err);
+            // Clean up
+            this.net.removeListener('requestBinShardOk', shardHandler);
+            return;
+          }
+        }
+      
+        shardBuffer.delete(nextShardToSend);
+        nextShardToSend++;
+      }
+    
+      // Check if complete
+      if (nextShardToSend > endShard) {
+        httpRes.end();
+        this.net.removeListener('requestBinShardOk', shardHandler);
+      }
+    };
+  
+    // Register shard handler
+    this.net.on('requestBinShardOk', shardHandler);
+  
+    // Request missing shards
+    for (let i = startShard; i <= endShard; i++) {
+      // Check if already in flight or pending
+      if (!stream.inFlight.has(i) && !stream.pendingShards.has(i)) {
+        // Check if shard exists locally first
+        const foundLocal = await this.checkLocalShard(stream.streamId, i, {host:'local'});
+        if (!foundLocal) {
+          // Request this shard from network
+          stream.pendingShards.add(i);
+          await this.requestShardBatch(stream.streamId, stream.service);
+        }
+      }
+    }
+  
+    // Also continue background download for remaining shards (for future seeks)
+    if (!stream._backgroundDownloadStarted) {
+      stream._backgroundDownloadStarted = true;
+      this.gatherShards(stream);
+      this.requestShardBatch(stream.streamId, stream.service);
+    }
+  
+    return true;
+  }
+
+  // Handle range requests with concurrent shard retrieval
+  async handleRangeRequest(sId, httpRes) {
+    console.log(`handleRangeRequest():: sId`,sId);
+    const stream = this.dstreams.get(sId);
+    if (!stream) {
+      console.log(`handleRangeRequest():: stream is not open`,this.dstreams);
+      return;
+    }
+    const fileSize = stream.totalSize;
+    const range = httpRes.req.headers.range;
+  
+    if (!range) {
+      return this.startVideoStream(stream, httpRes);
+    }
+
+    // Parse range
+    const parts = range.replace(/bytes=/, "").split("-");
+    let start = parseInt(parts[0], 10);
+    let end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+  
+    // Clamp to valid range
+    start = Math.max(0, start);
+    end = Math.min(fileSize - 1, end);
+  
+    if (start > end || start >= fileSize) {
+      return this.startVideoStream(stream, httpRes);
+    }
+
+    const startShard = Math.floor(start / stream.shardSize);
+    const endShard = Math.floor(end / stream.shardSize);
+  
+    console.log(`handleRangeRequest():: range ${start}-${end} (shards ${startShard}-${endShard})`);
+
+    // Check if all required shards are available in cache
+    const allCached = await this.checkShardsCached(stream, startShard, endShard);
+  
+    if (allCached) {
+      // Stream directly from cache file
+      const contentLength = end - start + 1;
+      const headers = {
+        "Content-Type": stream.mimeType,
+        "Content-Length": contentLength,
+        "ETag": `"${stream.streamId}"`,
+        "Accept-Ranges": "bytes",
+        "Content-Range": `bytes ${start}-${end}/${fileSize}`
+      };
+      httpRes.writeHead(206, headers);
+    
+      const fileStream = fs.createReadStream(stream.tempFilePath, {
+        start: start,
+        end: end
+      });
+      fileStream.pipe(httpRes);
+      return true;
+    } else {
+      // Need to fetch missing shards - stream as they arrive
+      return this.streamRangeWithShardFetching(stream, httpRes, start, end, startShard, endShard);
+    }
   }
   sendMsgCX(service,msg){
 
@@ -1137,7 +1548,7 @@ class BorgHUIstreamMgr {
         emitError     = true;
         msg.toHost    = toHost;
         msg.endpoint  = options.path;
-        msg.xhrError  = 'xError';
+        msg.xhrError  = error;
         msg.xhrErCode = error.code;
         msg.errCount++;
         if (error.code === 'ETIMEDOUT') {

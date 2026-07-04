@@ -818,9 +818,12 @@ async doGetFileById(file,res){
 async getFileFromRepo(req, msg, res) {
   const rawUrl = msg.url;
   const ftype  = msg.ftype;
-
+  console.log(msg);
   // Node requires a base for relative URLs
+  console.log(`getFileFromRepo():: headers`,req.headers);
   console.log(`rawUrl`,rawUrl);
+  const range = req.headers.range;
+  
   const u = new URL(rawUrl, 'http://localhost');
   console.log(`u`,u);
   // Path
@@ -834,8 +837,13 @@ async getFileFromRepo(req, msg, res) {
   const ownerMUID = u.searchParams.get('ownerMUID');
   const folderID  = u.searchParams.get('folderID');
   const encrypt   = u.searchParams.get('encrypt');
-
+ 
   console.log('getFileFromRepo():: msg: ',  msg);
+
+  res.req = req;
+  const stream = await this.DStream.keepStreaming(msg.checkSum,res,fname,msg.ftype);
+  if (stream) return;
+
   let doTry = await this.PTree.ftreeGetFileFromRepo(ownerMUID, rname, fname, repoPath, folderID);
   console.log(`doTry`,doTry);
   if (doTry.status === 200){ 
@@ -859,23 +867,25 @@ async getFileFromRepo(req, msg, res) {
       port     : p.port,
       raw      : true
     };
-
+    res.req = req;
     doTry = await this.DStream.streamRepoFileFrom(service,doTry.json,res);
     //console.log('getFileFromRepo():: ',doTry);
     return;
   }
 
+  return;
+
   try {
-    const wp = await this.portal.selectPortal('borgApacheCell');
+      const wp = await this.portal.selectPortal('borgApacheCell');
 
-    const service = {
-      endPoint: msg.url,
-      host: wp.host,
-      port: wp.port,
-      raw: true
-    };
+      const service = {
+        endPoint: msg.url,
+        host: wp.host,
+        port: wp.port,
+        raw: true
+      };
 
-    console.log('getFileFromRepo():: ', service, msg);
+      console.log('getFileFromRepo():: ', service, msg);
 
     // -----------------------------------
     // MIME TYPE DETECTION

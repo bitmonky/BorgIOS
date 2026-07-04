@@ -468,7 +468,7 @@ async buildRepoSidebarHTML(ctx) {
     const result = myRepos.json;
 
     if (result.list?.length > 0) {
-      html += `<div class="infoCardClear" style="background:#333333;color:darkKhaki;margin-top:.5em;"><h2>Local Repos Found</h2><div style='color:gray'>`;
+      html += `<div class="infoCardClear" style="background:#333333;color:darkKhaki;margin-top:.5em;"><h2 style='color:white;'>Local Repos Found</h2><div style='color:gray'>`;
 
       result.list.forEach(rec => {
         html += `
@@ -493,7 +493,7 @@ async buildRepoSidebarHTML(ctx) {
     const result = myRepoFiles.json;
 
     if (!myRepoFiles.error) {
-      html += `<h3>${rname} - Files:</h3>`;
+      html += `<h3 style='color:white'>${rname} - Files:</h3>`;
       html += `<div id="newRepoFolderSpot"></div>`;
 
       const preFolder = this.extractFolderName(path);
