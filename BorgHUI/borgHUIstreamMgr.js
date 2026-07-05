@@ -19,17 +19,23 @@ class Mutex {
   async lock() {
     if (!this._locked) {
       this._locked = true;
+      console.log(`lock():: locking`);
       return;
     }
-    return new Promise(resolve => this._waiters.push(resolve));
+    return new Promise( (resolve) => {
+      this._waiters.push(resolve);
+      console.log(`lock():: n waiting =`, this._waiters.length);
+    });
   }
 
   unlock() {
     if (this._waiters.length > 0) {
       const next = this._waiters.shift();
+      console.log(`lock():: n exiting =`, this._waiters.length);
       next();
     } else {
       this._locked = false;
+      console.log(`lock():: unlocked `, this._waiters.length);
     }
   }
 }
@@ -69,7 +75,7 @@ class BorgHUIstreamMgr {
   }  
   attachCell(cell){
    this.cell = cell;
-   console.log('hello');
+   //console.log('hello');
   }
   prepareTempFile(filepath, fileSize) {
     const file = filepath;
@@ -82,7 +88,7 @@ class BorgHUIstreamMgr {
         const stats = fs.statSync(file);
         cacheSize = stats.size;
         cacheExists = true;
-        console.log(`prepareTempFile():: cache file exists: ${file} (${cacheSize} bytes)`);
+        //console.log(`prepareTempFile():: cache file exists: ${file} (${cacheSize} bytes)`);
       }
     } catch (err) {
       console.error("Failed to check cache file:", err);
@@ -90,7 +96,7 @@ class BorgHUIstreamMgr {
 
     // If cache exists and matches expected size, keep it
     if (cacheExists && cacheSize === fileSize) {
-      console.log(`prepareTempFile():: using existing cache file (${fileSize} bytes)`);
+      //console.log(`prepareTempFile():: using existing cache file (${fileSize} bytes)`);
       return file;
     }
 
@@ -109,7 +115,7 @@ class BorgHUIstreamMgr {
     const fd = fs.openSync(file, 'w');
     fs.ftruncateSync(fd, fileSize);
     fs.closeSync(fd);
-    console.log(`prepareTempFile():: created new file (${fileSize} bytes)`);
+    //console.log(`prepareTempFile():: created new file (${fileSize} bytes)`);
 
     return file;
   }
@@ -227,6 +233,8 @@ class BorgHUIstreamMgr {
       shardsSent    : 0,
       pendingShards : new Set([...Array(shards.count).keys()]),
       inFlight      : new Set(),
+      blastPorts    : new Map(),
+      blastIdx      : 0,
       shardsSentOK  : new Map(),
       inProgress    : false,
 
@@ -285,6 +293,13 @@ class BorgHUIstreamMgr {
   }
   streamTo(service,type = 'file',winSize = 12,nCopys=3,blob=null) {
     return new Promise(async (resolve) => {
+      // Get all available portals
+      const portals =  Array.from(this.shardPortalsMap.values());
+      if (portals.length === 0) {
+        resolve({ result: 'noPortalsAvailable' });
+        return;
+      }
+
       const reqId = crypto.randomUUID();
       const msg = {
         req      : 'openBinStream',
@@ -294,7 +309,13 @@ class BorgHUIstreamMgr {
 
       // Create stream descriptor
       const stream = await this.createStreamMsg(service,msg,type,winSize,nCopys,blob);
-      msg.stream = stream;
+
+      msg.stream       = stream;
+      const fullStream = this.streams.get(stream.streamId);
+      let startBlast   = false;
+      let nResponses   = 0;
+      const nPortals   = portals.length;
+
       let timer;
       let failListener, replyListener, sendOKListener;
 
@@ -307,38 +328,68 @@ class BorgHUIstreamMgr {
       this.net.on('xhrFail', failListener = (j) => {
         console.log('streamTo():: xhrFail ',j);
         if (j.toHost === toIp && j.req === msg.req) {
-          clearTimeout(timer);
-
-          this.net.removeListener('xhrFail', failListener);
-          this.net.removeListener('xhrPostOK', sendOKListener);
-
-          this.removeStream(stream.streamId);
-          resolve({ result: 'xhrFail' });
+          nResponses++;
+          if (nResponses >= nPortals) {
+            this.net.removeListener('xhrFail', failListener);
+            this.net.removeListener('xhrPostOK', sendOKListener);
+            clearTimeout(timer);
+          } 
         }
       });
 
       // SUCCESS PATH
       this.net.on('xhrPostOK', sendOKListener = async (j) => {
         if (j.reqId === reqId) {
-         console.log(`streamTo():: j.res `,j.res);
-         clearTimeout(timer);
-
-          this.net.removeListener('xhrFail', failListener);
-          this.net.removeListener('xhrPostOK', sendOKListener);
+          console.log(`streamTo():: heard from  `,j.toHost);
+          nResponses++;
           if (j.res.result === 'STREAM_META_ACK'){
-            this.setStatus(stream.streamId, j.status);
-            await this.doBlastShardBatch(service,stream.streamId);
-          }
-          else {
-            console.error(`DStreamMgrObj.sendMsg():: failed to open remote stream`,j);
-            this.removeStream(stream.streamId);
+            fullStream.blastPorts.set(j.toHost,{ip:j.toHost,bannedUntil:0});
+            if (startBlast === false){
+              startBlast = true;
+              this.setStatus(stream.streamId, j.status);
+              await this.doBlastShardBatch(service,stream.streamId);
+              resolve(j);
+            } 
           } 
-          resolve(j);
+          if (nResponses >= nPortals) {
+            this.net.removeListener('xhrFail', failListener);
+            this.net.removeListener('xhrPostOK', sendOKListener);
+            clearTimeout(timer); 
+
+            if (startBlast === false) {
+              console.error(`DStreamMgrObj.sendMsg():: failed to open remote stream`);
+              this.removeStream(stream.streamId);
+              resolve({ result: 'noPortalsResponded' });
+              return;
+            }
+          } 
+          console.log(`BlastPorts Are`,fullStream.blastPorts);
         }
       });
+
+      // Timeout for first ACK
+      const TIMEOUT_MS = 5000;
+      timer = setTimeout(() => {
+        console.log('streamTo():: timeout waiting for first ACK');
+        this.net.removeListener('xhrFail', failListener);
+        this.net.removeListener('xhrPostOK', sendOKListener);
+
+        if (startBlast === false) {
+          console.error(`DStreamMgrObj.sendMsg():: startBlast Timeout - removing stream`);
+          this.removeStream(stream.streamId);
+          resolve({ result: 'noPortalsResponded' });
+          return;
+        }
+      }, TIMEOUT_MS);
+
       service.endPoint = '/netREQ/';
-      console.log(`streamTo():: sending msg`,service,msg);
-      this.sendMsgCX(service, msg);
+
+      portals.forEach((portal) => {
+        service.host = portal.ip;
+        console.log(`streamTo():: sending msg`,service,msg);
+        this.sendMsgCX(JSON.parse(JSON.stringify(service)), JSON.parse(JSON.stringify(msg)));
+      });
+
     });
   }
   setStatus(sId,status){
@@ -357,26 +408,34 @@ class BorgHUIstreamMgr {
     if (stream.completed) return;
 
     // Fill the window
-    const mutex = stream.requestMutex;
-    await mutex.lock();
-    try {
-      console.log(`doBlastShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
-      while (
-        stream.inFlight.size < stream.winSize &&
-        stream.pendingShards.size > 0
-      ) {
-        // Pull next shard index
+    console.log(`doBlastShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
+    while (
+      stream.inFlight.size < stream.winSize &&
+      stream.pendingShards.size > 0
+    ){
+      const mutex = stream.requestMutex;
+      await mutex.lock();
+      try {        
         const shardIdx = stream.pendingShards.values().next().value;
         stream.pendingShards.delete(shardIdx);
 
         const shard    = stream.shardHashes[shardIdx];
         const shardId  = shard.hash;
-        const shardHID = this.net.wallet.calculateHash(`${shardId}-${this.net.ownMUID}-${Date.now()}`);
+        const shardHID = this.net.wallet.calculateHash(`${shardId}-${this.net.wallet.ownMUID}-${Date.now()}`);
         const shardSig = this.net.wallet.signToken(shardHID);
         shard.hashHID  = shardHID;
+        console.log(`stream shardHashes`,stream.shardHashes[shardIdx]);
 
         // Mark as in-flight
-        stream.inFlight.add(shardIdx);
+        stream.inFlight.add(shardIdx);   
+        console.log(`hashing:: ${shardId}-${this.net.wallet.ownMUID}-${Date.now()}`);
+        console.log(`doBlastShardBatch():: shard.hashID `,`${shard.hashHID}:${shardHID}`);
+        console.log(`doBlastShardBatch():: service is `,service);
+
+        const portal = this.getNextBlastPort(stream);
+        if (portal) {
+          service.host = portal.ip;
+        }
 
         // Dispatch the shard
         console.log(`doBlastShardBatch():: `,service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
@@ -384,10 +443,33 @@ class BorgHUIstreamMgr {
 
         // Optional: status update
         this.setStatus(stream.streamId, `sending:${shardIdx}`);
-      } 
-    } finally {
-      mutex.unlock();
+       
+      } finally {
+        mutex.unlock();
+      }
     }
+  }
+  getNextBlastPort(stream) {
+    const now = Date.now();
+    const portals = Array.from(stream.blastPorts.values());
+    if (portals.length === 0) return null;
+
+    for (let i = 0; i < portals.length; i++) {
+      const portal = portals[stream.blastIdx % portals.length];
+      stream.blastIdx = (stream.blastIdx + 1) % portals.length;
+
+      // Skip banned portals
+      if (portal.bannedUntil && portal.bannedUntil > now) {
+        continue;
+      }
+
+      return portal;
+    }
+
+    // If all portals are banned, pick the least-banned one
+    return portals.reduce((a, b) =>
+      (a.bannedUntil || 0) < (b.bannedUntil || 0) ? a : b
+    );
   }
   // ---------------------------------------------------------
   // Send a shard to a remote host
@@ -420,6 +502,7 @@ class BorgHUIstreamMgr {
      
     // Then send raw binary shard
     service.endPoint = '/storeShard/'
+    console.log(`sendStreamShard()::`,msg);
     this.sendBinaryShardCX(service, msg);
     this.setStatus(streamId,'transfering:'+shardId);
   }
@@ -659,6 +742,7 @@ class BorgHUIstreamMgr {
   }
   async doOpenStream(repo, service, httpRes, winSize = 12) {
     let j = repo.file;
+    console.log(`doOpenStream():: repo.file`,j);
     let shards = [];
     j.shards.forEach((shard) => shards.push({ hash: shard.shardID, shardHID: shard.shardHID }));
     const input = j.filename;
@@ -1114,7 +1198,17 @@ class BorgHUIstreamMgr {
   uploadResult(reqStreamId){
     return new Promise( (resolve) => {
       this.net.once(`streamToSTreeOK:${reqStreamId}`, () =>{
-        resolve(reqStreamId);
+        const stream = this.streams.get(reqStreamId);
+        const ostream = {
+          streamId    : stream.streamId,
+          totalSize   : stream.totalSize,
+          filename    : stream.filename,
+          shardSize   : stream.shardSize,
+          shardHashes : stream.shardHashes,
+          count       : stream.count
+        }
+
+        resolve(ostream);
       });
     });
   }
@@ -1449,7 +1543,6 @@ class BorgHUIstreamMgr {
      const toHost   = service.host;
      const https    = require('https');
      const borgToken  = this.net.wallet.getBorgToken();
-
      msg.errCount = 0;
      msg.sentTime = Date.now();
      msg.service  = service;
@@ -1578,7 +1671,7 @@ class BorgHUIstreamMgr {
     const https    = require('https');
     const toHost   = service.host;
     shard.sentTime = Date.now();
-
+    shard.service  = service;
     let emitError  = null;
     const data     = shard.shard;
 
@@ -1597,7 +1690,7 @@ class BorgHUIstreamMgr {
     });
 
     const endPoint = `${service.endPoint}?${params.toString()}`;
-
+    console.log(`sendBinaryShardCX`,endPoint);
     const options = {
        hostname : service.host,
        port     : service.port,
