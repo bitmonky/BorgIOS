@@ -1605,6 +1605,7 @@ class bitMonkyWallet{
      // Try streaming file to the shardTreeCell network.
      let doTry = await this.net.DStream.streamTo(service);
      console.log(`doUploadFile():: doTry`,doTry);
+     console.log(`doUploadFile():: hashes`,doTry.stream.shardHashes);
 
      if (doTry.result === 'xhrFail' || doTry?.res?.result !== 'STREAM_META_ACK'){
         let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
@@ -1616,10 +1617,11 @@ class bitMonkyWallet{
         return;
      }
      
-     let doWait = await this.net.DStream.uploadResult(doTry.stream.streamId);
+     let ostream = await this.net.DStream.uploadResult(doTry.stream.streamId);
+     console.log(`ftreeInsertFileToRepo():: ostream`,ostream,ostream.shardHashes);
 
      // File stored OK so send meta data to the ftreeFileMgrCell
-     doTry = await this.ftreeInsertFileToRepo(doTry.stream, r.ownerMUID, r.rname, r.filename,j.mimeType, r.path, r.folderID, 3,r.encrypt);
+     doTry = await this.ftreeInsertFileToRepo(ostream, r.ownerMUID, r.rname, r.filename,j.mimeType, r.path, r.folderID, 3,r.encrypt);
      console.log(`ftreeInsertFileToRepo():: doTry is `, doTry);
      if (!doTry){
         let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
