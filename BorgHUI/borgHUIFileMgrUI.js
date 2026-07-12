@@ -370,11 +370,10 @@ async initRepoContextFromGET(queryString) {
   //
   // 1. Parse GET string
   //
-  console.log(`initRepoContextFromGET():: got qry:`,queryString);
   const params = Object.fromEntries(
     new URLSearchParams(queryString.replace(/^\?/, ""))
   );
-  console.log(`initRepoContextFromGET():: params`,params);
+  
   //
   // 2. Extract + defaults (mirrors your PHP logic)
   //

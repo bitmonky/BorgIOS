@@ -124,6 +124,8 @@ function handlerProcessFile(j){
 }
 
 function startPhotoUpload(){
+  //scrollToTop();
+
   const file = document.getElementById('getFile');
   if (!file.files || file.files.length === 0){
     alert("Please choose a file before attempting to upload.");

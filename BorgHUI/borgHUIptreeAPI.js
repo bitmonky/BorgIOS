@@ -27,13 +27,16 @@ class BorgHUIptreeAPI {
   // INTERNAL PORTAL + HTTP HELPERS
   // ------------------------------------------------------------
 
-  async _selectPortal(portalName) {
+  async _selectPortal(portalName,post=null) {
+    let defEndPoint = "/netREQ/";
+    if (post) defEndPoint = "/netREQ";
+
     const p = await this.net.portal.selectPortal(portalName);
-    console.log(`_selectPortal():: `,portalName,p);
+    console.log(`portal`,p);
     return {
       host: p.host,
       port: p.port,
-      endPoint: p.endPoint || "/netREQ/"
+      endPoint: p.endPoint || defEndPoint
     };
   }
 
@@ -77,13 +80,13 @@ class BorgHUIptreeAPI {
   }
 
   async _postJSON(portalName, msgObj) {
-    const service = await this._selectPortal(portalName);
+    const service = await this._selectPortal(portalName,'POST');
     const url = this._buildURL(service);
 
     msgObj.borgToken = this.net.wallet.getBorgToken();
 
     const body = JSON.stringify(msgObj);
-    //console.log(`url`,url,`body`,msgObj);
+    console.log(`url`,url,`body`,msgObj);
     return this._httpRequestRaw(
       url,
       {
@@ -265,6 +268,15 @@ class BorgHUIptreeAPI {
       msg: { req: "getUserTransactions", userUID: muid }
     });
   }
+  async askTheBorg(muid,msg) {
+    const j = {
+      ownMUID : muid,
+      msg     : msg
+    };
+    return this._postJSON("borgAgentCell", {
+      msg: { req: "chatHUI", msg: j }
+    });
+  }
   // ------------------------------------------------------------
   // FTREE (FILE TREE)
   // ------------------------------------------------------------
@@ -407,8 +419,8 @@ class BorgHUIptreeAPI {
 
     j.key = this.ptreeMakeSearchKey(j);
 
-    const encoded = encodeURIComponent(JSON.stringify({ req: "searchMemory", qry: j }));
-    return this._getJSON("memCell", encoded);
+    const msg  = {msg:{ req: "searchMemory", qry: j }};
+    return this._postJSON("peerMemoryCell", msg);
   }
 
   async ptreeStoreMem(muid, acID, str, type = "generic", nCopys = 3, weights = null, location = null) {
@@ -573,6 +585,7 @@ class BorgHUIptreeAPI {
 
       jobs.push(async () => {
         const res = await this._postJSON("shardTreeCell", body);
+        //console.log(`fastDeleteFileShards():: res`,res);
         if (res.json && res.json.result == 1) {
           tracker.push(shard.shardID);
         }

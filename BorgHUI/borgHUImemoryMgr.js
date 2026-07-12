@@ -40,7 +40,7 @@ class Mutex {
   }
 }
 
-class BorgHUIstreamMgr {
+class BorgHUImemoryMgr {
   constructor(net) {
     this.net = net;
     this.cell = null;
@@ -51,7 +51,7 @@ class BorgHUIstreamMgr {
     this.shardPortals = new Map(); 
     this.initializeShardPortals();
 
-    console.log(`BorgHUIstreamMgr:: shardPortals`,this.shardPortals);
+    console.log(`BorgHUImemoryMgr:: shardPortals`,this.shardPortals);
   }
   initializeShardPortals() {
     const portals = this.net.portal.getPortalsAll('shardTreeCell');
@@ -76,6 +76,85 @@ class BorgHUIstreamMgr {
   attachCell(cell){
    this.cell = cell;
    //console.log('hello');
+  }
+  storeUserMemoryToTree(req, memStr, ownerMUID, memHash) {
+    return new Promise(async(resolve,reject) => {
+      console.log('getRatedWords::');
+      const memWords = await this.getRatedWords(req, memStr);
+  
+      if (!memWords) {
+        resolve(false);
+        return;
+      }
+
+      req.type = 'BorgAgentMem';
+      console.log('ptreeStoreMem');
+  
+      try {
+        const j = await this.borg.ptreeStoreMem(ownerMUID, memHash, memStr, req.type, 3, memWords.weights);
+        //console.log('ptreeStoreMem::result',j);
+        resolve(true);
+        return ; //jres.result === "memOK";
+      }
+      catch (error) {
+        console.error("Error storing memory:", error);
+        resolve(false)
+        return;
+      }
+    });
+  }
+  getRatedWords(req, memStr) {
+    return new Promise(async(resolve,reject)=>{
+      const r = {
+        result: false,
+        weights: []
+      };
+
+      if (!req.keyWords) {
+        console.error("Weights list JSON FAIL on:", JSON.stringify(r));
+        resolve(false);
+        return null;
+      }
+
+      // Split Worgd Groups Into Equal Weighted tokens
+      req.keyWords.forEach(wrec => {
+        if (wrec.word.includes(" ")) {
+          const subwords = wrec.word.split(" ");
+          subwords.forEach(word => {
+            const w = {
+              word: word,
+              weight: wrec.weight
+            };
+            r.weights.push(w);
+            r.result = true;
+          });
+        }
+      });
+
+      this.addMinorWordsTo(r.weights, this.borg.prepWords(memStr));
+
+      resolve(r);
+    });
+  }
+  addMinorWordsTo(weights, words) {
+    console.log("Adding Minor Words:");
+
+    const wordList = words.split(' '); // Split words by space
+    wordList.forEach(word => {
+      if (!this.isInWeights(weights, word)) {
+        const w = {
+          word: word,
+          weight: 1
+        };
+        weights.push(w);
+        // console.log(`Minor Word Added: ${JSON.stringify(w)}`);
+      }
+    });
+
+    return weights;
+  }
+  isInWeights(weights, word) {
+    return weights.some(w => w.word === word);
   }
   prepareTempFile(filepath, fileSize) {
     const file = filepath;
@@ -139,29 +218,9 @@ class BorgHUIstreamMgr {
   }
 
   async writeShardToFile(stream,shard) {
-    const shardSize = stream.shardSize;
-    const fileSize  = stream.totalSize;
     const index     = shard.shardIdx;
-    const offset    = index * shardSize;
-    const expectedShardId = shard.shardId;
- 
-    const remaining = fileSize - offset;
     const isFinal   = (index === stream.count - 1);
 
-    // 1. Size validation
-    if (!isFinal) {
-      // Non-final shard must match shardSize exactly
-      if (shard.shard.length !== shardSize) {
-        console.log(`writeShardToFile():: BAD_SIZE `,shard.shard.length,shardSize);
-        return { ok: false, reason: "BAD_SIZE", index };
-      }
-    } else {
-      // Final shard must be <= remaining bytes
-      if (shard.shard.length > remaining) {
-        console.log(`writeShardToFile():: BAD_SIZE_FINAL `,shard.shard.length,remaining);
-        return { ok: false, reason: "BAD_SIZE_FINAL", index };
-      }
-    }
     // 2. Validate shard hash
     const actualHash = this.sha256(shard.shard);
     if (actualHash !== expectedShardId) {
@@ -170,16 +229,12 @@ class BorgHUIstreamMgr {
     }
 
     // 3. Random-access write
-    if (stream.type === 'memFile' || stream.type === 'dsBuffer') {
-      shard.shard.copy(stream.buffer, offset);
-    }
-    else {
-      const fh = await fs.promises.open(stream.tempFilePath, 'r+');
-      try {
-        await fh.write(shard.shard, 0, shard.shard.length, offset);
-      } finally {
-        await fh.close();
-      }
+    const tempFilePath = stream.tempFilePath.replace('MEM_ID',shard.shardId);
+    const fh = await fs.promises.open(tempFilePath, 'r+');
+    try {
+      await fh.write(shard.shard, 0, shard.shard.length, 0);
+    } finally {
+      await fh.close();
     }
 
     return { ok: true, index };
@@ -263,135 +318,6 @@ class BorgHUIstreamMgr {
   // ---------------------------------------------------------
   // Send a normal PeerTree message that includes a stream descriptor
   // ---------------------------------------------------------
-  async streamRepoFileFrom(service,repo,httpRes){
-    return await this.doOpenStream(repo,service,httpRes);
-  }
-  async streamFrom(service,fmap){
-   // FOR TESTING ONLY!
-   console.log('fig',fmap);
-    fmap.pendingShards  = new Set([...Array(j.stream.count).keys()]);
-    fmap.inFlight       = new Set();       // shardIdx values currently requested but not yet received
-    fmap.inProgress     = true;
-
-    // Diagnostics
-    fmap.startAt       = Date.now();
-    fmap.timeElapsed   = 0;
- 
-    // Storage
-    if (fmap.type === 'memFile' || fmap.type === 'dsBuffer') {
-      fmap.buffer = this.prepareBlobMemFile(fmap.streamId, fmap.totalSize);
-    }
-    else {
-      fmap.tempFilePath = await this.prepareTempFile(`./downloads/${fmap.streamId}.tmp`, fmap.totalSize);
-    }
-
-    // Start requesting shards
-    this.gatherShards(fmap);
-
-    // Kick off the first batch of shard requests
-    this.requestShardBatch(fmap.streamId,service);
-  }
-  streamTo(service,type = 'file',winSize = 12,nCopys=3,blob=null) {
-    return new Promise(async (resolve) => {
-      // Get all available portals
-      const portals =  Array.from(this.shardPortalsMap.values());
-      if (portals.length === 0) {
-        resolve({ result: 'noPortalsAvailable' });
-        return;
-      }
-
-      const reqId = crypto.randomUUID();
-      const msg = {
-        req      : 'openBinStream',
-        filename : service.filename
-      }
-      msg.reqId   = reqId;
-
-      // Create stream descriptor
-      const stream = await this.createStreamMsg(service,msg,type,winSize,nCopys,blob);
-
-      msg.stream       = stream;
-      const fullStream = this.streams.get(stream.streamId);
-      let startBlast   = false;
-      let nResponses   = 0;
-      const nPortals   = portals.length;
-
-      let timer;
-      let failListener, replyListener, sendOKListener;
-
-      //console.log(`sendMsg():: `,msg,toIp);
-      // DELIVERED PATH
-      const toIp = service.host;
-
-
-      // FAILURE PATH
-      this.net.on('xhrFail', failListener = (j) => {
-        console.log('streamTo():: xhrFail ',j);
-        if (j.toHost === toIp && j.req === msg.req) {
-          nResponses++;
-          if (nResponses >= nPortals) {
-            this.net.removeListener('xhrFail', failListener);
-            this.net.removeListener('xhrPostOK', sendOKListener);
-            clearTimeout(timer);
-          } 
-        }
-      });
-
-      // SUCCESS PATH
-      this.net.on('xhrPostOK', sendOKListener = async (j) => {
-        if (j.reqId === reqId) {
-          console.log(`streamTo():: heard from  `,j.toHost);
-          nResponses++;
-          if (j.res.result === 'STREAM_META_ACK'){
-            fullStream.blastPorts.set(j.toHost,{ip:j.toHost,bannedUntil:0});
-            if (startBlast === false){
-              startBlast = true;
-              this.setStatus(stream.streamId, j.status);
-              await this.doBlastShardBatch(service,stream.streamId);
-              resolve(j);
-            } 
-          } 
-          if (nResponses >= nPortals) {
-            this.net.removeListener('xhrFail', failListener);
-            this.net.removeListener('xhrPostOK', sendOKListener);
-            clearTimeout(timer); 
-
-            if (startBlast === false) {
-              console.error(`DStreamMgrObj.sendMsg():: failed to open remote stream`);
-              this.removeStream(stream.streamId);
-              resolve({ result: 'noPortalsResponded' });
-              return;
-            }
-          } 
-          console.log(`BlastPorts Are`,fullStream.blastPorts);
-        }
-      });
-
-      // Timeout for first ACK
-      const TIMEOUT_MS = 5000;
-      timer = setTimeout(() => {
-        console.log('streamTo():: timeout waiting for first ACK');
-        this.net.removeListener('xhrFail', failListener);
-        this.net.removeListener('xhrPostOK', sendOKListener);
-
-        if (startBlast === false) {
-          console.error(`DStreamMgrObj.sendMsg():: startBlast Timeout - removing stream`);
-          this.removeStream(stream.streamId);
-          resolve({ result: 'noPortalsResponded' });
-          return;
-        }
-      }, TIMEOUT_MS);
-
-      service.endPoint = '/netREQ/';
-
-      portals.forEach((portal) => {
-        service.host = portal.ip;
-        console.log(`streamTo():: sending msg`,service,msg);
-        this.sendMsgCX(JSON.parse(JSON.stringify(service)), JSON.parse(JSON.stringify(msg)));
-      });
-
-    });
-  }
   setStatus(sId,status){
      const stream = this.streams.get(sId);
      stream.status = status;
@@ -708,33 +634,7 @@ class BorgHUIstreamMgr {
       return;
     }
 
-    if (stream.mimeType.startsWith("text")) {
-      const fileContent = fs.readFileSync(stream.tempFilePath, 'utf8');
-      const jreply = {
-        callback : 'handlerTextSpot',
-        res      : 'textSpot',
-        html     : fileContent,
-        ftype    : stream.mimeType
-      }
-
-      const reply = JSON.stringify(jreply);
-
-      const headers = {
-        "Content-Type": "application/json",          // Changed from stream.mimeType
-        "Content-Length": Buffer.byteLength(reply),  // Changed from stream.totalSize
-      };
-
-      headers["ETag"] = `"${stream.streamId}"`;
-      headers["Content-Disposition"] = `inline; filename="${stream.origName}"`;
-
-      // Send headers
-      httpRes.writeHead(200, headers);
-      httpRes.end(reply);
-      return true;
-    }
-
     // For non-video files, deliver file
-
     if (httpRes && !httpRes.headersSent) {
       const headers = {
         "Content-Type": stream.mimeType,
@@ -766,46 +666,46 @@ class BorgHUIstreamMgr {
     // remove stream
     this.dstreams.delete(stream.streamId);
   }
-  async doOpenStream(repo, service, httpRes, winSize = 12) {
-    let j = repo.file;
-    console.log(`doOpenStream():: repo.file`,j);
-    let shards = [];
-    j.shards.forEach((shard) => shards.push({ hash: shard.shardID, shardHID: shard.shardHID }));
+  async doOpenMemStream(memories, service, winSize = 12) {
+    console.log(`doOpenStream():: repo.file`,memories);
+    mShards = [];
+    memories.forEach((mem) => {
+      mShards.push({ 
+        hash     : mem.pmcMemObjID,
+        shardHID : this.net.wallet.calculateHash(`${mem.pmcOwnerID}${mem.pmcMemObjID}${mem.pmcMemDate}`); 
+      })
+    });
+
     const input = j.filename;
-    const origName = input.split('/').pop();
 
     const fmap = {
-      httpRes: httpRes,
-      requestMutex: new Mutex(),
-      videoClients: [],
-      videoShardBuffer: new Map(),
-      inRetry: new Map(),
-      nextToSend: 0,
-      service: service,
-      streamId: j.fileInfo.checkSum,
-      filename: service.filename,
-      origName: origName,
-      mimeType: j.fileInfo.fileType,
-      reqId: crypto.randomUUID(),
-      response: 'na',
-      request: 'sendShard',
-      shardSize: j.fileInfo.shardSize,
-      shardHashes: shards,
-      count: shards.length,
-      totalSize: j.fileInfo.fileSize,
-      type: 'file',
+      requestMutex : new Mutex(),
+      inRetry      : new Map(),
+      nextToSend   : 0,
+      service      : service,
+      streamId     : this.net.wallet.calculateHash(memories),
+      filename     : service.filename,
+      origName     : origName,
+      mimeType     : j.fileInfo.fileType,
+      reqId        : crypto.randomUUID(),
+      response     : 'na',
+      request      : 'sendShard',
+      shardSize    : j.fileInfo.shardSize,
+      shardHashes  : mShards,
+      count        : mShards.length,
+      type         : 'memQry',
 
       // State machine
-      status: "readyForShards",
-      acked: true,
-      completed: false,
+      status    : "readyForShards",
+      acked     : true,
+      completed : false,
 
       // Progress
-      shardsReceived: 0,
-      pendingShards: new Set([...Array(shards.length).keys()]),
-      inFlight: new Set(),
-      windowSize: winSize,
-      inProgress: true,
+      shardsReceived : 0,
+      pendingShards  : new Set([...Array(shards.length).keys()]),
+      inFlight       : new Set(),
+      windowSize     : winSize,
+      inProgress     : true,
 
       // Diagnostics
       startAt: Date.now(),
@@ -1106,30 +1006,11 @@ class BorgHUIstreamMgr {
 
     // If this is a video send shard directly to video
 
-    // 1b. If this is a video stream, buffer by index
-    if (stream.mimeType.startsWith("video/")) {
-      const idx = shard.shardIdx;
+    // 1b. Send Memory To Memory Qry Dispplay
+    const idx = shard.shardId;
 
-      // store this shard’s bytes
-      stream.videoShardBuffer.set(idx, shard.shard);
-      
-      //console.log(stream.nextToSend,stream.videoShardBuffer);
-      // try to flush in order starting from nextToSend
-      while (stream.videoShardBuffer.has(stream.nextToSend)) {
-        const chunk = stream.videoShardBuffer.get(stream.nextToSend);
-        stream.videoShardBuffer.delete(stream.nextToSend);
-
-        for (const client of stream.videoClients) {
-          try {
-            //console.log(`onShardReceived():: write shard to media player`,stream.nextToSend);
-            client.write(chunk);
-          } catch (err) {
-            console.warn("Video client disconnected", err);
-          }
-        }
-        stream.nextToSend++;
-      }
-    }
+    console.log(`Memory Found `,shard);
+    // Use BorgEnventAPI to send memory to browser.
 
     const result = await this.writeShardToFile(stream,shard);
     if (!result.ok) {
@@ -1281,7 +1162,7 @@ class BorgHUIstreamMgr {
 
     const stream = {
       streamId     : streamId,
-      tempFilePath : `downloads/${streamId}.tmp`,
+      tempFilePath : `memories/MEM_ID.mem`,
       httpRes      : res,
       origName     : origName,
       filename     : origName,
@@ -1313,32 +1194,7 @@ class BorgHUIstreamMgr {
 
     const httpRes = stream.httpRes;
     const fileSize = stream.totalSize;
-
-    if (stream.mimeType.startsWith("text")) {
-      const fileContent = fs.readFileSync(stream.tempFilePath, 'utf8');
-      const jreply = {
-        callback : 'handlerTextSpot',
-        res      : 'textSpot',
-        html     : fileContent,
-        ftype    : stream.mimeType
-      }
-    
-      const reply = JSON.stringify(jreply);
-    
-      const headers = {
-        "Content-Type": "application/json",  // Changed from stream.mimeType
-        "Content-Length": Buffer.byteLength(reply),  // Changed from stream.totalSize
-      };
-
-      headers["ETag"] = `"${stream.streamId}"`;
-      headers["Content-Disposition"] = `inline; filename="${stream.origName}"`;
-
-      // Send headers
-      httpRes.writeHead(200, headers);
-      httpRes.end(reply);
-      return true;
-    }
-
+  
     // Parse Range header if present
     let range = httpRes.req.headers.range;
     let start = 0;
@@ -1839,4 +1695,4 @@ class BorgHUIstreamMgr {
     return null; // not JSON, it's a real binary shard
   }
 };
-module.exports.BorgHUIstreamMgr = BorgHUIstreamMgr;
+module.exports.BorgHUImemoryMgr = BorgHUImemoryMgr;

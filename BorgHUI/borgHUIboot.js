@@ -25,6 +25,32 @@ var service = {
   endPoint : "/whzon/gold/netWalletAPI.php"
 };
 
+const evt = new EventSource("/borgEvents");
+
+evt.addEventListener("upload-progress", (e) => {
+  const msg = JSON.parse(e.data);
+  console.log("progress:", msg);
+});
+
+evt.addEventListener("borg-event", (e) => {
+  const msg = JSON.parse(e.data);
+  handleBorgMsg(msg);
+});
+let atTop = false;
+function handleBorgMsg(msg){
+  if (msg.req === 'updateUpload'){
+    doUpdateUpload(msg);
+    return;
+  }
+}
+function doUpdateUpload(msg){
+
+  let div = document.getElementById('uploadSpot');
+  if (div){
+    div.innerHTML = msg.text;
+  }
+}
+
 /*
 ********************
 Override Date class so that all nodes use one unifide time dictated By the root node.
@@ -286,6 +312,27 @@ function doSendPeerMemQry(hashStr = null) {
     }
   });
 }
+function doSearch() {
+  hideDiv("transactionSpot");
+
+  var cqry   = document.getElementById("sQry");
+  var prompt = cqry.value || "";
+
+  cqry.value = prompt;
+
+  showSearching();
+
+  var ranTime = new Date().getMilliseconds();
+
+  sendRequest({
+    req: "sendBorgChatMsg",
+    parms: {
+      mode   : MODE,
+      prompt : prompt,
+      xr     : "&xr=" + ranTime
+    }
+  });
+}
 
 function showSearching() {
   var spot = document.getElementById("Searching");
@@ -392,7 +439,6 @@ function handleResponse(j) {
     hasAccount = true;
     doShowAccountInfo(j);
   }
-
   if (j.action === qryAction) doPutQryResults(j);
   if (j.action === "getSendShellsToMbr") doPutQryResults(j);
   if (j.action === "doSendShells") doShowSendShellsResult(j);
@@ -406,6 +452,11 @@ function handleResponse(j) {
 
   if (j.action === "updateResByUrl" || j.action === "borgUpdateResByUrl") {
     doUpdateResByUrl(j);
+  }
+
+  if (j.action === "sendBorgChatMsg") {
+    hideSearching();
+    doShowQryResults(j);
   }
 
   if (j.action === "sendPeerQryResults") {
@@ -744,8 +795,8 @@ function sendRequest(msg,extendedTime=50){
           } else {
             let r = null;
             try {
+              console.log(`sendRequest():: r-> RESPONSE`,xml.responseText);
               r = JSON.parse(xml.responseText);
-              console.log(`sendRequest():: r-> RESPONSE`,r);
             } catch(e) {
               console.log(e);
             }

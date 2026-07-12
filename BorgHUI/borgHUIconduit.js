@@ -27,7 +27,7 @@ const port    = 80;
 const wfile   = 'keys/myBMGPWallet.key';
 const wconf   = 'keys/wallet.conf';
 
-const {BorgHUIstreamMgr} = require('./BorgHUIstreamMgr.js');
+const {BorgHUIstreamMgr} = require('./borgHUIstreamMgr.js');
 const {BorgHUIptreeAPI}  = require("./borgHUIptreeAPI.js");
 const {BorgHUIFileMgrUI} = require("./borgHUIFileMgrUI.js");
 const {BorgHUIBorgPay}   = require("./borgHUIBorgPay.js");
@@ -170,7 +170,6 @@ class BorgPortal {
   async selectPortal(netName) {
     //console.log(`selectPortal():: `,this.portals);
     const index = this.portals.findIndex(portal => portal.netName === netName);
-    console.log('INDEX', index, netName);
 
     if (index === -1) {
       return { host: 'localhost', port: 80 };
@@ -191,7 +190,7 @@ class BorgPortal {
       const isConnected = await this.testConnect(target);
 
       if (isConnected) {
-        console.log(`Successful HTTPS connection: ${target}`);
+        //console.log(`Successful HTTPS connection: ${target}`);
         return { host, port };
       }
 
@@ -283,7 +282,7 @@ class bitMonkyWSrv extends  EventEmitter {
     this.borgMasterID = this.getBorgMasterID();
     this.clockPulse = 60*1000;
     this.init();
-    //setInterval(() => { this.pushEvent('borg-event',{hello:"hello"});console.log(`borg-event`);},8000);
+    //setInterval(() => { this.pushEvent('borg-event',{hello:"hello"});},8000);
   }
   async init() {
     //console.log(this.wallet);
@@ -470,7 +469,7 @@ class bitMonkyWSrv extends  EventEmitter {
     this.srv.listen(port,'localhost');
     console.log('bitMonky Wallet Server running at http://localhost:'+port);
   }
-  async getBorgMasterID(){
+  getBorgMasterID(){
     return '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ';
   }
   handleSSE(req, res) {
@@ -626,6 +625,14 @@ class bitMonkyWSrv extends  EventEmitter {
          if (j.req  == 'rsaDecodeMsg'){
             this.wallet.doRsaDecodeMsg(j,res);
             return;
+         }
+         if (j.req  === 'sendBorgChatMsg'){
+           this.wallet.doSendBorgChatMsg(j,res);
+           return;
+         }
+         if (j.req  === 'sendPeerQryResults'){
+           await this.wallet.doSendPeerQryResults(j,res);
+           return;
          }
          if (j.req  === 'doSendShells'){
            this.wallet.doSendShells(j,res);
@@ -1399,6 +1406,58 @@ class bitMonkyWallet{
      }
      return false;
    }
+   async doSendBorgChatMsg(j,res){
+     console.log(`doSendBorgChatMsg():: `,j);
+     let doTry = await this.net.PTree.askTheBorg(this.ownMUID,j.parms.prompt);
+     let htm = 'Service Not Available';
+     if (doTry?.status === 404){
+       htm = 'Borg is currently offline... try again later';
+     }
+     else if (doTry.status === 200 && doTry?.json.result){
+       htm = `<div class="infoCardClear" style="width:100%">${doTry.json.reply}</div>`;
+     }
+     console.log(`doSendBorgChatMsg():: doTry`,doTry);
+
+     j.html   = `<h2>Borg Response.</h2>`;
+     j.html  += htm;
+     j.result = true;
+     j.action = j.req;
+     console.log(`doSendPeerQryResults():: `,j);
+     res.end(JSON.stringify(j));
+   }
+   async doSendPeerQryResults(j,res){
+     console.log(j);
+     const mbrMUID = '1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ';
+     const qry = j.parms.qry.substring(0, 500);
+     const type = null; //'BorgAgentMem';
+
+     let response = await this.net.PTree.ptreeSearchMem(mbrMUID, qry,type,null,null);
+     console.log(`response:`,response);
+     if (typeof response === "string") {
+       response = response.replace(/"{/g, "{")
+                        .replace(/}"/g, "}")
+                        .replace(/\\"/g, "\"")
+                        .replace(/NULL/g, "");
+     }
+     let html = '';
+     try {
+       const out = JSON.parse(response.json);
+       out.data.forEach( (r)=>{
+         if (r.pmcMemObjID && r.pmcMemObjID != 'null'){
+           html += `<div style="width:100%" ID="mem-${r.pmcMemObjID}">memory - ${r.pmcMemObjID}</div>`;
+         }
+       }); 
+     } catch(e) {
+       console.log(e);
+     } 
+
+     j.html   = `<h2>Search Feature Not Available.</h2>`;
+     j.html  += html;
+     j.result = true;
+     j.action = j.req;
+     console.log(`doSendPeerQryResults():: `,j);
+     res.end(JSON.stringify(j));
+   }
    async doGetSendShellsToMbr(j,res){
      const p = j.parms
      j.html   = await this.net.BPay.getSendBorgForm(p.muid, p.nic, 0, p.icon);
@@ -1809,7 +1868,6 @@ class bitMonkyWallet{
     const queryString = urlObj.search.replace(/^\?/, "");
 
     const ctx = await this.net.UI.initRepoContextFromGET(queryString);
-    console.log(`initRepoContextFromGET():: `, ctx);
 
     // 2. Build HTML
     const htm = await this.net.UI.getBorgFileSys(queryString);
