@@ -708,7 +708,7 @@ class BorgHUIstreamMgr {
       return;
     }
 
-    if (stream.mimeType.startsWith("text")) {
+    if (stream.mimeType.startsWith("text") && stream.mode !== 'download') {
       const fileContent = fs.readFileSync(stream.tempFilePath, 'utf8');
       const jreply = {
         callback : 'handlerTextSpot',
@@ -784,6 +784,7 @@ class BorgHUIstreamMgr {
       service: service,
       streamId: j.fileInfo.checkSum,
       filename: service.filename,
+      mode    : service?.mode,
       origName: origName,
       mimeType: j.fileInfo.fileType,
       reqId: crypto.randomUUID(),
@@ -1314,7 +1315,7 @@ class BorgHUIstreamMgr {
     const httpRes = stream.httpRes;
     const fileSize = stream.totalSize;
 
-    if (stream.mimeType.startsWith("text")) {
+    if (stream.mimeType.startsWith("text") && stream.mode !== 'download') {
       const fileContent = fs.readFileSync(stream.tempFilePath, 'utf8');
       const jreply = {
         callback : 'handlerTextSpot',

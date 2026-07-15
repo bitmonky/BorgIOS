@@ -32,6 +32,8 @@ const {BorgHUIptreeAPI}  = require("./borgHUIptreeAPI.js");
 const {BorgHUIFileMgrUI} = require("./borgHUIFileMgrUI.js");
 const {BorgHUIBorgPay}   = require("./borgHUIBorgPay.js");
 const {borgHUIMnemonic}  = require("./borgHUIMnemonic.js");
+const {BorgHUImemoryMgr} = require("./borgHUImemoryMgr.js");
+
 const maxUpLoadSize = 100000000000; // 1Gig
 
 const { generateKeyPairSync } = require('crypto')
@@ -272,6 +274,7 @@ class bitMonkyWSrv extends  EventEmitter {
     super();
     this.portal     = new BorgPortal();
     this.DStream    = new BorgHUIstreamMgr(this);
+    this.MStream    = new BorgHUImemoryMgr(this);
     this.sseClients = [];
     this.portal     = new BorgPortal();
     this.PTree      = new BorgHUIptreeAPI(this);
@@ -790,7 +793,10 @@ async doGetFileById(file,res){
   const rawUrl = `/getFile?fileId=${file}`;
   const u = new URL(rawUrl, 'http://localhost');
   const fileId = u.searchParams.get('fileId');
+  const mode   = u.searchParams.get('fmode');
+
   console.log('getFileFromRepo():: fileId ',  fileId);
+  console.log('getFileFromRepo():: mode ',  mode);
 
   let doTry = await this.PTree.ftreeGetFileFromRepoById(this.wallet.ownMUID,fileId);
   console.log(`doTry`,doTry);
@@ -808,6 +814,7 @@ async doGetFileById(file,res){
     const service = {
       endPoint : '/netREQ/',
       filename : `./downloads/${doTry.json.file.fileInfo.checkSum}.tmp`,
+      mode     : mode,
       host     : p.host,
       port     : p.port,
       raw      : true
@@ -1440,11 +1447,13 @@ class bitMonkyWallet{
                         .replace(/NULL/g, "");
      }
      let html = '';
+     const memories = [];
      try {
        const out = JSON.parse(response.json);
        out.data.forEach( (r)=>{
          if (r.pmcMemObjID && r.pmcMemObjID != 'null'){
            html += `<div style="width:100%" ID="mem-${r.pmcMemObjID}">memory - ${r.pmcMemObjID}</div>`;
+           memories.push({hash: r.pmcMemObjID, shardHID: this.calculateHash(`${r.pmcMemObjID}-${r.pmcMownerID}`)});
          }
        }); 
      } catch(e) {
@@ -1457,6 +1466,15 @@ class bitMonkyWallet{
      j.action = j.req;
      console.log(`doSendPeerQryResults():: `,j);
      res.end(JSON.stringify(j));
+     const p = await this.net.portal.selectPortal('shardTreeCell');
+
+     const service = {
+       endPoint : '/netREQ/',
+       host     : p.host,
+       port     : p.port,
+       raw      : true
+     };
+     this.net.MStream.doOpenMemStream(memories, service, qry);
    }
    async doGetSendShellsToMbr(j,res){
      const p = j.parms

@@ -38,9 +38,25 @@ evt.addEventListener("borg-event", (e) => {
 });
 let atTop = false;
 function handleBorgMsg(msg){
+  console.log(`handleBorgMsg():: msg`,msg);
   if (msg.req === 'updateUpload'){
     doUpdateUpload(msg);
     return;
+  }
+  if (msg.req === 'updateMemQry'){
+    doUpdateMemQry(msg);
+    return;
+  }
+}
+function doUpdateMemQry(msg){
+  let div = document.getElementById(`mem-${msg.hash}`);
+  console.log(`doUpdateMemQry():: div`,div);
+  if (div){
+    if (msg.error === true){
+      div.style.display='none';
+      return;
+    }
+    div.innerHTML = msg.html;
   }
 }
 function doUpdateUpload(msg){

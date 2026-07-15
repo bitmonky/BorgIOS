@@ -158,6 +158,8 @@ class BorgHUImemoryMgr {
   }
   prepareTempFile(filepath, fileSize) {
     const file = filepath;
+    console.log(`prepareTempFile`,file);
+    return null;
 
     // Check if cache file already exists
     let cacheExists = false;
@@ -229,7 +231,7 @@ class BorgHUImemoryMgr {
     }
 
     // 3. Random-access write
-    const tempFilePath = stream.tempFilePath.replace('MEM_ID',shard.shardId);
+    const tempFilePath = `memories/${stream.shardId}.mem`;    //stream.tempFilePath.replace('MEM_ID',shard.shardId);
     const fh = await fs.promises.open(tempFilePath, 'r+');
     try {
       await fh.write(shard.shard, 0, shard.shard.length, 0);
@@ -347,7 +349,7 @@ class BorgHUImemoryMgr {
 
         const shard    = stream.shardHashes[shardIdx];
         const shardId  = shard.hash;
-        const shardHID = this.net.wallet.calculateHash(`${shardId}-${this.net.wallet.ownMUID}-${Date.now()}`);
+        const shardHID = this.net.wallet.calculateHash(`${shardId}-${this.net.wallet.ownMUID}`);
         const shardSig = this.net.wallet.signToken(shardHID);
         shard.hashHID  = shardHID;
         console.log(`stream shardHashes`,stream.shardHashes[shardIdx]);
@@ -666,33 +668,24 @@ class BorgHUImemoryMgr {
     // remove stream
     this.dstreams.delete(stream.streamId);
   }
-  async doOpenMemStream(memories, service, winSize = 12) {
+  async doOpenMemStream(memories, service, qry, winSize = 12) {
     console.log(`doOpenStream():: repo.file`,memories);
-    mShards = [];
-    memories.forEach((mem) => {
-      mShards.push({ 
-        hash     : mem.pmcMemObjID,
-        shardHID : this.net.wallet.calculateHash(`${mem.pmcOwnerID}${mem.pmcMemObjID}${mem.pmcMemDate}`); 
-      })
-    });
-
-    const input = j.filename;
 
     const fmap = {
       requestMutex : new Mutex(),
       inRetry      : new Map(),
       nextToSend   : 0,
       service      : service,
-      streamId     : this.net.wallet.calculateHash(memories),
-      filename     : service.filename,
-      origName     : origName,
-      mimeType     : j.fileInfo.fileType,
+      streamId     : this.net.wallet.calculateHash(JSON.stringify(memories)),
+      filename     : this.net.wallet.calculateHash(qry),
+      origName     : qry.slice(0,80),
+      mimeType     : 'text/html',
       reqId        : crypto.randomUUID(),
       response     : 'na',
       request      : 'sendShard',
-      shardSize    : j.fileInfo.shardSize,
-      shardHashes  : mShards,
-      count        : mShards.length,
+      shardSize    : 0,
+      shardHashes  : memories,
+      count        : memories.length,
       type         : 'memQry',
 
       // State machine
@@ -702,7 +695,7 @@ class BorgHUImemoryMgr {
 
       // Progress
       shardsReceived : 0,
-      pendingShards  : new Set([...Array(shards.length).keys()]),
+      pendingShards  : new Set([...Array(memories.length).keys()]),
       inFlight       : new Set(),
       windowSize     : winSize,
       inProgress     : true,
@@ -713,12 +706,14 @@ class BorgHUImemoryMgr {
       _backgroundDownloadStarted: false
     };
 
+/*
     // Storage
     if (fmap.type === 'memFile' || fmap.type === 'dsBuffer') {
       fmap.buffer = this.prepareBlobMemFile(fmap.streamId, fmap.totalSize);
     } else {
       fmap.tempFilePath = await this.prepareTempFile(fmap.filename, fmap.totalSize);
     }
+*/
     this.dstreams.set(fmap.streamId, fmap);
 
     // 🔥 NEW: Try to stream from cache first (with range support)
@@ -793,8 +788,10 @@ class BorgHUImemoryMgr {
         const shardIdx = this.getLowestPendingShard(stream.pendingShards);
         if (shardIdx === null) return;
 
+/*
         // Check if shard exists locally FIRST (acts as a cache)
         const foundLocal = await this.checkLocalShard(streamId, shardIdx,portal);
+
         if (foundLocal) {
           // The shard was found locally and the event has been emitted
           // The onShardReceived handler will process it
@@ -802,7 +799,7 @@ class BorgHUImemoryMgr {
           console.log(`requestShardBatch():: shard ${shardIdx} found in local cache, skipping network request`);
           continue;
         }
-
+*/
         // If not found locally, proceed with network request
         // Move shard from pending → inFlight
 
@@ -825,7 +822,8 @@ class BorgHUImemoryMgr {
             hash      : shard.hash,
             hashID    : shard.shardHID,
             encrypted : 0,
-            shardSize : stream.shardSize
+            shardSize : stream.shardSize,
+            isMemory  : true
           }
         };
         console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx].hash,portal.ip);
@@ -867,6 +865,8 @@ class BorgHUImemoryMgr {
     }
     // CASE 2: Check if we have a temporary file on disk
     else if (stream.tempFilePath) {
+      console.log(stream.tempFilePath);
+      process.exit(1);
       try {
         const start = shardIdx * stream.shardSize;
         const end = Math.min(start + stream.shardSize, stream.totalSize);
@@ -942,7 +942,7 @@ class BorgHUImemoryMgr {
     }
     return lowest === Infinity ? null : lowest;
   }
-  async maxTriesExceeded(stream,idx){
+  async maxTriesExceeded(stream,idx,hash){
 
     const tryIdx = stream.inRetry.get(idx);
     if (!tryIdx) stream.inRetry.set(idx,{nFail: 0});
@@ -951,7 +951,7 @@ class BorgHUImemoryMgr {
 
       if (tryIdx.nFail > MAX_FAIL_REQ){
         console.log(`onShardReceived():: MAX_FAIL_REQ closeIncomingStream`);
-        this.closeIncomingStream(stream,true);
+        this.net.pushEvent('borg-event',{req:"updateMemQry",error:true,hash:hash});
         return true;
       }
     }
@@ -962,7 +962,7 @@ class BorgHUImemoryMgr {
   }
   async onShardReceived(j) {
     const { streamId, shard } = j;
-    //console.log(`onShardReceived():: j`,j);
+    console.log(`onShardReceived():: j`,j);
     const stream = this.dstreams.get(streamId);
     if (!stream) return;
     if (shard.shard === null){
@@ -980,12 +980,21 @@ class BorgHUImemoryMgr {
 
         console.log(`Portal ${portal.ip} banned until ${portal.bannedUntil}`);
         portal.errors = (portal.errors || 0) + 1;
+
+        // re-send request
+        stream.inFlight.delete(shard.shardIdx);
+        await this.maxTriesExceeded(stream,shard.shardIdx,shard.shardId);
+        this.requestShardBatch(streamId,stream.service);
+        return;
       }
 
       stream.inFlight.delete(shard.shardIdx);
-      if (await this.maxTriesExceeded(stream,shard.shardIdx)){
-        return;
-      }
+      console.log('borg-event',{req:"updateMemQry",error:true,hash:shard.shardId});
+      this.net.pushEvent('borg-event',{req:"updateMemQry",error:true,hash:shard.shardId});
+      //if (await this.maxTriesExceeded(stream,shard.shardIdx,shard.shardId)){
+      //  return;
+      //}
+
       this.requestShardBatch(streamId,stream.service);
       return;
     }
@@ -1007,7 +1016,7 @@ class BorgHUImemoryMgr {
     // If this is a video send shard directly to video
 
     // 1b. Send Memory To Memory Qry Dispplay
-    const idx = shard.shardId;
+    const memIdx = shard.shardId;
 
     console.log(`Memory Found `,shard);
     // Use BorgEnventAPI to send memory to browser.
@@ -1020,7 +1029,7 @@ class BorgHUImemoryMgr {
 
       // Try Re-request this shard
 
-      if (await this.maxTriesExceeded(stream,shardIdx)){
+      if (await this.maxTriesExceeded(stream,shardIdx,shard.hashId)){
         return;
       }
 
@@ -1176,6 +1185,7 @@ class BorgHUImemoryMgr {
     return false;
   }
   async streamFromCacheFast(stream) {
+    return false;
     console.log(`streamFromCacheFast()::`);
     // Check if cache file exists and has correct size
     if (!stream.tempFilePath || !fs.existsSync(stream.tempFilePath)) {

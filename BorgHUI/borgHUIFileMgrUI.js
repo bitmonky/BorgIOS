@@ -1,4 +1,4 @@
-//
+
 // BorgIOS Unified Server‑Side HTML Builder
 // Produces one giant HTML string to send to the browser
 //
@@ -292,8 +292,9 @@ async getBorgFileSys(url) {
     <div class='infoCardClear' style='background:#151515;' id='imgDisplaySpot'>
       <div id='fileActionSpot' align='right' style='display:none;padding:.5em;color:#777777;'>
         <input ID='avitarButton' type='button' value=' Use As User Avitar '/>
-        <input type='button' value=' Delete Repo File ' onclick='deleteRepoFile();'/>
-        <input type='button' value=' Download ' onclick='downloadRepoFile();'/>
+        <input type='button' value=' Create Memory '    ID= 'createBorgMemBut'  onclick='createBorgMemory();'/>
+        <input type='button' value=' Delete Repo File ' ID= 'deleteRepoFileBut' onclick='deleteRepoFile();'/>
+        <input type='button' value=' Download '         ID= 'fileDownloadBut'   onclick='downloadRepoFile();'/>
       </div>
 
       <div id='dispMemorySpot'></div>

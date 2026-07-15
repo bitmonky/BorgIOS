@@ -370,9 +370,10 @@ function doGetFileFromTree(fName, ftype=null){
 
   if (id == 'download'){
     hideSearching();
-    const fconf = confirm('download file .: ' + fName + ' now?');
+    const fconf = confirm('Download File .: ' + fName + ' Now?');
     if (!fconf){ return; }
-    startDownload(url, fName);
+    durl = `/netREQ/file=${fuid}&fmode=download`
+    startDownload(durl, fName);
     return;
   }
 
@@ -408,7 +409,7 @@ var cSpotIDtx = null;
 
 var videoObj = null;
 
-function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, chkSum){
+function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, chkSum,fuid){
   hide('avitarButton');
   hide('photoIMG');
   hide('videoSpot');
@@ -429,9 +430,17 @@ function doGetFileFromRepo(rname, fName, path, folderID, ftype=null, encrypt=0, 
   else if (ftype.indexOf('download') !== -1) { id = 'download'; }
   else                                        { id = 'textSpot'; }
 
-  var spot  = document.getElementById(id);
-  cSpotID   = spot;
-  cSpotIDtx = id;
+  var spot   = document.getElementById(id);
+  const dbut = document.getElementById('fileDownloadBut');
+  dbut.onclick = function() { downloadRepoFile(`${fuid}`)};
+
+  const mbut = document.getElementById('createBorgMemBut');
+  mbut.onclick = function() { createBorgMemory(`${fuid}`,`${ftype}`)};
+
+  console.log(`doGetFileFromRepo():: `,fuid,dbut);
+
+  cSpotID    = spot;
+  cSpotIDtx  = id;
 
   var data = 'wzID=' + encodeURIComponent(sKey) +
     '&fname='    + encodeURIComponent(fName) +
@@ -539,20 +548,122 @@ function displayMemoryFile(){
   var target = 'dispMemorySpot';
   borgSendUpdateResByUrl(url, target, 'handlerDispMemoryFile');
 }
+function createBorgMemory(memoryID=null, ftype=null) {
+    // 1. Create the Modal Overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'borg-modal-overlay';
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(4px);
+        display: flex; justify-content: center; align-items: center;
+        z-index: 9999; font-family: sans-serif;
+    `;
 
-function handlerDispMemoryFile(j){
-  var spot = document.getElementById(j.res);
-  hideSearching();
-  spot.innerHTML    = j.html;
-  spot.style.display = 'block';
+    // 2. Build the Modal Form HTML
+    overlay.innerHTML = `
+        <div style="background: #1e2e1e; border: 2px solid #4caf50; border-radius: 8px; padding: 25px; width: 400px; color: #e0e0e0; box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);">
+            <h3 style="color: #4caf50; margin-top: 0; text-shadow: 0 0 5px rgba(76,175,80,0.5);">Upload New Memory</h3>
+            
+            <form id="borg-upload-form" enctype="multipart/form-data">
+                <!-- Hidden Inputs -->
+                <input type="hidden" name="memoryID" value="${memoryID}">
+                <input type="hidden" name="ftype" value="${ftype}">
+
+                <!-- Visible Inputs -->
+                <div style="margin-bottom: 15px;">
+                    <label style="display:block; margin-bottom: 5px; font-size: 0.9em;">Title</label>
+                    <input type="text" name="title" required style="width: 100%; padding: 8px; background: #0d1a0d; border: 1px solid #4caf50; color: #fff; border-radius: 4px;">
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display:block; margin-bottom: 5px; font-size: 0.9em;">Description</label>
+                    <textarea name="description" rows="3" style="width: 100%; padding: 8px; background: #0d1a0d; border: 1px solid #4caf50; color: #fff; border-radius: 4px; resize: vertical;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <label style="display:block; margin-bottom: 5px; font-size: 0.9em;">Location</label>
+                        <input type="text" name="location" placeholder="City, Server, or Null" style="width: 100%; padding: 8px; background: #0d1a0d; border: 1px solid #4caf50; color: #fff; border-radius: 4px;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display:block; margin-bottom: 5px; font-size: 0.9em;">Date</label>
+                        <input type="date" name="date" style="width: 100%; padding: 8px; background: #0d1a0d; border: 1px solid #4caf50; color: #fff; border-radius: 4px;">
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display:block; margin-bottom: 5px; font-size: 0.9em;">Tags (comma separated)</label>
+                    <input type="text" name="tags" placeholder="cyberpunk, ai, borg" style="width: 100%; padding: 8px; background: #0d1a0d; border: 1px solid #4caf50; color: #fff; border-radius: 4px;">
+                </div>
+
+                <!--div style="margin-bottom: 20px; border: 1px dashed #555; padding: 10px; text-align: center; border-radius: 4px;">
+                    <label style="display:block; margin-bottom: 5px; font-size: 0.9em; cursor: pointer;">
+                        Select File (${ftype})
+                        <input type="file" name="fileData" required style="display: block; margin: 10px auto 0; color: #ccc;">
+                    </label>
+                </div-->
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" onclick="document.getElementById('borg-modal-overlay').remove()" style="padding: 8px 15px; background: #333; color: #aaa; border: 1px solid #555; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button type="submit" style="padding: 8px 15px; background: #4caf50; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; text-shadow: 0 0 5px rgba(76,175,80,0.5);">Upload Memory</button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // 3. Attach the submit event listener to call doCreateBorgMemory
+    const form = document.getElementById('borg-upload-form');
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault(); // Prevent default form submission
+        
+        // Collect form data
+        const formData = new FormData(this);
+
+        // Call the backend logic
+        await doCreateBorgMemory(formData);
+    });
 }
+async function doCreateBorgMemory(formData) {
+    try {
+        // 1. Extract ONLY the text fields from the FormData object
+        // We explicitly ignore the 'fileData' since you are handling the file separately via P2P
+        const memoryMetadata = {
+            memoryID: formData.get('memoryID'),
+            ftype: formData.get('ftype'),
+            title: formData.get('title'),
+            description: formData.get('description'),
+            location: formData.get('location'),
+            date: formData.get('date'),
+            // Convert comma-separated tags string into a clean array
+            tags: formData.get('tags') ? formData.get('tags').split(',').map(tag => tag.trim()) : [],
+            timestamp: Date.now() // Useful for P2P ordering/versions
+        };
 
-function downloadRepoFile(){
-  var conf = confirm('Download ' + cfileName + ' Now?');
+        console.log("Extracted Metadata for P2P broadcast:", memoryMetadata);
+
+        // ---------------------------------------------------------
+        // YOUR P2P CODE GOES HERE
+        // ---------------------------------------------------------
+
+        // Close the modal on success (optional, move this inside your P2P success callback if needed)
+        document.getElementById('borg-modal-overlay').remove();
+        alert("Metadata extracted successfully. Broadcasting to P2P network...");
+
+    } catch (err) {
+        console.error('Error extracting P2P metadata:', err);
+        alert('Failed to process memory data.');
+    }
+}
+function downloadRepoFile(fuid){
+  console.log(`downloadRepoFile():: `,cfileData);
+  var conf = confirm('Download... ' + cfileName + ' Now?');
   if (!conf){ return; }
-  var url = '/whzon/bitMiner/getFileFromRepo.php?' + cfileData;
+  const durl = `/netREQ/file=${fuid}&fmode=download`
+  console.log(`downloadRepoFile():: durl`,durl);
   const link = document.createElement('a');
-  link.href     = url;
+  link.href     = durl;
   link.download = cfileName || 'downloaded-file';
   document.body.appendChild(link);
   link.click();
