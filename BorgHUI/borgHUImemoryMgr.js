@@ -2,8 +2,12 @@ const crypto = require("crypto");
 const fs = require("fs");
 process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 
+const https  = require('https');
+const path   = require('path');
+
 const shardSize    = 256 * 1024;
 const MAX_FAIL_REQ = 8;
+const MKYC_portDeepSeek = 13581;
 
 function sleep(ms){
   return new Promise(resolve=>{
@@ -77,22 +81,14 @@ class BorgHUImemoryMgr {
    this.cell = cell;
    //console.log('hello');
   }
-  storeUserMemoryToTree(req, memStr, ownerMUID, memHash) {
+  storeUserMemoryToTree(weights, memStr, ownerMUID, memHash) {
     return new Promise(async(resolve,reject) => {
       console.log('getRatedWords::');
-      const memWords = await this.getRatedWords(req, memStr);
-  
-      if (!memWords) {
-        resolve(false);
-        return;
-      }
-
-      req.type = 'BorgAgentMem';
-      console.log('ptreeStoreMem');
+      console.log('ptreeStoreMem',ownerMUID, memHash, memStr, 'BorgUserMemory', 3, weights);
   
       try {
-        const j = await this.borg.ptreeStoreMem(ownerMUID, memHash, memStr, req.type, 3, memWords.weights);
-        //console.log('ptreeStoreMem::result',j);
+        const j = await this.net.PTree.ptreeStoreMem(ownerMUID, memHash, memStr, 'BorgUserMemory', 3, weights);
+        console.log('ptreeStoreMem::result',j);
         resolve(true);
         return ; //jres.result === "memOK";
       }
@@ -103,21 +99,21 @@ class BorgHUImemoryMgr {
       }
     });
   }
-  getRatedWords(req, memStr) {
+  getRatedWords(weights, memStr) {
     return new Promise(async(resolve,reject)=>{
       const r = {
         result: false,
         weights: []
       };
 
-      if (!req.keyWords) {
-        console.error("Weights list JSON FAIL on:", JSON.stringify(r));
-        resolve(false);
-        return null;
+      if (weights.length === 0) {
+        console.error("Weights list is undefined or null",weights,memStr);
+        resolve(r);
+        return;
       }
 
-      // Split Worgd Groups Into Equal Weighted tokens
-      req.keyWords.forEach(wrec => {
+      // Split Word Groups Into Equal Weighted tokens
+      weights.forEach(wrec => {
         if (wrec.word.includes(" ")) {
           const subwords = wrec.word.split(" ");
           subwords.forEach(word => {
@@ -129,13 +125,33 @@ class BorgHUImemoryMgr {
             r.result = true;
           });
         }
+        else {
+          r.weights.push(wrec);
+          r.result = true;
+        }
       });
 
-      this.addMinorWordsTo(r.weights, this.borg.prepWords(memStr));
+      this.addMinorWordsTo(r.weights, this.prepWords(memStr));
 
       resolve(r);
     });
   }
+  prepWords(str) {
+    if (!str || str.trim() === '') return null;
+
+    const words = [' i ', ' in ', ' on ', ' there ', ' is ', ' are ', ' as ', ' the ', ' a ', ' to ', ' and ', ' too ', ' of ', ' for '];
+    words.forEach(word => {
+      str = str.replace(new RegExp(word, 'gi'), ' ');
+    });
+
+    str = str.replace(/[\p{P}\p{S}]+/gu, " ").toLowerCase();
+
+    const list = str.split(' ').map(word => word.slice(0, this.PTC_maxWordLength));
+    const newStr = list.filter(word => word.trim() !== '').join(' ');
+
+    return newStr.length > 0 ? newStr : null;
+  }
+
   addMinorWordsTo(weights, words) {
     console.log("Adding Minor Words:");
 
@@ -155,6 +171,214 @@ class BorgHUImemoryMgr {
   }
   isInWeights(weights, word) {
     return weights.some(w => w.word === word);
+  }
+  async doStoreMemory(memory){
+     const memStr  = JSON.stringify(memory);
+     const memHash = this.net.wallet.calculateHash(memStr);
+
+     const prompt = this.buildStoreMemoryPrompt(memory);
+     let weights  = await this.sendOAIPrompt(prompt);
+     console.log(`doStoreMemory():: weights`,weights);
+     try {
+       weights = JSON.parse(weights);
+     } catch {
+       weights = {keyWords:[]};
+     }  
+     const process = await this.getRatedWords(weights.keyWords,memStr);
+     console.log(`doStoreMemory():: process.result`,process);
+     if (process.result === false) {
+       return false;
+     }
+     weights = process.weights;
+     
+     console.log(`doStoreMemory():: final weights is `,weights);
+     if (await this.storeUserMemoryToTree(weights, memStr, this.net.wallet.ownMUID, memHash)){
+       const doTry = await this.uploadMemoryFile(memStr, this.net.wallet.ownMUID, memHash);
+       console.log(`doStoreMemory():: `,doTry);
+     }
+  }
+  async uploadMemoryFile(memStr,ownMUID,memHash){
+    const fholder = `${memHash}.tmp`;
+    const targetDir = 'uploads/';
+    const targetFile = path.join(targetDir, fholder);
+
+    fs.writeFile(targetFile, memStr, 'utf8', (err) => {
+      if (err) {
+        console.log(`uploadMemoryFile():: `, { result: false, data: 'File Write Failed', error: err.message });
+        return false;
+      }
+    });
+ 
+    console.log(`uploadMemoryFile():: File written successfully to ${targetFile}`);
+    console.log(`uploadMemoryFile():: `, { 
+      result: true, 
+      data: 'File Write Success',
+      size: Buffer.byteLength(memStr, 'utf8'),
+      target: targetFile
+    });
+
+    const j = {
+       req      : 'uploadUserFile',
+       fileName : `${memHash}.mem`,
+       filePath : targetFile,
+       mimeType : 'text/plain',
+    };
+     
+    const p = await this.net.portal.selectPortal('shardTreeCell');
+
+    const service = {
+       endPoint : '/storeShard/',
+       filename : j.filePath,
+       host     : p.host,
+       port     : p.port,
+       raw      : true
+    };
+
+    // Try streaming file to the shardTreeCell network.
+    let doTry = await this.net.DStream.streamTo(service);
+    console.log(`doUploadFile():: doTry`,doTry);
+    console.log(`doUploadFile():: hashes`,doTry.stream.shardHashes);
+
+    if (doTry.result === 'xhrFail' || doTry?.res?.result !== 'STREAM_META_ACK'){
+      let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
+      console.log(errorMsg);
+      return false;
+    }
+
+    let ostream = await this.net.DStream.uploadResult(doTry.stream.streamId);
+    console.log(`uploadMemoryFile():: ostream`,ostream,ostream.shardHashes);
+    return true;
+  }
+  buildStoreMemoryPrompt(memory) {
+    const memoryString = JSON.stringify(memory, null, 2);
+  
+  
+    const spamWarning = `
+    ⚠️ SPAM FILTER ACTIVE:
+    Be active in down grading or excluding words that are intentionaly not aligned with the overall meaning of the memory so that the content
+    will only be retrieved in searches that truely match the meaning of the memory. 
+    `;
+
+    return `TASK: Extract weighted keywords from memory for semantic retrieval.
+
+    INPUT MEMORY (JSON):
+    ${memoryString}
+
+    ${spamWarning}
+
+    OUTPUT FORMAT (ONLY JSON, no extra fields):
+    {"keyWords": [{"word": "keyword", "weight": 1.0-10.0}]}
+
+    RULES:
+    1. Max 30 keywords
+    2. Down grade or eliminate spammy words.
+    3. Keywords may or maynot appear in the actual content
+    4. Natural weight distribution (few high, some medium, many low)
+    5. NO duplicates
+    6. Return ONLY the JSON object
+
+    Generate keywords now:`;
+  }
+  sendOAIPrompt(prompt, mod = 'deepseek-reasoner', temp = 0.0) {
+    return new Promise((resolve,reject) => {
+      this.connections = [];
+      var stream = null;
+      var newID  = null;
+      console.log('Stream Connections: ',this.connections.length);
+      if (this.connections.length > 0){
+        newID = this.connections.length;
+        console.log('staring new stream:',newID);
+        this.connections[0].res.write(`data: ${JSON.stringify({action:"NEW_CONVERSATION::BEGIN!",id:newID})}\n\n`);
+        this.connections.push({conId:newID,res:null});
+      }
+
+      const data = JSON.stringify({
+        action: "getTextStream", // Ensure this matches the server logic
+        prompt: prompt,
+        useModel: mod,
+        maxTokens: 8020,
+        temperature: temp
+      });
+
+      // Define request options
+      const options = {
+        hostname: 'antsrv.bitmonky.com',
+        port: MKYC_portDeepSeek,
+        path: '/netREQ',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(data, 'utf8'),
+        },
+      };
+      var rot      = `\n\nReasoning:\n\n`;
+      var finA     = `\n\nFinal Answer:\n\n`;
+      var fin      = '';
+      var usage    = null
+      var startROT = false;
+      var startFIN = false;
+
+      // Create the HTTPS request
+      const req = https.request(options, (res) => {
+        console.log(`Status Code: ${res.statusCode}`);
+        console.log('Streaming response:\n');
+        // Handle incoming data as a stream
+        res.on('data', (chunk) => {
+          const data = chunk.toString();
+          // Print the streamed data (Reasoning of Thought or Content)
+          //process.stdout.write("\x1B[2J\x1B[0f");
+          if (newID) stream = this.connections[newID].res;
+          if (data.startsWith('data: Reasoning of Thought:')) {
+             if (startROT === false) {
+               if (stream) {
+                 stream.write(`data: Reasoning:\n\n`);
+                 this.connections[0].res.write('data: '+JSON.stringify({action:"start",id:newID})+`\n\n`);
+                 console.log(rot);startROT=true;
+               }
+             }
+             if (stream) stream.write(data.replace('data: Reasoning of Thought: ', ''));
+             const bitstr = data.replace('data: Reasoning of Thought: ', '');
+             process.stdout.write(bitstr);
+             rot += bitstr;
+          } else if (data.startsWith('data: Content:')) {
+            if (startFIN === false) {if (stream) stream.write(`data: Content:\n\n`);console.log(fin);startFIN = true;}
+            if (stream) stream.write(data.replace('data: Content: ', ''));
+            const finstr = data.replace('data: Content: ', '');
+            process.stdout.write(finstr);
+            fin += finstr;
+          }
+          else if (data.startsWith('usage: Content:')){
+            usage = JSON.parse(data.replace('usage: Content: ',''));
+            console.log(`\n\nUsage:`,usage);
+          }
+          else if (data.startsWith('{"result":"json parse error"}')){
+            console.log('Server Error::',data);
+            fin += data;
+          }
+        });
+
+        // Handle when the stream ends
+        res.on('end', () => {
+          console.log('\nStream ended.');
+          fin = fin.replace(/```json\n{/, "{")
+                .replace(/}\n```/, "}")
+                .replace(/} ```/, "}")
+                .replace(/}\n```/, "}");
+          if (stream) stream.end();
+          resolve(fin);
+        });
+      });
+
+      // Handle request error
+      req.on('error', (error) => {
+        console.log('Error:', error.message);
+        resolve(error.message);
+      });
+
+      // Send the request payload
+      req.write(data);
+      req.end();
+    });
   }
   prepareTempFile(filepath, fileSize) {
     const file = filepath;
@@ -1020,6 +1244,7 @@ class BorgHUImemoryMgr {
 
     console.log(`Memory Found `,shard);
     // Use BorgEnventAPI to send memory to browser.
+    this.net.pushEvent('borg-event',{req:"updateMemQry",error:false,hash:shard.shardId,html:shard.shard.toString()});
 
     const result = await this.writeShardToFile(stream,shard);
     if (!result.ok) {

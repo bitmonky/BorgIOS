@@ -628,7 +628,6 @@ function createBorgMemory(memoryID=null, ftype=null) {
 async function doCreateBorgMemory(formData) {
     try {
         // 1. Extract ONLY the text fields from the FormData object
-        // We explicitly ignore the 'fileData' since you are handling the file separately via P2P
         const memoryMetadata = {
             memoryID: formData.get('memoryID'),
             ftype: formData.get('ftype'),
@@ -643,11 +642,15 @@ async function doCreateBorgMemory(formData) {
 
         console.log("Extracted Metadata for P2P broadcast:", memoryMetadata);
 
-        // ---------------------------------------------------------
-        // YOUR P2P CODE GOES HERE
-        // ---------------------------------------------------------
+        var ranTime = new Date().getMilliseconds();
 
-        // Close the modal on success (optional, move this inside your P2P success callback if needed)
+        sendRequest({
+          req    : "createBorgMemory",
+          memory : memoryMetadata,
+          xr     : "&xr=" + ranTime
+        });
+
+        // Close the modal on success
         document.getElementById('borg-modal-overlay').remove();
         alert("Metadata extracted successfully. Broadcasting to P2P network...");
 

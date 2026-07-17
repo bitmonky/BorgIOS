@@ -629,6 +629,10 @@ class bitMonkyWSrv extends  EventEmitter {
             this.wallet.doRsaDecodeMsg(j,res);
             return;
          }
+         if (j.req  === 'createBorgMemory'){
+           this.wallet.doCreateBorgMemory(j,res);
+           return;
+         }
          if (j.req  === 'sendBorgChatMsg'){
            this.wallet.doSendBorgChatMsg(j,res);
            return;
@@ -1432,9 +1436,20 @@ class bitMonkyWallet{
      console.log(`doSendPeerQryResults():: `,j);
      res.end(JSON.stringify(j));
    }
+   async doCreateBorgMemory(j,res){
+     let memPrompt = this.net.MStream.doStoreMemory(j.memory);
+     console.log(`doCreateBorgMemory():: prompt is `,memPrompt);
+
+     const p = j.parms
+     j.html   = `memory created`;
+     j.result = true;
+     j.action = j.req;
+     console.log(`doCreateBorgMemory():: `,j);
+     res.end(JSON.stringify(j));
+   }    
    async doSendPeerQryResults(j,res){
      console.log(j);
-     const mbrMUID = '1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ';
+     const mbrMUID = 'publicAll';
      const qry = j.parms.qry.substring(0, 500);
      const type = null; //'BorgAgentMem';
 
@@ -1452,7 +1467,7 @@ class bitMonkyWallet{
        const out = JSON.parse(response.json);
        out.data.forEach( (r)=>{
          if (r.pmcMemObjID && r.pmcMemObjID != 'null'){
-           html += `<div style="width:100%" ID="mem-${r.pmcMemObjID}">memory - ${r.pmcMemObjID}</div>`;
+           html += `<div class="infoCardClear" style="width:100%" ID="mem-${r.pmcMemObjID}">memory - ${r.pmcMemObjID}</div>`;
            memories.push({hash: r.pmcMemObjID, shardHID: this.calculateHash(`${r.pmcMemObjID}-${r.pmcMownerID}`)});
          }
        }); 
@@ -1460,7 +1475,7 @@ class bitMonkyWallet{
        console.log(e);
      } 
 
-     j.html   = `<h2>Search Feature Not Available.</h2>`;
+     j.html   = `<h2>Search Results .:</h2>`;
      j.html  += html;
      j.result = true;
      j.action = j.req;

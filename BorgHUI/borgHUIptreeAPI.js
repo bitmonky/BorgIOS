@@ -424,19 +424,23 @@ class BorgHUIptreeAPI {
   }
 
   async ptreeStoreMem(muid, acID, str, type = "generic", nCopys = 3, weights = null, location = null) {
-    const j = {
-      from: muid,
-      memID: acID,
-      memStr: str,
-      memType: type,
-      nCopys,
-      weights
+    const msg = {
+      msg : {
+        req     : 'storeMemory',
+        memory : {
+          from    : muid,
+          memID   : acID,
+          memStr  : str,
+          memType : type,
+          nCopys  : nCopys,
+          weights : weights
+        }
+      }
     };
 
-    if (location) Object.assign(j, location);
-
-    const encoded = encodeURIComponent(JSON.stringify({ req: "storeMemory", memory: j }));
-    return this._getJSON("memCell", encoded);
+    if (location) msg.msg.memory.location = location;
+    console.log(`ptreeStoreMem():: send msg: `,msg);
+    return this._postJSON("peerMemoryCell", msg);
   }
 
   async ptreeDeleteMem(muid, memHash) {
