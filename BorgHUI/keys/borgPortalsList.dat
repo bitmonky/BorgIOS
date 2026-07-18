@@ -15,6 +15,21 @@
         ]
     },
     {
+        "netPort": 13550,
+        "recpPort": 1396,
+        "monPort": 13551,
+        "maxChildren": 25,
+        "netName": "borgAgentCell",
+        "activeNodes": [
+            {
+                "ip": "23.92.26.62",
+                "errors": 0,
+                "date": 1741133712868,
+                "pKey": "041df09d20463e705b8358ae4652ab74a5070bf2e991f1a465724e0794e13a629d960bf33055c77e1845d295b884b29b12e224e862cd79093100cea5d659db8f28"
+            }
+        ]
+    },
+    {
         "netPort": 13351,
         "recpPort": 13381,
         "monPort": 13341,
