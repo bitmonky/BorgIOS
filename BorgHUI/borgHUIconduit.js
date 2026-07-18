@@ -1621,12 +1621,16 @@ class bitMonkyWallet{
      this.net.wcj.nicName = j.nicname;
      this.net.wcj.nicname = j.nicname;
      this.net.wcj.icon = `/netREQ/file=${j.fuid}`;
-     this.net.wcj.imeta = {status:'NA'};
+     this.net.wcj.imeta = j.icon;
 
      this.net.wcj.hasAccIcon = true;
 
      //this.net.wcj.age     = ac.age;
      //this.net.wcj.sex     = ac.sex;
+
+     // Do Update BorgMail User Registry with j.icon data
+     let doTry = await this.doUpdateBorgRegistry();
+     if (doTry ) this.net.wcj.borgReg = true;
 
      this.net.wcj.hasAccInfo      = true;
 

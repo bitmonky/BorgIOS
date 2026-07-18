@@ -371,6 +371,17 @@ async function doUpdateBorgProfile(formData) {
         
         const nIcon = await startIconPhotoUpload(userMetadata.file);
         console.log(`doUpdateBorgProfile():: nIcon`,nIcon);
+  
+        let chkSum = nIcon.filePath.replace('uploads\\','');
+        
+        const icon = {
+          fname : nIcon.fileName,
+          fcsum : chkSum.replace('.tmp',''),
+          rname : nIcon.repoInfo.rname,
+          folder: nIcon.repoInfo.folderID,
+          path  : nIcon.repoInfo.path,
+          ftype : nIcon.mimeType
+        }
 
         var ranTime = new Date().getMilliseconds();
 
@@ -378,6 +389,7 @@ async function doUpdateBorgProfile(formData) {
           req    : "updateBorgProfile",
           nicname: userMetadata.nicname,
           fuid   : nIcon.fuid,
+          icon   : icon,
           xr     : "&xr=" + ranTime
         });
 
