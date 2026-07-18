@@ -2,13 +2,14 @@ const axios = require('axios');
 const https = require('https');
 
 class BorgAccessAPI {
-    constructor() {
+    constructor(net) {
+        this.net = net;
         this.PTC_memRECEPTOR   = "https://172.105.110.34:1335";
         this.PTC_shardRECEPTOR = "https://139.177.195.184:13355";
         this.PTC_ftreeRECEPTOR = "https://139.177.195.184:13381";
         this.PTC_mailRECEPTOR  = "https://139.177.195.184:13395/newREQ"; 
         this.PTC_maxWordLength = 45;
-
+       
         // Create an Axios instance with an agent that ignores SSL cert verification
         this.axiosInstance = axios.create({
             httpsAgent: new https.Agent({
@@ -20,19 +21,20 @@ class BorgAccessAPI {
     async sendRequest(url, reqType, data, treeType='repo') {
         try {
           var response = null;
+          const borgToken = this.net.getBorgToken();
           switch (treeType) {
             case 'repo':
-              response = await this.axiosInstance.post(url, { msg: { req: reqType, repo: data } });
+              response = await this.axiosInstance.post(url, { msg: { req: reqType, repo: data,borgToken: borgToken } });
               break; 
             case 'qry':
-              response = await this.axiosInstance.post(url, { msg: { req: reqType, qry: data } });
+              response = await this.axiosInstance.post(url, { msg: { req: reqType, qry: data,borgToken: borgToken } });
               console.log(url,{msg:{req:reqType,qry:data}});
               break;
             case 'memory':
-              response = await this.axiosInstance.post(url, { msg: { req: reqType, memory: data } });
+              response = await this.axiosInstance.post(url, { msg: { req: reqType, memory: data,borgToken: borgToken } });
               break;
             case 'shard':
-              response = await this.axiosInstance.post(url, { msg: { req: reqType, shard: data } });
+              response = await this.axiosInstance.post(url, { msg: { req: reqType, shard: data,borgToken: borgToken } });
               break;
           }    
           if (response){

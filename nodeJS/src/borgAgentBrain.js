@@ -1,7 +1,9 @@
-const crypto = require('crypto');
-const axios  = require('axios');
-const {BorgAccessAPI}   = require('./borgAccessAPI.js');
-const {BorgCoreSystems} = require('./borgCoreSystems.js');
+const crypto              = require('crypto');
+const axios               = require('axios');
+const {BorgAccessAPI}     = require('./borgAccessAPI.js');
+const {BorgCoreSystems}   = require('./borgCoreSystems.js');
+const {BorgRepoStreamMgr} = require('./borgRepoStreamMgr.js');
+const {BorgIOSptreeAPI}   = require("./borgIOSptreeAPI.js");
 
 const fs     = require('fs');
 const path   = require('path');
@@ -35,13 +37,51 @@ function calculateHash(txt) {
   const crypto = require('crypto');
   return crypto.createHash('sha256').update(txt).digest('hex');
 }
+const mimeTypes = [
+  "text/x-csrc",
+  "text/x-c++src",
+  "text/x-python",
+  "application/x-ruby",
+  "application/x-perl",
+  "text/x-java-source",
+  "text/x-markdown",
+  "application/x-yaml",
+  "text/yaml",
+  "application/json",
+  "application/xml",
+  "application/x-sh",
+  "application/x-bash",
+  "application/x-tcl",
+  "application/octet-stream",
+  "text/plain",
+  "text/html",
+  "text/css",
+  "text/csv",
+  "text/javascript",
+  "application/json",
+  "application/xml",
+  "application/javascript",
+  "application/x-sh"
+];
+
+const prompt = `IMPORTANT ** Repositories are case sensitive... It contains the only files you have access to.
+          Filenames not listed here do not exist and are hallucinations. Memories referencing them should be disregarded and pruned out.
+          `;
+
+
+function doIndent(n) {
+  return ' '.repeat(n);
+}
 
 class BorgAgentBrain {
   constructor(receptor) {
     this.receptor      = receptor;
+    this.net           = receptor.peer.net;
     this.borgAID       = receptor.peer.net.peerMUID;
-    this.borg          = new BorgAccessAPI();
+    this.borg          = new BorgAccessAPI(receptor.peer.net);
     this.csys          = new BorgCoreSystems(this);
+    this.DStream       = new BorgRepoStreamMgr(receptor.peer.net);
+    this.PTree         = new BorgIOSptreeAPI(receptor.peer.net);
     this.maxLines      = 100;
     this.maxMemReq     = 8;
     this.RASMax        = 15;
@@ -568,7 +608,7 @@ class BorgAgentBrain {
   }
   async handleBorgResponse(req) {
     return new Promise(async(resolve,reject)=>{
-
+    console.log(`handleBorgResponse():: req`,req);
     if (!req) {
       this.respondEr('Invalid JSON in your response. Please try again.', req);
       return;
@@ -683,7 +723,7 @@ class BorgAgentBrain {
         return this.respondEr("Invalid request: qry is missing. Please try again.", req);
       }
 
-      const mbrMUID = '1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ';
+      const mbrMUID = this.net.borgMasterID;
       const qry = req.qry.substring(0, 500);
       const type = 'BorgAgentMem';
 
@@ -896,12 +936,14 @@ class BorgAgentBrain {
   }
   doGetFileFromRepo(r, start, end) {
     return new Promise(async (resolve,reject)=>{
+/*
       const isRead = await this.getRepoReadState(r, start, end);
       if (isRead) {
         this.respondEr(isRead, r);
         resolve(false);
         return;
       }
+*/
       if ((end - start) > this.maxLines){
         this.respondEr(`startLine/endLine range error... maxLines : ${this.maxLines} exceeded`, r);
         resolve(false);
@@ -944,9 +986,9 @@ class BorgAgentBrain {
       const url = `https://web.bitmonky.com/whzon/bitMiner/getFileFromRepo.php?${data}`;
 
       try {
-        const response = await fetch(url);
-        var file = await response.text();
-
+        //const response = await fetch(url);
+        var file = await this.getRepoFileByName(r.rname,r.filename,r.path,r.folderID);
+        process.exit(1); 
         console.log(`fileRetrieved:\n${file.substring(0, 250)}`);
         file = file.trim();
         if (!file || file == '' || file.startsWith("FILE_NOTFOUMD.:")) {
@@ -993,6 +1035,108 @@ class BorgAgentBrain {
       }
     });
   }
+  async getRepositories() {
+    // Replace with actual API call implementation
+    this.otext = '';
+    const muid = this.net.borgMasterID;
+    const myRepos = await this.PTree.ftreeGetMyRepos(muid);
+ 
+    if (!myRepos.error) {
+      const result = myRepos.json;
+      if (result.result && result.list) {
+        this.otext += prompt + '\n';
+        this.otext += "codeRepositories Available Files:\n";
+      
+        for (const rec of result.list) {
+          if (rec.repoName !== 'Collective Memories') {
+            await this.getFolders(rec.repoName, muid);
+          }
+        }
+      }
+    } else {
+      this.otext = "Get My Repos Failed";
+    }
+    return this.otext;
+  }
+
+  async getFolders(rname, muid, folderId = null, indent = 4) {
+    const myRepoFiles = await this.PTree.ftreeGetMyRepoFiles(muid, rname, folderId);
+    if (!myRepoFiles.error) {
+      const result = myRepoFiles.json;
+    
+      if (result.list || result.folders) {
+        await this.getFiles(result.list, indent, rname, folderId);
+        indent += 2;
+      
+        for (const rec of result.folders) {
+          await this.getFolders(rname, muid, rec.rfoldID_master, indent + 2);
+        }
+      } else {
+        await this.getFiles([], indent + 2, rname, folderId);
+      }
+    }
+  }
+
+  async getFiles(files, indent, rname, folderId) {
+    
+    if (files.length > 0) {
+      this.otext += "\n";
+    }
+  
+    if (folderId === null) {
+      folderId = 0;
+    }
+  
+    // Reverse and iterate through files 
+    for (const rec of [...files].reverse()) {
+      if (rec.smgrFileType === 'undefined') {
+        rec.smgrFileType = 'image/jpeg';
+      }
+    
+      if (mimeTypes.includes(rec.smgrFileType)) {
+        this.otext += JSON.stringify({
+          "rname": rname,
+          "filename": rec.smgrFileName,
+          "path": rec.smgrFilePath,
+          "folderID": folderId
+        }) + "\n";
+      }
+    }
+  }
+  async getRepoFileByName(rname, fname, repoPath, folderID){
+    
+//    const stream = await this.DStream.keepStreaming(checkSum,fname,ftype);
+//    if (stream) return;
+    const repoOwner = this.net.borgMasterID
+    let doTry = await this.PTree.ftreeGetFileFromRepo(repoOwner, rname, fname, repoPath, folderID);
+    console.log(`doTry`,doTry);
+    if (doTry.status === 200){ 
+      console.log(`getFileFromRepo():: doTry is `,doTry.json);
+      //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.shards);
+      //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.fileInfo);     
+    }
+    if (doTry?.json?.result === false){
+      console.log(`doTry error: `,doTry.error);
+      return null;
+    }  
+    console.log('getFileFromRepo():: ',doTry);
+
+    if (doTry?.json?.file.fileInfo.fileSize > 0) {
+      const p = await this.net.portal.selectPortal('shardTreeCell');
+     
+      const service = {
+        endPoint : '/netREQ/',
+        filename : `./downloads/${doTry.json.file.fileInfo.checkSum}.tmp`,
+        host     : p.host,
+        port     : p.port,
+        raw      : true
+      };
+      doTry = await this.DStream.streamRepoFileFrom(service,doTry.json);
+      console.log('getFileFromRepo():: ',doTry);
+      //if (doTry 
+    }
+    return null;
+  }
   doFetchRecDoc(req, startLine, endLine) {
     return new Promise(async(resolve,reject)=>{
       /* Implement logic */
@@ -1002,9 +1146,8 @@ class BorgAgentBrain {
   }
   doFetchCodeRepo(r) {
     return new Promise(async(resolve,reject)=>{
-      const url   = 'https://web.bitmonky.com/whzon/talk/oaiBorgGetRepoTx.php?';
-      const response = await fetch(url);   //this.borg.ftreeGetMyRepos('1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ');
-      const rCode = await response.text();
+      const rCode = await this.getRepositories();
+      console.log(`doFetchCodeRepo():: rCode`,rCode);
 
       if (rCode == ''){
         if (r) {this.respondEr('Error Fetching Repositories... no repositories found.',r);}
@@ -1176,8 +1319,8 @@ class BorgAgentBrain {
       this.DMB = this.trimDMB(this.DMB,this.DMBMax);
       this.DMB.push({mhash:memoryID,memStr:memShortStr});
     
-      await this.storeUserMemoryToRepo(memory, '1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ', memoryID + ".mem");
-      await this.storeUserMemoryToTree(r, memory, '1GAMYVZBDa42Rse5a8rxajzvXiXwN35EQZ', memoryID);
+      await this.storeUserMemoryToRepo(memory, this.net.borgMasterID, memoryID + ".mem");
+      await this.storeUserMemoryToTree(r, memory, this.net.borgMasterID, memoryID);
       this.respondToBorg(r,"OK");
       resolve(memoryID);
       return; 

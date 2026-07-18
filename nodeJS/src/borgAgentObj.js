@@ -175,6 +175,9 @@ class borgAgentCellReceptor{
 		console.log('json error : ',body);
                 return;
 	      }	 
+              if (this.checkBorgToken(j,res) === false){
+                return;
+              }
               this.processRequests(j,res);
             });
           }
@@ -193,6 +196,19 @@ class borgAgentCellReceptor{
     });
     bserver.listen(this.port);
     console.log('peerTree Agent Receptor running on port:'+this.port);
+  }
+  checkBorgToken(j,res) {
+
+    let doTry = this.peer.net.verifyLogin(j);
+    if (doTry.result === true){
+      return true;
+    }
+    // Reject Request.
+    console.log(`checkBorgToken():: doTry`,doTry,j);
+    res.setHeader('Content-Type', 'application/json');
+    res.writeHead(450);
+    res.end(`{"result":false,"error": "Invalid BorgToken Request Rejected","msg":"${doTry.msg}"}`);
+    return false;
   }
   processRequests(j,res){
     res.setHeader('Content-Type', 'application/json');
