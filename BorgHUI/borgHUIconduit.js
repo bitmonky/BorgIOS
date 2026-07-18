@@ -1697,7 +1697,7 @@ class bitMonkyWallet{
    }
    async doCreateNewUserRootRepo(){
 
-     const newRepo = await this.net.PTree.ftreeCreateRepo(this.ownMUID,'myRoot',3);
+     const newRepo = await this.net.PTree.ftreeCreateRepo(this.ownMUID,'MyFiles',3);
      
      console.log(`doCreateNewUserRootRepo():: newRepo`,newRepo);   
      if (newRepo && newRepo?.error === false && newRepo?.json?.result === 'repoOK'){
@@ -1705,7 +1705,7 @@ class bitMonkyWallet{
        fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
          if (err) console.log(`updateWallet.conf:: `,err);
        });
-       console.log(`doCreateNewUserRootRepo():: myRoot repo created`);
+       console.log(`doCreateNewUserRootRepo():: MyFiles repo created`);
        return;
      }     
      console.error(`doCreateNewUserRootRepo():: failed`,newRepo);
