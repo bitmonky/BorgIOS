@@ -369,7 +369,7 @@ async function doUpdateBorgProfile(formData) {
         console.log(`FormData`,formData);
         console.log("Extracted Metadata for P2P broadcast:", userMetadata);
         
-        const nIcon = await startPhotoUpload(userMetadata.file);
+        const nIcon = await startIconPhotoUpload(userMetadata.file);
         console.log(`doUpdateBorgProfile():: nIcon`,nIcon);
 
         var ranTime = new Date().getMilliseconds();
@@ -391,7 +391,7 @@ async function doUpdateBorgProfile(formData) {
     }
 */
 }
-function startPhotoUpload(file){
+function startIconPhotoUpload(file){
   //scrollToTop();
 
   const meta = 'ownerMUID=localMUID' +
