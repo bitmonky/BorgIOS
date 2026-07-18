@@ -340,6 +340,7 @@ class bitMonkyWSrv extends  EventEmitter {
            rname     : urlObj.searchParams.get('rname'),
            encrypt   : urlObj.searchParams.get('encrypt') 
          } 
+         if (meta.ownerMUID === 'localMUID')  meta.ownerMUID = this.wallet.ownMUID;
          console.log(`upload meta data`,meta);
 
          upload.single('photo')(req, res, (err) => {
@@ -663,6 +664,14 @@ class bitMonkyWSrv extends  EventEmitter {
          }
          if (j.req === 'updateMyIcon'){
            await this.wallet.doUpdateMyIcon(j,res);
+           return;
+         }
+         if (j.req === 'updateMyNicname'){
+           await this.wallet.doUpdateMyNicname(j,res);
+           return;
+         }
+         if (j.req === 'updateBorgProfile'){
+           await this.wallet.doUpdateBorgProfile(j,res);
            return;
          }
          if (j.req === 'createAccount'){
@@ -1596,15 +1605,50 @@ class bitMonkyWallet{
      fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
        if (err){
          console.log(`doUpdateMyIcon():: updateWallet.conf:: `,err);
-       }
-       j.result = false;
-       j.msg    = `Failed To Save... Try Again Please`;
+         j.result = false;
+         j.msg    = `Failed To Save... Try Again Please`;
+       } 
        this.net.icon = newIcon;
      });
 
      j.response = j.msg;
      console.log(`doUpdateMyIcon():: final`,j);
 
+     res.end(JSON.stringify(j));
+   }
+   async doUpdateBorgProfile(j,res){
+     console.log(`doUpdateBorgProfile():: `,j);
+     this.net.wcj.nicName = j.nicname;
+     this.net.wcj.nicname = j.nicname;
+     this.net.wcj.icon = `/netREQ/file=${j.fuid}`;
+     this.net.wcj.imeta = {status:'NA'};
+
+     this.net.wcj.hasAccIcon = true;
+
+     //this.net.wcj.age     = ac.age;
+     //this.net.wcj.sex     = ac.sex;
+
+     this.net.wcj.hasAccInfo      = true;
+
+     j.result = true;
+     j.msg    = 'Account Updated';
+
+
+     // Persist to disk
+     fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
+       if (err){
+         console.log(`updateWallet.conf:: `,err);
+         j.result = false;
+         j.msg    = `Failed To Save... Try Again Please`;
+         return;
+       }
+       this.net.readConfigFile();
+     });
+
+     j.response = j.msg;
+     j.action   = 'updateAccount';
+
+     console.log(`doUpdateBorgProfile():: final`,j);
      res.end(JSON.stringify(j));
    }
    async doCreateAccount(j,res){
@@ -1621,9 +1665,9 @@ class bitMonkyWallet{
      fs.writeFile(wconf, JSON.stringify(this.net.wcj), { flag: 'w' }, err => {
        if (err){
          console.log(`updateWallet.conf:: `,err);
-       }      
-       j.result = false;
-       j.msg    = `Failed To Save... Try Again Please`;
+         j.result = false;
+         j.msg    = `Failed To Save... Try Again Please`;
+       }
      });
 
      j.response = j.msg;
@@ -1736,6 +1780,7 @@ class bitMonkyWallet{
      j.result = true;
      j.msg = 'File uploaded successfully.';
      j.response = j.msg;
+     j.fuid = doTry.fuid;
 
      console.log(`doUploadFile():: final`,j);
 
@@ -1938,6 +1983,7 @@ class bitMonkyWallet{
     if (this.net.wcj?.hasFarm === true){
       j.myFarms = this.net.PTree.mailTreeGetFarms(this.ownMUID);
     }
+    j.hasAccount = this.net.wcj.hasAccInfo; 
     res.end(JSON.stringify(j));
     return;    
   }

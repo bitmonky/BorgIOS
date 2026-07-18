@@ -19,6 +19,8 @@
 
 var hasAccount = false;
 var qryAction  = 'not set';
+var borgMUID   = null;
+
 var service = {
   host     : SERVICE_HOST,
   port     : "",
@@ -296,7 +298,158 @@ function doSendWalletOptions() {
     parms: { mode: MODE }
   });
 }
+function openBorgUserEdit(firstTime=true) {
+    // 1. Create the Modal Overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'borg-modal-overlay';
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(4px);
+        display: flex; justify-content: center; align-items: center;
+        z-index: 9999; font-family: sans-serif;
+    `;
+    let title = "Edit Borg User Profile";
+    if (firstTime) {
+      title = ".: Welcome To The Borg Collective :. ";
+    }
+    // 2. Build the Modal Form HTML
+    overlay.innerHTML = `
+        <div style="background: #1e2e1e; border: 2px solid #4caf50; border-radius: 8px; padding: 25px; width: 550px; color: #e0e0e0; box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);">
+            <h3 style="color: #4caf50; margin-top: 0; text-shadow: 0 0 5px rgba(76,175,80,0.5);">${title}</h3>
 
+            <form id="borg-upload-form" enctype="multipart/form-data">
+                <!-- Visible Inputs -->
+                <div style="margin-bottom: 15px;">
+                    <label style="display:block; margin-bottom: 5px; font-size: 0.9em;">Choose Your Borg Name</label>
+                    <input type="text" name="nicname" required style="width: 100%; padding: 8px; background: #0d1a0d; border: 1px solid #4caf50; color: #fff; border-radius: 4px;">
+                </div>
+
+                <!--div style="margin-bottom: 15px;">
+                    <label style="display:block; margin-bottom: 5px; font-size: 0.9em;">Description</label>
+                    <textarea name="description" rows="3" style="width: 100%; padding: 8px; background: #0d1a0d; border: 1px solid #4caf50; color: #fff; border-radius: 4px; resize: vertical;"></textarea>
+                </div-->
+
+                <div style="margin-bottom: 20px; border: 1px dashed #555; padding: 10px; text-align: center; border-radius: 4px;">
+                    <label style="display:block; margin-bottom: 5px; font-size: 0.9em; cursor: pointer;">
+                        Change User Avitar
+                        <input type="file" name="fileData" required style="display: block; margin: 10px auto 0; color: #ccc;">
+                    </label>
+                </div>
+                <div ID='uploadSpot'></div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" onclick="document.getElementById('borg-modal-overlay').remove()" style="padding: 8px 15px; background: #333; color: #aaa; border: 1px solid #555; border-radius: 4px; cursor: pointer;">Cancel</button>
+                    <button type="submit" style="padding: 8px 15px; background: #4caf50; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; text-shadow: 0 0 5px rgba(76,175,80,0.5);">Assimilate Now</button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // 3. Attach the submit event listener to call doCreateBorgMemory
+
+    const form = document.getElementById('borg-upload-form');
+    form.addEventListener('submit', async function(e) {
+
+        e.preventDefault(); // Prevent default form submission
+        // Collect form data
+        const formData = new FormData(this);
+
+        // Call the backend logic
+        await doUpdateBorgProfile(formData);
+    });
+}
+async function doUpdateBorgProfile(formData) {
+  //  try {
+        // 1. Extract ONLY the text fields from the FormData object
+        const userMetadata = {
+          file    : formData.get('fileData'),
+          nicname : formData.get('nicname'),
+        };
+        console.log(`FormData`,formData);
+        console.log("Extracted Metadata for P2P broadcast:", userMetadata);
+        
+        const nIcon = await startPhotoUpload(userMetadata.file);
+        console.log(`doUpdateBorgProfile():: nIcon`,nIcon);
+
+        var ranTime = new Date().getMilliseconds();
+
+        sendRequest({
+          req    : "updateBorgProfile",
+          nicname: userMetadata.nicname,
+          fuid   : nIcon.fuid,
+          xr     : "&xr=" + ranTime
+        });
+
+        // Close the modal on success
+        document.getElementById('borg-modal-overlay').remove();
+        alert("New Human Assimilation In Progress... Propagating to Borg Collective");
+
+/*    } catch (err) {
+        console.error('Error Assimilating new Human:', err);
+        alert('Failed to Assimilate New Human.');
+    }
+*/
+}
+function startPhotoUpload(file){
+  //scrollToTop();
+
+  const meta = 'ownerMUID=localMUID' +
+    '&path=' + encodeURIComponent('/') +
+    '&folderID=0' + 
+    '&rname=MyFiles' + 
+    '&encrypt=0';
+  const url  = 'storeRepoFileOnTree.php?' + meta;
+  console.log(`startPhotoUpload():: url`,url);
+
+  var spot   = document.getElementById('uploadSpot');
+  var html   = "<div style='padding:.5em;display:inline;height:28px;color:#777777;'>";
+  html += "<div class='mkyloader'></div>Uploading File For Storage On The PeerTree...</div>";
+  spot.innerHTML = html;
+
+  let xhr      = getHttpConnection();
+  let formData = new FormData();
+  let photo    = file;
+  console.log(photo);
+  formData.append("photo", photo);
+
+  return new Promise((resolve) => {
+    xhr.upload.addEventListener('progress', function(e){
+      var file1Size = photo.size;
+      if (e.loaded <= file1Size){
+        var percent = Math.round(e.loaded / file1Size * 100);
+        spot.innerHTML = 'Uploading... ' + percent + '%';
+      }
+      if (e.loaded == e.total){
+        spot.innerHTML = html;
+      }
+    });
+
+    xhr.timeout = 24 * 60 * 60;
+    xhr.open("POST", url);
+    xhr.onreadystatechange = function(){
+      if (xhr.readyState == 4){
+        console.log(xhr.status);
+        if (xhr.status == 200){
+          var j = xhr.responseText;
+          console.log(j);
+          try {
+            j = JSON.parse(j);
+            if (j.result){
+              resolve(j);
+              return;
+            }
+            resolve(null)
+            spot.innerHTML = "<h2>" + j.msg + "</h2>";
+          } catch(err){
+            spot.innerHTML = "<h2>JSON Error In Upload Response</h2>is::" + err + xhr.responseText;
+          }
+        }
+      }
+    };
+    xhr.send(formData);
+  });
+}
 /************************************************************
  *  SEARCH / QUERY
  ************************************************************/
@@ -378,7 +531,7 @@ function doLinkAccount() {
   });
 }
 
-function doCreateAccount() {
+function doCreateAccount(nicname,icon,age=0,sex=0) {
   if (!confirm("Create A BitMonky Account For This Wallet?")) return;
 
   butToFetching("butCreateAcc");
@@ -386,12 +539,12 @@ function doCreateAccount() {
   var sex = document.getElementById("isMale").checked ? 1 : 0;
 
   sendRequest({
-    req: "createAccount",
-    parms: {
-      firstname: document.getElementById("nicname").value,
-      age: document.getElementById("age").value,
-      sex,
-      browser: "Brave Browser"
+    req   : "createAccount",
+    parms : {
+      firstname : nicname,
+      icon      : icon,
+      age       : age,
+      sex       : sex
     }
   });
 }
@@ -452,7 +605,7 @@ function handleResponse(j) {
   }
 
   if (j.action === "sendAccountInfo") {
-    hasAccount = true;
+    hasAccount = j.hasAccount;
     doShowAccountInfo(j);
   }
   if (j.action === qryAction) doPutQryResults(j);
@@ -465,7 +618,8 @@ function handleResponse(j) {
   if (j.action === "sendStoresList") doShowStoresList(j);
   if (j.action === "sendBorgFileSys") doShowBorgFileSys(j);
   if (j.action === "sendBorgTime") doUpateBorgTime(j);
-
+  if (j.action === "updateAccount") getAccountInfo();
+ 
   if (j.action === "updateResByUrl" || j.action === "borgUpdateResByUrl") {
     doUpdateResByUrl(j);
   }
@@ -748,11 +902,15 @@ function getAddressSpot(j) {
 
 function doShowAccountInfo(j) {
   console.log(`Borg Identity():: `,j);
+  borgMUID = j.pMUID;
+  if (hasAccount !== true) openBorgUserEdit(true);
   var spot = document.getElementById('accountInfo');
+
   if (!spot) return;
   if (!j.nFarms) j.nFarms = 'No Farms Registerd ';
   var htm = "<div ID='doShowAcc' class='infoCardClear' style='width:100%'>";
-  htm += "<img ID='borgMyICON' style='width:5em;height:6em;margin:0em 0em 1.5em 1.5em;float:right;border-radius:50%;' src='" + j.icon + "'/>";
+  htm += "<a href='javascript:openBorgUserEdit(false);'>";
+  htm += "<img ID='borgMyICON' style='width:5em;height:6em;margin:0em 0em 1.5em 1.5em;float:right;border-radius:50%;' src='" + j.icon + "'/></a>";
   htm += "Account Owner: " + format(j.name);
   htm += "🌾 Shell Farms: " +  format(j.nFarms) + "<span style='font-size:larger;'></span>"; 
   htm += getAddressSpot(j) +
@@ -983,7 +1141,24 @@ function wzGetPage(pg) {
     "bitMonky"
   );
 }
-
+function getHttpConnection(){
+  var xmlhttp = null;
+  if (typeof XMLHttpRequest != 'undefined'){
+    try {
+      xmlhttp = new XMLHttpRequest();
+    } catch(e){
+      xmlhttp = false;
+    }
+  }
+  if (!xmlhttp && window.createRequest){
+    try {
+      xmlhttp = window.createRequest();
+    } catch(e){
+      xmlhttp = false;
+    }
+  }
+  return xmlhttp;
+}
 /************************************************************
  *  END OF TEMPLATE
  ************************************************************/
