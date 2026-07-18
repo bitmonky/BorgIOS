@@ -471,10 +471,16 @@ async buildRepoSidebarHTML(ctx) {
       html += `<div class="infoCardClear" style="background:#333333;color:darkKhaki;margin-top:.5em;"><h2 style='color:white;'>Local Repos Found</h2><div style='color:gray'>`;
 
       result.list.forEach(rec => {
+        if (rec.repoOwner === this.net.borgMasterID) {
+          rec.repoType = 'Borg System';
+        }
+        else if (rec.repoOwner === this.net.wallet.ownMUID){
+          rec.repoType = 'Owned By Me';
+        }
         html += `
           <a href="javascript:changeRepo('${rec.repoName}','${rec.repoOwner}');">
             <div id="id${rec.repoName}" style="width:100%;padding:.0em .5em 1em 1.5em;">
-              ${rec.repoName} - Type: ${rec.repoType}<br/>
+               ${rec.repoName} - ${rec.repoType}<br/>
             </div>
           </a>
         `;
