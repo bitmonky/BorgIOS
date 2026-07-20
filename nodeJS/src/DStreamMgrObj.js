@@ -370,7 +370,11 @@ class DStreamMgrObj {
   getShardData(streamId, shardIdx) {
     return new Promise(async (resolve, reject) => {
 
-      const stream = this.streams.get(streamId);
+      const stream  = this.streams.get(streamId);
+      if (!stream) { 
+        console.log(`getShardData():: stream not valid`,stream);
+        return;
+      }
       stream.buffer = this.memFiles.get(streamId);
 
       if (!stream) return reject(new Error("Unknown streamId"));

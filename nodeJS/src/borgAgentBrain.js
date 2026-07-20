@@ -4,8 +4,10 @@ const {BorgAccessAPI}     = require('./borgAccessAPI.js');
 const {BorgCoreSystems}   = require('./borgCoreSystems.js');
 const {BorgRepoStreamMgr} = require('./borgRepoStreamMgr.js');
 const {BorgIOSptreeAPI}   = require("./borgIOSptreeAPI.js");
+const {BorgIOSmemoryMgr}  = require('./borgIOSmemoryMgr.js');
 
 const fs     = require('fs');
+const fsp    = require('fs').promises;
 const path   = require('path');
 const zlib   = require('zlib');
 
@@ -82,6 +84,8 @@ class BorgAgentBrain {
     this.csys          = new BorgCoreSystems(this);
     this.DStream       = new BorgRepoStreamMgr(receptor.peer.net);
     this.PTree         = new BorgIOSptreeAPI(receptor.peer.net);
+    this.MemMgr        = new BorgIOSmemoryMgr(receptor.peer.net,this);
+
     this.maxLines      = 100;
     this.maxMemReq     = 8;
     this.RASMax        = 15;
@@ -988,8 +992,8 @@ class BorgAgentBrain {
       try {
         //const response = await fetch(url);
         var file = await this.getRepoFileByName(r.rname,r.filename,r.path,r.folderID);
-        process.exit(1); 
         console.log(`fileRetrieved:\n${file.substring(0, 250)}`);
+        //process.exit(1); 
         file = file.trim();
         if (!file || file == '' || file.startsWith("FILE_NOTFOUMD.:")) {
           this.respondEr(`Error ${file} - while retrieving file from repo... use the loadCodeRepo protocol to check file location.`, r);
@@ -1133,7 +1137,11 @@ class BorgAgentBrain {
       };
       doTry = await this.DStream.streamRepoFileFrom(service,doTry.json);
       console.log('getFileFromRepo():: ',doTry);
-      //if (doTry 
+      if (doTry.status === 'OK'){ 
+        const content = await fsp.readFile(service.filename, 'utf8');
+        return content;
+      }
+      console.log(`getRepoFileByName():: failed`,doTry.msg);
     }
     return null;
   }
@@ -1448,8 +1456,9 @@ class BorgAgentBrain {
       console.log('ptreeStoreMem');
   
       try {
-        const j = await this.borg.ptreeStoreMem(ownerMUID, memHash, memStr, req.type, 3, memWords.weights);
-        //console.log('ptreeStoreMem::result',j);
+        let memory = JSON.parse(memStr);
+        const j = await this.MemMgr.doStoreAgentMemory(memory);
+        console.log('ptreeStoreMem::result',j);
         resolve(true);
         return ; //jres.result === "memOK";
       }
