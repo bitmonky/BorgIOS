@@ -802,8 +802,9 @@ class BorgHUImemoryMgr {
           }
         });
       } catch (err) {
-        // If shard processing fails, close the stream
-        this.closeIncomingStream(stream);
+        // If shard processing fails, log the error.
+        console.log(`gatherShards():: failed`,data,err);
+        this.requestShardBatch(stream.streamId,stream.service);
       }
     };
 
@@ -919,6 +920,7 @@ class BorgHUImemoryMgr {
 
       // Progress
       shardsReceived : 0,
+      shardsFailed   : 0,
       pendingShards  : new Set([...Array(memories.length).keys()]),
       inFlight       : new Set(),
       windowSize     : winSize,
@@ -1174,7 +1176,9 @@ class BorgHUImemoryMgr {
       tryIdx.nFail++;
 
       if (tryIdx.nFail > MAX_FAIL_REQ){
-        console.log(`onShardReceived():: MAX_FAIL_REQ closeIncomingStream`);
+        stream.pendingShards.delete(idx);
+        stream.shardsFailed++;
+        console.log(`maxTriesExceeded():: MAX_FAIL_REQ remove memory from query`);
         this.net.pushEvent('borg-event',{req:"updateMemQry",error:true,hash:hash});
         return true;
       }
@@ -1268,11 +1272,11 @@ class BorgHUImemoryMgr {
 
     // 3. If all shards done, close stream
     if (
-      stream.shardsReceived === stream.count &&
+      stream.shardsReceived + stream.shardsFailed === stream.count &&
       stream.inFlight.size === 0 &&
       stream.pendingShards.size === 0
     ) {
-      console.log(`onShardReceived():: closeIncomingStream`);
+      console.log(`onShardReceived()::  closeIncomingStream`);
       return this.closeIncomingStream(stream);
     }
 

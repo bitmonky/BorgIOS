@@ -39,6 +39,10 @@ evt.addEventListener("borg-event", (e) => {
   handleBorgMsg(msg);
 });
 let atTop = false;
+function noenter() {
+  return !(window.event && window.event.keyCode == 13);
+}
+
 function handleBorgMsg(msg){
   console.log(`handleBorgMsg():: msg`,msg);
   if (msg.req === 'updateUpload'){
@@ -51,6 +55,62 @@ function handleBorgMsg(msg){
   }
 }
 function doUpdateMemQry(msg){
+  let div = document.getElementById(`mem-${msg.hash}`);
+  console.log(`doUpdateMemQry():: div`,msg);
+  if (div){
+    if (msg.error === true){
+      div.style.display='none';
+      return;
+    }
+    
+    // Parse the HTML content (assuming msg.html contains the JSON string)
+    let memoryData;
+    try {
+      memoryData = JSON.parse(msg.html);
+      console.log(memoryData);
+    } catch(e) {
+      // If it's not JSON, use the html as is
+      div.innerHTML = msg.html;
+      return;
+    }
+    
+    // Build the listing HTML
+    let listingHTML = '';
+
+    if (memoryData.renderHtml){
+      div.innerHTML = memoryData.renderHtml;
+      return;
+    }    
+    // Handle image display
+    if (memoryData.ftype && memoryData.ftype.startsWith('image/')) {
+      listingHTML += `
+        <div style="float: left; max-height: 7em; margin-right: 1.5em;">
+          <img src="http://localhost/netREQ/file=${memoryData.memoryID}" 
+               alt="${memoryData.title || 'Memory image'}" 
+               style="max-height: 7em; object-fit: contain;">
+        </div>
+      `;
+    }
+    
+    // Add the text content
+    listingHTML += `
+      <div style="margin-left: ${memoryData.ftype && memoryData.ftype.startsWith('image/') ? '7em' : '0'};">
+        <div style="font-weight: bold; font-size: 1.1em;">
+          ${memoryData.title || 'Untitled'}
+        </div>
+        ${memoryData.description ? `<div style="color: #ddd; margin: 0.3em 0;">${memoryData.description}</div>` : ''}
+        <div style="font-size: 0.85em; color: #999;">
+          ${memoryData.tags ? `Tags: ${memoryData.tags.join(', ')}` : ''}
+          ${memoryData.date ? ` • ${memoryData.date}` : ''}
+        </div>
+      </div>
+      <div style="clear: both;"></div>
+    `;
+    
+    div.innerHTML = listingHTML;
+  }
+}
+function doUpdateMemQryOld(msg){
   let div = document.getElementById(`mem-${msg.hash}`);
   console.log(`doUpdateMemQry():: div`,div);
   if (div){

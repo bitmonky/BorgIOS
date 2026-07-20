@@ -549,6 +549,11 @@ function displayMemoryFile(){
   borgSendUpdateResByUrl(url, target, 'handlerDispMemoryFile');
 }
 function createBorgMemory(memoryID=null, ftype=null) {
+    console.log(`createBorgMemory():: `,borgMUID ,mbrMUID);
+    if (borgMUID !== mbrMUID) {
+      alert('Not Your File... Action Blocked');
+      return;
+    }
     // 1. Create the Modal Overlay
     const overlay = document.createElement('div');
     overlay.id = 'borg-modal-overlay';
@@ -698,6 +703,10 @@ function updateMyIcon(url,icon){
   });
 }
 function deleteRepoFile(){
+  if (borgMUID !== mbrMUID) {
+    alert('Not Your File... Action Blocked');
+    return;
+  }
   console.log('/whzon/bitMiner/borgDelFileFromRepo.php?' + cfileData);
   var conf = confirm('Delete This File From Your Repo?');
   if (!conf){ return; }

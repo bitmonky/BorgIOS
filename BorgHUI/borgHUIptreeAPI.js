@@ -444,7 +444,7 @@ class BorgHUIptreeAPI {
   }
 
   async ptreeDeleteMem(muid, memHash) {
-    return this._postJSON("memCell", {
+    return this._postJSON("peerMemoryCell", {
       msg: { req: "removeMemory", memory: { ownMUID: muid, memoryID: memHash, nCopys: 0 } }
     });
   }
