@@ -2,7 +2,7 @@
 ### Borg Internet Operating System
 **A self-organizing, self-healing, self-funding distributed network where your USB stick is your identity and the network is your computer.**
 
-Disclaimer: This project is experimental and under active development. BorgHUI Conduit may contain bugs, incomplete features, or breaking changes. It is not intended for production use, and no guarantees are made regarding reliability, data integrity, or security.
+Disclaimer: This project is experimental and under active development. BorgIOS and BorgHUI Conduit may contain bugs, incomplete features, or breaking changes. It is not intended for production use, and no guarantees are made regarding reliability, data integrity, or security.
 
 ![main](images/borgGit.jpg)
 
