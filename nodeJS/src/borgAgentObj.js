@@ -283,7 +283,7 @@ class borgAgentCellReceptor{
     };
     return mToken;
   }
-  sendOAIPrompt(prompt, mod = 'deepseek-reasoner', temp = 0.0) {
+  sendOAIPrompt(prompt, mod = 'deepseek-v4-flash', temp = 0.75) {
     return new Promise((resolve,reject) => {
       var stream = null;
       var newID  = null;
@@ -341,13 +341,13 @@ class borgAgentCellReceptor{
              }			 
              if (stream) stream.write(data.replace('data: Reasoning of Thought: ', ''));
 	     const bitstr = data.replace('data: Reasoning of Thought: ', '');
-             process.stdout.write(bitstr);
+             //process.stdout.write(bitstr);
              rot += bitstr;
           } else if (data.startsWith('data: Content:')) {
-            if (startFIN === false) {if (stream) stream.write(`data: Content:\n\n`);console.log(fin);startFIN = true;}
+            if (startFIN === false) {if (stream) stream.write(`data: Content:\n\n`);console.log(finA);startFIN = true;}
             if (stream) stream.write(data.replace('data: Content: ', ''));
 	    const finstr = data.replace('data: Content: ', '');
-            process.stdout.write(finstr); 
+            //process.stdout.write(finstr); 
             fin += finstr;
           }
           else if (data.startsWith('usage: Content:')){
@@ -368,6 +368,8 @@ class borgAgentCellReceptor{
                 .replace(/} ```/, "}")
                 .replace(/}\n```/, "}");
 	  if (stream) stream.end();
+          console.log(`final reasoning:: `,rot);
+          console.log(`final response:: `,fin);
           resolve(fin);
         });
       });
@@ -564,7 +566,7 @@ class borgAgentCellReceptor{
     </body>
     </html> `;
   }
-  sendOAIPromptNoStream(prompt, mod = 'deepseek-reasoner', temp = 0.0) {
+  sendOAIPromptNoStream(prompt, mod = 'deepseek-v4-flash', temp = 0.0) {
     return new Promise(async (resolve,reject)=>{
       const msg = {
         action: "getText",

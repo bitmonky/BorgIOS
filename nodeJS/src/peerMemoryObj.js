@@ -3,7 +3,6 @@ var dateFormat     = require('./mkyDatef');
 const EventEmitter = require('events');
 const https        = require('https');
 const fs           = require('fs');
-const mkyPubKey    = '04a5dc8478989c0122c3eb6750c08039a91abf175c458ff5d64dbf448df8f1ba6ac4a6839e5cb0c9c711b15e85dae98f04697e4126186c4eab425064a97910dedc';
 const EC           = require('elliptic').ec;
 const ec           = new EC('secp256k1');
 const bitcoin      = require('bitcoinjs-lib');
@@ -20,6 +19,29 @@ function calculateHash(txt) {
   return crypto.createHash('sha256').update(txt).digest('hex');
 }
 
+class Mutex {
+  constructor() {
+    this._locked = false;
+    this._waiters = [];
+  }
+
+  async lock() {
+    if (!this._locked) {
+      this._locked = true;
+      return;
+    }
+    return new Promise(resolve => this._waiters.push(resolve));
+  }
+
+  unlock() {
+    if (this._waiters.length > 0) {
+      const next = this._waiters.shift();
+      next();
+    } else {
+      this._locked = false;
+    }
+  }
+}
 /*********************************************
 PeerTree Receptor Node: listens on port 1335
 ==============================================
@@ -167,7 +189,9 @@ class peerMemToken{
 class peerMemCellReceptor{
   constructor(peerTree,inRecPort){
     this.recPort = inRecPort;
-    this.peer = peerTree;
+    this.peer    = peerTree;
+    this.mutex   = new Mutex();
+
     console.log('ATTACHING - cellReceptor on port'+this.recPort);
     this.results = ['empty'];
     this.searches = [];
@@ -285,7 +309,7 @@ class peerMemCellReceptor{
     console.log('makeRemoveMemoryReq:: ',j);
     j.memory.token = this.openMemKeyFile(j);
     j.memory.signature = this.signRequest(j);
-    j.memory.signature.ownMUID = j.memory.token.ownMUID;
+    j.memory.signature.ownMUID = j.memory.from;
     var breq = {
       to : 'peerMemCells',
       removeMem : j.memoryID,
@@ -332,7 +356,7 @@ class peerMemCellReceptor{
       var cindex = null;
       cindex = this.smgr.getIndexOf(skey);
       while (trys < 10){
-        await sleep(500);
+        await sleep(50);
         console.log('SearchMGR::Try:'+trys,cindex,this.smgr.searches[cindex].data);
         result = [...this.smgr.searches[cindex].data];
         if (result.length > 0){
@@ -371,42 +395,87 @@ class peerMemCellReceptor{
     }
     return sig;
   }
-  prepMemoryReq(j,res){
-    j.memory.token = this.openMemKeyFile(j);
-    j.memory.signature = this.signRequest(j);
-    j.memory.signature.ownMUID = j.memory.token.ownMUID;
-    var SQL = "SELECT pcelAddress FROM peerBrain.peerMemCells ";
-    SQL += "where pcelLastStatus = 'online' and  timestampdiff(second,pcelLastMsg,now()) < 50 ";
-    SQL += "and NOT pcelAddress = '"+this.peer.net.rnet.myIp+"' order by rand() limit "+j.memory.nCopys;
-     //console.log(SQL);
-    var nStored = 0;
-    con.query(SQL,async (err, result, fields)=> {
-      if (err) {console.log(err);}
-      else {
-        if (result.length == 0){
-          res.end('{"result":"memOK","nRecs":0,"memory":"No Nodes Available"}');
+  async prepMemoryReq(j,res){
+    await this.mutex.lock();
+    try {
+      const sig = j.memory.sig;
+      if (!this.peer.isValidSig(sig)){
+        res.end('{"result":"FAILED","nStored":0,"memoryID":"'+j.memory.memID+'","hosts":[],"msg":"signature not valid"}');
+        return;
+      }
+      j.memory.signature = sig;
+
+      if (!j.memory.xIP) j.memory.xIP = [];
+      if (!j.memory.maxn) j.memory.maxn = 3;
+/*
+      if (j.shard.pass > 1){
+        let xIP = await this.peer.receptorReqSendShardHost(j,j.shard.xIP);
+        let xIPs = [...new Set([...xIP, ...j.shard.xIP])];
+        const nShards = xIP.length + j.shard.xIP.length;
+        j.shard.nCopys = j.shard.maxn - nShards;
+
+        if (j.shard.nCopys < 1){
+          res.end(`{"result":"memOK","nStored":${nShards},"shardID":"${j.shard.hash}","hosts":${JSON.stringify(this.fixHosts(xIPs))},"msg":"j.shard.pass=${j.shard.pass}"}`);
           return;
-	}
-	var n = 0;      
-	for (var rec of result){ 
-          try {
-            var qres = await this.peer.receptorReqStoreMem(j,rec.pcelAddress);
-            if (qres){
-	      nStored = nStored +1;
-	    }    
+        }
+        j.shard.xIP = xIPs;
+      }
+*/
+      const startT = Date.now();
+      var IPs = await this.peer.receptorReqNodeList(j,j.memory.xIP);
+
+      //console.log('XXRANDNODES:',IPs,'CompleteTime::',startT - Date.now());
+
+      if (IPs.length == 0){
+        res.end('{"result":"FAILED","nRecs":0,"memory":"No Nodes Available"}');
+        return;
+      }
+      var n = 0;
+      var hosts = [];
+      const results = [];
+
+      // Start all three calls concurrently
+
+      IPs.forEach((IP) => {
+        this.peer.receptorReqStoreMem(j,IP)
+       .then((r) => {
+          var rcon = { qres: r, IP: IP };
+          results.push(rcon);
+        })
+        .catch((e) => {
+           console.log('memory failed', e);
+        });
+      });
+
+      //console.log('Waiting For Peer Responses');
+
+      // Check All Response for success or failure;
+      var trys = 0;
+      var nStored = 0;
+      const id = setInterval(() => {
+        if (results.length == IPs.length){
+          clearInterval(id);
+          for (var r of results) {
+            if (r.qres) {
+              nStored++;
+              hosts.push({host:r.qres.remMUID,ip:r.qres.remIp});
+            }
           }
-	  catch(err) {
-            console.log('memeory storage failed on:',rec.pcelAddress);
-          }
-          if (n==result.length -1){
-            j.memory.token.privateKey = '**********';
-            j.memory.token.publicKey  = '**********';
-            res.end('{"result":"memOK","nStored":'+nStored+',"memory":'+JSON.stringify(j)+'}');
-	  }	
-          n = n + 1;		
-	}
-      } 		  
-    });
+          console.log('All Memories Saved::TotalTime',Date.now() - startT,'memory: ',j.memory.memID,'nStored::',nStored);
+          res.end('{"result":"memOK","nStored":'+nStored+',"memory":"'+j.memory.memID+'","hosts":'+JSON.stringify(hosts)+'}');
+
+        }
+        trys++;
+        if (trys > 25) {
+          clearInterval(id);
+          //console.log('Interval stopped.',results);
+        res.end('{"result":"FAILED","nStored":'+nStored+',"memoryID":"'+j.memory.memID+'","hosts":'+JSON.stringify(hosts)+'}');
+        }
+      }, 300);
+
+    } finally {
+      this.mutex.unlock();
+    }
   }
   signMemRequest(j){
     return;
@@ -417,7 +486,7 @@ End Receptor Code
 ==============================
 */
 var dba = null
-try {dba =  fs.readFileSync('dbconf');}
+try {dba =  fs.readFileSync(`${process.title}.dbconf`);}
 catch {console.log('database config file `dbconf` NOT Found.');}
 try {dba = JSON.parse(dba);}
 catch {console.log('Error parsing `dbconf` file');}
@@ -716,9 +785,27 @@ class peerMemoryObj {
       }
       if (j.msg.removeMem){
         this.removeMem(j.msg,j.remIp);
+        return;
+      }
+      if (j.msg.req == 'sendNodeList'){
+        this.doPow(j.msg,j.remIp);
+        return;
+      }
+      if (j.msg.req == 'stopNodeGenIP'){
+        this.doPowStop(j.remIp);
+        return;
       }
     } 
     return;
+  }
+  doPowStop(remIp){
+    this.net.gpow.doStop(remIp);
+  }
+  doPow(j,remIp){
+    if (j.xnodes.includes(this.net.nIp)){
+      return;
+    }
+    this.net.gpow.doPow(2,j.work,remIp);
   }
   sayHelloPeerGroup(){
     var breq = {
@@ -797,7 +884,7 @@ class peerMemoryObj {
      if (!j.qry.isPrivate){
        j.qry.isPrivate = ' is null ';
      } 
-     else if (j.qry.isPrivate){
+     else if (j.qry.isPrivate && j.qry.isPrivate !== ' is null '){
        j.qry.isPrivate = ' = 1 ';
      }
      else {j.qry.isPrivate = ' is null ';}
@@ -866,8 +953,8 @@ class peerMemoryObj {
        if (err) console.log(err);
        else {
          //console.log('RESULT::',result);
-         if (result[0].length > 0){
-           result[0].forEach((rec)=>{
+         if (result.length > 0){
+           result.forEach((rec)=>{
              console.log(rec);
            });
          }
@@ -901,6 +988,50 @@ class peerMemoryObj {
           else {
             console.log('memRemoveRes OK!!',r);
             resolve(r);
+          }
+        }
+      });
+    });
+  }
+  receptorReqStopIPGen(work){
+    var req = {
+      to   : 'peerMemCells',
+      req  : 'stopNodeGenIP',
+      work : work
+    }
+    this.net.broadcast(req);
+  }
+  receptorReqNodeList(j,excludeIps=[]){
+    return new Promise( (resolve,reject)=>{
+      var mkyReply = null;
+      const maxIP = j.memory.nCopys;
+      var   IPs = [];
+      const gtime = setTimeout( ()=>{
+       //console.log('Send Node List Request Timeout:');
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve(IPs);
+      },7*1000);
+
+      var req = {
+        to     : 'peerMemCells',
+        req    : 'sendNodeList',
+        nodes  : maxIP,
+        xnodes : excludeIps,
+        work   : crypto.randomBytes(20).toString('hex')
+      }
+
+      this.net.broadcast(req);
+      this.net.on('mkyReply', mkyReply = (r)=>{
+        if (r.req == 'pNodeListGenIP'){
+          //console.log('mkyReply NodeGen is:',r);
+          if (IPs.length < maxIP){
+            IPs.push(r.remIp);
+          }
+          else {
+            this.receptorReqStopIPGen(req.work);
+            clearTimeout(gtime);
+            this.net.removeListener('mkyReply', mkyReply);
+            resolve(IPs);
           }
         }
       });

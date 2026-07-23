@@ -23,23 +23,23 @@ class Mutex {
   async lock() {
     if (!this._locked) {
       this._locked = true;
-      console.log(`lock():: locking`);
+     //console.log(`lock():: locking`);
       return;
     }
     return new Promise( (resolve) => {
       this._waiters.push(resolve);
-      console.log(`lock():: n waiting =`, this._waiters.length);
+     //console.log(`lock():: n waiting =`, this._waiters.length);
     });
   }
 
   unlock() {
     if (this._waiters.length > 0) {
       const next = this._waiters.shift();
-      console.log(`lock():: n exiting =`, this._waiters.length);
+     //console.log(`lock():: n exiting =`, this._waiters.length);
       next();
     } else {
       this._locked = false;
-      console.log(`lock():: unlocked `, this._waiters.length);
+     //console.log(`lock():: unlocked `, this._waiters.length);
     }
   }
 }
@@ -56,7 +56,7 @@ class BorgIOSmemoryMgr {
     this.shardPortals = new Map(); 
     this.initializeShardPortals();
 
-    console.log(`BorgIOSmemoryMgr:: shardPortals`,this.shardPortals);
+   //console.log(`BorgIOSmemoryMgr:: shardPortals`,this.shardPortals);
   }
   initializeShardPortals() {
     const portals = this.net.portal.getPortalsAll('shardTreeCell');
@@ -84,17 +84,17 @@ class BorgIOSmemoryMgr {
   }
   storeUserMemoryToTree(weights, memStr, ownerMUID, memHash) {
     return new Promise(async(resolve,reject) => {
-      console.log('getRatedWords::');
-      console.log('ptreeStoreMem',ownerMUID, memHash, memStr, 'BorgAgentMemory', 3, weights);
+     //console.log('getRatedWords::');
+     //console.log('ptreeStoreMem',ownerMUID, memHash, memStr, 'BorgAgentMemory', 3, weights);
   
       try {
         const j = await this.borg.PTree.ptreeStoreMem(ownerMUID, memHash, memStr, 'BorgAgentMemory', 3, weights);
-        console.log('ptreeStoreMem::result',j);
+       //console.log('ptreeStoreMem::result',j);
         resolve(true);
         return ; //jres.result === "memOK";
       }
       catch (error) {
-        console.error("Error storing memory:", error);
+       //console.error("Error storing memory:", error);
         resolve(false)
         return;
       }
@@ -108,7 +108,7 @@ class BorgIOSmemoryMgr {
       };
 
       if (weights.length === 0) {
-        console.error("Weights list is undefined or null",weights,memStr);
+       //console.error("Weights list is undefined or null",weights,memStr);
         resolve(r);
         return;
       }
@@ -154,7 +154,7 @@ class BorgIOSmemoryMgr {
   }
 
   addMinorWordsTo(weights, words) {
-    console.log("Adding Minor Words:");
+   //console.log("Adding Minor Words:");
 
     const wordList = words.split(' '); // Split words by space
     wordList.forEach(word => {
@@ -164,7 +164,7 @@ class BorgIOSmemoryMgr {
           weight: 1
         };
         weights.push(w);
-        // console.log(`Minor Word Added: ${JSON.stringify(w)}`);
+        ////console.log(`Minor Word Added: ${JSON.stringify(w)}`);
       }
     });
 
@@ -181,19 +181,19 @@ class BorgIOSmemoryMgr {
      const memHash = this.net.calculateHash(memStr);
 
      let weights  = agentMem.keyWords;
-     console.log(`doStoreMemory():: weights`,weights);
+    //console.log(`doStoreMemory():: weights`,weights);
 
      const process = await this.getRatedWords(weights,JSON.stringify(agentMem.memory));
-     console.log(`doStoreMemory():: process.result`,process);
+    //console.log(`doStoreMemory():: process.result`,process);
      if (process.result === false) {
        return false;
      }
      weights = process.weights;
 
-     console.log(`doStoreMemory():: final weights is `,weights);
+    //console.log(`doStoreMemory():: final weights is `,weights);
      if (await this.storeUserMemoryToTree(weights, memStr, this.net.peerMUID, memHash)){
        const doTry = await this.uploadMemoryFile(memStr, this.net.peerMUID, memHash);
-       console.log(`doStoreMemory():: `,doTry);
+      //console.log(`doStoreMemory():: `,doTry);
      }
   }
   async doStoreMemory(memory){
@@ -202,23 +202,23 @@ class BorgIOSmemoryMgr {
 
      const prompt = this.buildStoreMemoryPrompt(memory);
      let weights  = await this.sendOAIPrompt(prompt);
-     console.log(`doStoreMemory():: weights`,weights);
+    //console.log(`doStoreMemory():: weights`,weights);
      try {
        weights = JSON.parse(weights);
      } catch {
        weights = {keyWords:[]};
      }  
      const process = await this.getRatedWords(weights.keyWords,memStr);
-     console.log(`doStoreMemory():: process.result`,process);
+    //console.log(`doStoreMemory():: process.result`,process);
      if (process.result === false) {
        return false;
      }
      weights = process.weights;
      
-     console.log(`doStoreMemory():: final weights is `,weights);
+    //console.log(`doStoreMemory():: final weights is `,weights);
      if (await this.storeUserMemoryToTree(weights, memStr, this.net.peerMUID, memHash)){
        const doTry = await this.uploadMemoryFile(memStr, this.net.peerMUID, memHash);
-       console.log(`doStoreMemory():: `,doTry);
+      //console.log(`doStoreMemory():: `,doTry);
      }
   }
   async uploadMemoryFile(memStr,peerMUID,memHash){
@@ -228,18 +228,12 @@ class BorgIOSmemoryMgr {
 
     fs.writeFile(targetFile, memStr, 'utf8', (err) => {
       if (err) {
-        console.log(`uploadMemoryFile():: `, { result: false, data: 'File Write Failed', error: err.message });
+       //console.log(`uploadMemoryFile():: `, { result: false, data: 'File Write Failed', error: err.message });
         return false;
       }
     });
  
-    console.log(`uploadMemoryFile():: File written successfully to ${targetFile}`);
-    console.log(`uploadMemoryFile():: `, { 
-      result: true, 
-      data: 'File Write Success',
-      size: Buffer.byteLength(memStr, 'utf8'),
-      target: targetFile
-    });
+   //console.log(`uploadMemoryFile():: File written successfully to ${targetFile}`);
 
     const j = {
        req      : 'uploadUserFile',
@@ -260,17 +254,17 @@ class BorgIOSmemoryMgr {
 
     // Try streaming file to the shardTreeCell network.
     let doTry = await this.borg.DStream.streamTo(service);
-    console.log(`doUploadFile():: doTry`,doTry);
-    console.log(`doUploadFile():: hashes`,doTry.stream.shardHashes);
+   //console.log(`doUploadFile():: doTry`,doTry);
+   //console.log(`doUploadFile():: hashes`,doTry.stream.shardHashes);
 
     if (doTry.result === 'xhrFail' || doTry?.res?.result !== 'STREAM_META_ACK'){
       let errorMsg = `doUploadFile():: stream to shard network failed Try later...`;
-      console.log(errorMsg);
+     //console.log(errorMsg);
       return false;
     }
 
     let ostream = await this.borg.DStream.uploadResult(doTry.stream.streamId);
-    console.log(`uploadMemoryFile():: ostream`,ostream,ostream.shardHashes);
+   //console.log(`uploadMemoryFile():: ostream`,ostream,ostream.shardHashes);
     return true;
   }
   buildStoreMemoryPrompt(memory) {
@@ -308,10 +302,10 @@ class BorgIOSmemoryMgr {
       this.connections = [];
       var stream = null;
       var newID  = null;
-      console.log('Stream Connections: ',this.connections.length);
+     //console.log('Stream Connections: ',this.connections.length);
       if (this.connections.length > 0){
         newID = this.connections.length;
-        console.log('staring new stream:',newID);
+       //console.log('staring new stream:',newID);
         this.connections[0].res.write(`data: ${JSON.stringify({action:"NEW_CONVERSATION::BEGIN!",id:newID})}\n\n`);
         this.connections.push({conId:newID,res:null});
       }
@@ -344,8 +338,8 @@ class BorgIOSmemoryMgr {
 
       // Create the HTTPS request
       const req = https.request(options, (res) => {
-        console.log(`Status Code: ${res.statusCode}`);
-        console.log('Streaming response:\n');
+       //console.log(`Status Code: ${res.statusCode}`);
+       //console.log('Streaming response:\n');
         // Handle incoming data as a stream
         res.on('data', (chunk) => {
           const data = chunk.toString();
@@ -357,7 +351,7 @@ class BorgIOSmemoryMgr {
                if (stream) {
                  stream.write(`data: Reasoning:\n\n`);
                  this.connections[0].res.write('data: '+JSON.stringify({action:"start",id:newID})+`\n\n`);
-                 console.log(rot);startROT=true;
+                //console.log(rot);startROT=true;
                }
              }
              if (stream) stream.write(data.replace('data: Reasoning of Thought: ', ''));
@@ -373,17 +367,17 @@ class BorgIOSmemoryMgr {
           }
           else if (data.startsWith('usage: Content:')){
             usage = JSON.parse(data.replace('usage: Content: ',''));
-            console.log(`\n\nUsage:`,usage);
+           //console.log(`\n\nUsage:`,usage);
           }
           else if (data.startsWith('{"result":"json parse error"}')){
-            console.log('Server Error::',data);
+           //console.log('Server Error::',data);
             fin += data;
           }
         });
 
         // Handle when the stream ends
         res.on('end', () => {
-          console.log('\nStream ended.');
+         //console.log('\nStream ended.');
           fin = fin.replace(/```json\n{/, "{")
                 .replace(/}\n```/, "}")
                 .replace(/} ```/, "}")
@@ -395,7 +389,7 @@ class BorgIOSmemoryMgr {
 
       // Handle request error
       req.on('error', (error) => {
-        console.log('Error:', error.message);
+       //console.log('Error:', error.message);
         resolve(error.message);
       });
 
@@ -406,7 +400,7 @@ class BorgIOSmemoryMgr {
   }
   prepareTempFile(filepath, fileSize) {
     const file = filepath;
-    console.log(`prepareTempFile`,file);
+   //console.log(`prepareTempFile`,file);
     return null;
 
     // Check if cache file already exists
@@ -420,7 +414,7 @@ class BorgIOSmemoryMgr {
         //console.log(`prepareTempFile():: cache file exists: ${file} (${cacheSize} bytes)`);
       }
     } catch (err) {
-      console.error("Failed to check cache file:", err);
+     //console.error("Failed to check cache file:", err);
     }
 
     // If cache exists and matches expected size, keep it
@@ -434,9 +428,9 @@ class BorgIOSmemoryMgr {
     if (cacheExists) {
       try {
         fs.unlinkSync(file);
-        console.log(`prepareTempFile():: removed stale cache file (size mismatch: ${cacheSize} vs ${fileSize})`);
+       //console.log(`prepareTempFile():: removed stale cache file (size mismatch: ${cacheSize} vs ${fileSize})`);
       } catch (err) {
-        console.error("Failed to remove old temp file:", err);
+       //console.error("Failed to remove old temp file:", err);
       }
     }
 
@@ -474,18 +468,16 @@ class BorgIOSmemoryMgr {
     // 2. Validate shard hash
     const actualHash = this.sha256(shard.shard);
     if (actualHash !== expectedShardId) {
-      console.log(`writeShardToFile():: BAD_HASH `,actualHash,expectedShardId);
+     //console.log(`writeShardToFile():: BAD_HASH `,actualHash,expectedShardId);
       return { ok: false, reason: "BAD_HASH", index };
     }
-
-    // 3. Random-access write
-    const tempFilePath = `memories/${stream.shardId}.mem`;    //stream.tempFilePath.replace('MEM_ID',shard.shardId);
-    const fh = await fs.promises.open(tempFilePath, 'r+');
-    try {
-      await fh.write(shard.shard, 0, shard.shard.length, 0);
-    } finally {
-      await fh.close();
-    }
+    const tempFilePath = `memories/${shard.shardId}.mem`;
+    const writeStream = fs.createWriteStream(tempFilePath, { 
+      flags: 'w',  // truncate/overwrite
+      autoClose: true 
+    });
+    writeStream.write(shard.shard);
+    writeStream.end();
 
     return { ok: true, index };
   }
@@ -577,14 +569,14 @@ class BorgIOSmemoryMgr {
   async doBlastShardBatch(service, streamId) {
     const stream = this.streams.get(streamId);
     if (!stream) {
-      console.log(`Stream not found.`,streamId);
+     //console.log(`Stream not found.`,streamId);
       return;
     }
     // Nothing to do if stream is already complete
     if (stream.completed) return;
 
     // Fill the window
-    console.log(`doBlastShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
+   //console.log(`doBlastShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
     while (
       stream.inFlight.size < stream.winSize &&
       stream.pendingShards.size > 0
@@ -600,13 +592,13 @@ class BorgIOSmemoryMgr {
         const shardHID = this.net.calculateHash(`${shardId}-${this.net.peerMUID}`);
         const shardSig = this.net.signToken(shardHID);
         shard.hashHID  = shardHID;
-        console.log(`stream shardHashes`,stream.shardHashes[shardIdx]);
+       //console.log(`stream shardHashes`,stream.shardHashes[shardIdx]);
 
         // Mark as in-flight
         stream.inFlight.add(shardIdx);   
-        console.log(`hashing:: ${shardId}-${this.net.peerMUID}-${Date.now()}`);
-        console.log(`doBlastShardBatch():: shard.hashID `,`${shard.hashHID}:${shardHID}`);
-        console.log(`doBlastShardBatch():: service is `,service);
+       //console.log(`hashing:: ${shardId}-${this.net.peerMUID}-${Date.now()}`);
+       //console.log(`doBlastShardBatch():: shard.hashID `,`${shard.hashHID}:${shardHID}`);
+       //console.log(`doBlastShardBatch():: service is `,service);
 
         const portal = this.getNextBlastPort(stream);
         if (portal) {
@@ -614,7 +606,7 @@ class BorgIOSmemoryMgr {
         }
 
         // Dispatch the shard
-        console.log(`doBlastShardBatch():: `,service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
+       //console.log(`doBlastShardBatch():: `,service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
         this.sendStreamShard(service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
 
         // Optional: status update
@@ -678,7 +670,7 @@ class BorgIOSmemoryMgr {
      
     // Then send raw binary shard
     service.endPoint = '/storeShard/'
-    console.log(`sendStreamShard()::`,msg);
+   //console.log(`sendStreamShard()::`,msg);
     this.sendBinaryShardCX(service, msg);
     this.setStatus(streamId,'transfering:'+shardId);
   }
@@ -851,22 +843,22 @@ class BorgIOSmemoryMgr {
     stream.timeElapsed = Date.now() - stream.startAt;
 
     // Remove from active streams
-    console.log(`Stream ${stream.streamId} completed in ${stream.timeElapsed}ms`);
+   //console.log(`Stream ${stream.streamId} completed in ${stream.timeElapsed}ms`);
     let httpRes = stream.httpRes;
     let filePath = stream.tempFilePath;
     let mimeType = stream.mimeType;
-    console.log(`closeIncomingStream():: mimeType`, mimeType);
+   //console.log(`closeIncomingStream():: mimeType`, mimeType);
 
     if (mimeType.startsWith("video/")) {
-      console.log(`closeIncomingStream():: is video true`);
+     //console.log(`closeIncomingStream():: is video true`);
       // Only end clients if they still exist and stream wasn't already closed
       if (stream.videoClients && stream.videoClients.length > 0) {
         for (const client of stream.videoClients) {
           try {
-            console.log(`closeIncomingStream():: ending video client stream`);
+           //console.log(`closeIncomingStream():: ending video client stream`);
             client.end();
           } catch (err) {
-            console.warn("Video client already ended", err);
+           //console.warn("Video client already ended", err);
           }
         }
       }
@@ -875,7 +867,7 @@ class BorgIOSmemoryMgr {
     }
 
     if (withError) {
-      console.error("getFileFromRepo():: File read error: MAX_TRIES");
+     //console.error("getFileFromRepo():: File read error: MAX_TRIES");
       if (httpRes && !httpRes.headersSent) {
         httpRes.writeHead(500);
         httpRes.end("File read error");
@@ -902,7 +894,7 @@ class BorgIOSmemoryMgr {
       const fileStream = fs.createReadStream(filePath);
 
       fileStream.on("error", err => {
-        console.error("getFileFromRepo():: File read error:", err);
+       //console.error("getFileFromRepo():: File read error:", err);
         if (!httpRes.headersSent) {
           httpRes.writeHead(500);
           httpRes.end("File read error");
@@ -917,7 +909,7 @@ class BorgIOSmemoryMgr {
     this.dstreams.delete(stream.streamId);
   }
   async doOpenMemStream(memories, service, qry, winSize = 12) {
-    console.log(`doOpenStream():: repo.file`,memories);
+   //console.log(`doOpenStream():: repo.file`,memories);
 
     const fmap = {
       requestMutex : new Mutex(),
@@ -967,13 +959,13 @@ class BorgIOSmemoryMgr {
     // 🔥 NEW: Try to stream from cache first (with range support)
     const streamedFromCache = await this.streamFromCacheFast(fmap);
     if (streamedFromCache) {
-      console.log(`doOpenStream():: streamed from cache for ${fmap.streamId}`);
+     //console.log(`doOpenStream():: streamed from cache for ${fmap.streamId}`);
       return fmap;
     }
 
     // If not fully cached, handle video streaming with range support
     if (fmap.mimeType.startsWith("video/")) {
-      console.log(`doOpenStream():: is video: handling range request`);
+     //console.log(`doOpenStream():: is video: handling range request`);
       await this.handleRangeRequest(fmap.streamId, httpRes);
       return fmap;
     }
@@ -1014,7 +1006,7 @@ class BorgIOSmemoryMgr {
     //console.log(`requestShardBatch():: `);
     const stream = this.dstreams.get(streamId);
     if (!stream) {
-      console.log(`requestShardBatch():: stream NOT OPEN.`);
+     //console.log(`requestShardBatch():: stream NOT OPEN.`);
       return;
     }
 
@@ -1027,7 +1019,7 @@ class BorgIOSmemoryMgr {
     await mutex.lock();
     try {
       // Fill the window
-      console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size} winSize${stream.windowSize} `);
+     //console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size} winSize${stream.windowSize} `);
       let portal = {host:'localhost',port:80,endpoint:'/'};
       while (
         stream.inFlight.size < stream.windowSize &&
@@ -1044,7 +1036,7 @@ class BorgIOSmemoryMgr {
           // The shard was found locally and the event has been emitted
           // The onShardReceived handler will process it
           // Continue to the next shard without making a network request
-          console.log(`requestShardBatch():: shard ${shardIdx} found in local cache, skipping network request`);
+         //console.log(`requestShardBatch():: shard ${shardIdx} found in local cache, skipping network request`);
           continue;
         }
 */
@@ -1074,8 +1066,8 @@ class BorgIOSmemoryMgr {
             isMemory  : true
           }
         };
-        console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx].hash,portal.ip);
-        console.log(` `);
+       //console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx].hash,portal.ip);
+       //console.log(` `);
         this.sendMsgCX(service, msg);
       }
     } finally {
@@ -1085,14 +1077,14 @@ class BorgIOSmemoryMgr {
   async checkLocalShard(streamId, shardIdx,portal) {
     const stream = this.dstreams.get(streamId);
     if (!stream) {
-      console.log(`checkLocalShard():: stream not found ${streamId}`);
+     //console.log(`checkLocalShard():: stream not found ${streamId}`);
       return false;
     }
 
     // Check if we have a local file or buffer that already contains this shard
     const shard = stream.shardHashes[shardIdx];
     if (!shard) {
-      console.log(`checkLocalShard():: shard ${shardIdx} not found in shardHashes`);
+     //console.log(`checkLocalShard():: shard ${shardIdx} not found in shardHashes`);
       return false;
     }
 
@@ -1107,13 +1099,13 @@ class BorgIOSmemoryMgr {
       try {
         shardData = stream.buffer.slice(start, end);
       } catch (err) {
-        console.log(`checkLocalShard():: error reading from buffer: ${err}`);
+       //console.log(`checkLocalShard():: error reading from buffer: ${err}`);
         return false;
       }
     }
     // CASE 2: Check if we have a temporary file on disk
     else if (stream.tempFilePath) {
-      console.log(stream.tempFilePath);
+     //console.log(stream.tempFilePath);
       process.exit(1);
       try {
         const start = shardIdx * stream.shardSize;
@@ -1121,7 +1113,7 @@ class BorgIOSmemoryMgr {
       
         // Check if file exists
         if (!fs.existsSync(stream.tempFilePath)) {
-          console.log(`checkLocalShard():: temp file not found ${stream.tempFilePath}`);
+         //console.log(`checkLocalShard():: temp file not found ${stream.tempFilePath}`);
           return false;
         }
 
@@ -1132,33 +1124,33 @@ class BorgIOSmemoryMgr {
         fs.closeSync(fd);
 
         if (readBytes === 0) {
-          console.log(`checkLocalShard():: no data read from file for shard ${shardIdx}`);
+         //console.log(`checkLocalShard():: no data read from file for shard ${shardIdx}`);
           return false;
         }
 
         shardData = buffer;
       } catch (err) {
-        console.log(`checkLocalShard():: error reading from file: ${err}`);
+       //console.log(`checkLocalShard():: error reading from file: ${err}`);
         return false;
       }
     } else {
-      console.log(`checkLocalShard():: no storage available for stream ${streamId}`);
+     //console.log(`checkLocalShard():: no storage available for stream ${streamId}`);
       return false;
     }
 
     // Validate the shard data we read
     if (!shardData || shardData.length === 0) {
-      console.log(`checkLocalShard():: shard data is empty for ${shardIdx}`);
+     //console.log(`checkLocalShard():: shard data is empty for ${shardIdx}`);
       return false;
     }
 
     // Verify the shard hash matches
     const actualHash = this.sha256(shardData);
     if (actualHash !== shard.hash) {
-      console.log(`checkLocalShard():: hash mismatch for shard ${shardIdx}`);
-      console.log(`  shard: `,shard);
-      console.log(`  expected: ${shard.hash}`);
-      console.log(`  actual:   ${actualHash}`);
+     //console.log(`checkLocalShard():: hash mismatch for shard ${shardIdx}`);
+     //console.log(`  shard: `,shard);
+     //console.log(`  expected: ${shard.hash}`);
+     //console.log(`  actual:   ${actualHash}`);
       return false;
     }
 
@@ -1176,7 +1168,7 @@ class BorgIOSmemoryMgr {
       data     : shardData
     };
 
-    console.log(`checkLocalShard():: found shard ${shardIdx} locally, emitting event`);
+   //console.log(`checkLocalShard():: found shard ${shardIdx} locally, emitting event`);
 
     // Emit the same event as if it came from the remote node
     this.net.emit('requestBinShardOk', shardObj);
@@ -1198,7 +1190,7 @@ class BorgIOSmemoryMgr {
       tryIdx.nFail++;
 
       if (tryIdx.nFail > MAX_FAIL_REQ){
-        console.log(`onShardReceived():: MAX_FAIL_REQ closeIncomingStream`);
+       //console.log(`onShardReceived():: MAX_FAIL_REQ closeIncomingStream`);
         //this.net.pushEvent('borg-event',{req:"updateMemQry",error:true,hash:hash});
         return true;
       }
@@ -1210,11 +1202,11 @@ class BorgIOSmemoryMgr {
   }
   async onShardReceived(j) {
     const { streamId, shard } = j;
-    console.log(`onShardReceived():: j`,j);
+   //console.log(`onShardReceived():: j`,j);
     const stream = this.dstreams.get(streamId);
     if (!stream) return;
     if (shard.shard === null){
-      console.log(`onShardReceived():: shard req error ${shard.shardId} ${shard.shardIdx} ${shard.error}`,shard.portal);
+     //console.log(`onShardReceived():: shard req error ${shard.shardId} ${shard.shardIdx} ${shard.error}`,shard.portal);
       const portal = this.shardPortalsMap.get(shard.portal);
       if (portal) {
         const now = Date.now();
@@ -1226,7 +1218,7 @@ class BorgIOSmemoryMgr {
         // 🔥 HARD BAN: disable this portal for 2 minutes
         portal.bannedUntil = now + 2 * 60 * 1000;
 
-        console.log(`Portal ${portal.ip} banned until ${portal.bannedUntil}`);
+       //console.log(`Portal ${portal.ip} banned until ${portal.bannedUntil}`);
         portal.errors = (portal.errors || 0) + 1;
 
         // re-send request
@@ -1237,7 +1229,7 @@ class BorgIOSmemoryMgr {
       }
 
       stream.inFlight.delete(shard.shardIdx);
-      console.log('borg-event',{req:"updateMemQry",error:true,hash:shard.shardId});
+     //console.log('borg-event',{req:"updateMemQry",error:true,hash:shard.shardId});
       //this.net.pushEvent('borg-event',{req:"updateMemQry",error:true,hash:shard.shardId});
       //if (await this.maxTriesExceeded(stream,shard.shardIdx,shard.shardId)){
       //  return;
@@ -1251,7 +1243,7 @@ class BorgIOSmemoryMgr {
     // 0. Ensure this shard was expected
     if (!stream.inFlight.has(idx)) {
       // Unexpected shard — ignore or log
-      console.warn(`Shard ${idx} for stream ${streamId} not in flight`,j);
+     //console.warn(`Shard ${idx} for stream ${streamId} not in flight`,j);
       return;
     }
 
@@ -1259,22 +1251,20 @@ class BorgIOSmemoryMgr {
     stream.inFlight.delete(idx);
 
     // 1. Validate + write shard
-    console.log(`onShardReceived():: writing to file ${shard.shardIdx} ${shard.shardId}`);
+   //console.log(`onShardReceived():: writing to file ${shard.shardIdx} ${shard.shardId}`);
 
     // If this is a video send shard directly to video
 
     // 1b. Send Memory To Memory Qry Dispplay
     const memIdx = shard.shardId;
 
-    console.log(`Memory Found `,shard);
+   //console.log(`Memory Found `,shard);
     // Use BorgEnventAPI to send memory to browser.
     //this.net.pushEvent('borg-event',{req:"updateMemQry",error:false,hash:shard.shardId,html:shard.shard.toString()});
 
     const result = await this.writeShardToFile(stream,shard);
     if (!result.ok) {
-      console.warn(
-        `Shard ${idx} rejected for stream ${streamId}: ${result.reason}`
-      );
+     //console.warn(`Shard ${idx} rejected for stream ${streamId}: ${result.reason}`);
 
       // Try Re-request this shard
 
@@ -1296,7 +1286,7 @@ class BorgIOSmemoryMgr {
       stream.inFlight.size === 0 &&
       stream.pendingShards.size === 0
     ) {
-      console.log(`onShardReceived():: closeIncomingStream`);
+     //console.log(`onShardReceived():: closeIncomingStream`);
       return this.closeIncomingStream(stream);
     }
 
@@ -1326,10 +1316,10 @@ class BorgIOSmemoryMgr {
 
     // 0. Ensure this shard was actually in flight
     if (!stream.inFlight.has(index)) {
-      console.warn(`ACK for shard ${index} of ${streamId} not in flight`);
+     //console.warn(`ACK for shard ${index} of ${streamId} not in flight`);
       return;
      }
-     console.log(`onShardSentACK():: shard: ${shard.hash} result ${shard.res.result} n ${shard.res.nStored} stored;`);
+    //console.log(`onShardSentACK():: shard: ${shard.hash} result ${shard.res.result} n ${shard.res.nStored} stored;`);
      //this.net.pushEvent('borg-event',{req:"updateUpload",text:`Shard ${index} of ${stream.shardHashes.length} - ${shard.res.nStored} Saved To PeerTreeCell`});
 
      // 1. Remove from inFlight
@@ -1344,14 +1334,14 @@ class BorgIOSmemoryMgr {
        stream.inFlight.size === 0 &&
        stream.pendingShards.size === 0
      ) {
-       console.log(`onShardSentACK():: closeOutgoingStream: elasped Time`,Date.now() - stream.sentAt);
+      //console.log(`onShardSentACK():: closeOutgoingStream: elasped Time`,Date.now() - stream.sentAt);
        const yellow = s => `\x1b[33m${s}\x1b[0m`;
        const green  = s => `\x1b[32m${s}\x1b[0m`;
 
        [...stream.shardsSentOK.entries()]
        .sort((a, b) => a[0] - b[0])   // sort by shard index
        .forEach(([index, info]) => {
-          console.log(`${yellow(`shard ${index}`)}: ` +  `shardId=${green(info.shardId)}, ` +  `copies=${info.nCopys}, time=${info.excTime}ms`);
+         //console.log(`${yellow(`shard ${index}`)}: ` +  `shardId=${green(info.shardId)}, ` +  `copies=${info.nCopys}, time=${info.excTime}ms`);
        });
        this.net.emit(`streamToSTreeOK:${streamId}`);
        return this.closeOutgoingStream(stream);
@@ -1414,7 +1404,7 @@ class BorgIOSmemoryMgr {
 
   // Stream from cache if valid (with range support)
   async keepStreaming(streamId,res,fname,ftype){
-    console.log(`keepStreaming()::`,streamId);
+   //console.log(`keepStreaming()::`,streamId);
     const input = fname;
     const origName = input.split('/').pop();
 
@@ -1430,26 +1420,26 @@ class BorgIOSmemoryMgr {
     if ( await this.streamFromCacheFast(stream)){
       return true;
     }
-    console.log(`streamFromCacheFast():: failed to find stream`);
+   //console.log(`streamFromCacheFast():: failed to find stream`);
     return false;
   }
   async streamFromCacheFast(stream) {
     return false;
-    console.log(`streamFromCacheFast()::`);
+   //console.log(`streamFromCacheFast()::`);
     // Check if cache file exists and has correct size
     if (!stream.tempFilePath || !fs.existsSync(stream.tempFilePath)) {
       return false;
     }
     const fhash = await this.getHash(stream.tempFilePath);
     if (fhash !== stream.streamId) {
-      console.log(`streamFromCacheFast():: cache hash not matching streamId`,fhash,stream.streamId);
+     //console.log(`streamFromCacheFast():: cache hash not matching streamId`,fhash,stream.streamId);
       return false;
     }
 
     const fstats = fs.statSync(stream.tempFilePath);
     stream.totalSize = fstats.size;
 
-    console.log(`streamFromCacheFast():: cache found for ${stream.streamId}, streaming directly!`);
+   //console.log(`streamFromCacheFast():: cache found for ${stream.streamId}, streaming directly!`);
 
     const httpRes = stream.httpRes;
     const fileSize = stream.totalSize;
@@ -1460,7 +1450,7 @@ class BorgIOSmemoryMgr {
     let end = fileSize - 1;
     let statusCode = 200;
 
-    console.log(`streamFromCacheFast():: range`,range);
+   //console.log(`streamFromCacheFast():: range`,range);
     if (range) {
       // Range: bytes=start-end
       const parts = range.replace(/bytes=/, "").split("-");
@@ -1496,7 +1486,7 @@ class BorgIOSmemoryMgr {
     if (statusCode === 206) {
       headers["Content-Range"] = `bytes ${start}-${end}/${fileSize}`;
     }
-    console.log(headers);
+   //console.log(headers);
     //if (more === false) 
     httpRes.writeHead(statusCode, headers);
   
@@ -1507,7 +1497,7 @@ class BorgIOSmemoryMgr {
     });
   
     fileStream.on("error", err => {
-      console.error("streamFromCacheFast():: file read error:", err);
+     //console.error("streamFromCacheFast():: file read error:", err);
       if (!httpRes.headersSent) {
         httpRes.writeHead(500);
         httpRes.end("File read error");
@@ -1523,7 +1513,7 @@ class BorgIOSmemoryMgr {
       stream.status = "completed";
       stream.timeElapsed = Date.now() - stream.startAt;
       //this.dstreams.delete(stream.streamId);
-      console.log("streamFromCacheFast():: closing stream.timeElapsed",stream.timeElapsed);
+     //console.log("streamFromCacheFast():: closing stream.timeElapsed",stream.timeElapsed);
     });
   
     return true;
@@ -1531,7 +1521,7 @@ class BorgIOSmemoryMgr {
 
   // Start initial video stream
   async startVideoStream(stream, httpRes) {
-    console.log(`startVideoStream():: starting video stream for ${stream.streamId}`);
+   //console.log(`startVideoStream():: starting video stream for ${stream.streamId}`);
   
     // Send headers
     httpRes.writeHead(200, {
@@ -1556,7 +1546,7 @@ class BorgIOSmemoryMgr {
 
   // Stream a range by fetching shards on-demand
   async streamRangeWithShardFetching(stream, httpRes, start, end, startShard, endShard) {
-    console.log(`streamRangeWithShardFetching():: fetching shards ${startShard}-${endShard} on-demand`);
+   //console.log(`streamRangeWithShardFetching():: fetching shards ${startShard}-${endShard} on-demand`);
   
     // Send headers for partial content
     const contentLength = end - start + 1;
@@ -1575,7 +1565,7 @@ class BorgIOSmemoryMgr {
   
     // Listen for shard arrivals
     const shardHandler = async (data) => {
-      console.log(` streamRangeWithShardFetching(`,data);
+     //console.log(` streamRangeWithShardFetching(`,data);
       if (data.error) return;
       if (data.streamId !== stream.streamId) return;
     
@@ -1599,7 +1589,7 @@ class BorgIOSmemoryMgr {
           try {
             httpRes.write(chunk);
           } catch (err) {
-            console.warn("Range stream client disconnected", err);
+           //console.warn("Range stream client disconnected", err);
             // Clean up
             this.net.removeListener('requestBinShardOk', shardHandler);
             return;
@@ -1646,10 +1636,10 @@ class BorgIOSmemoryMgr {
 
   // Handle range requests with concurrent shard retrieval
   async handleRangeRequest(sId, httpRes) {
-    console.log(`handleRangeRequest():: sId`,sId);
+   //console.log(`handleRangeRequest():: sId`,sId);
     const stream = this.dstreams.get(sId);
     if (!stream) {
-      console.log(`handleRangeRequest():: stream is not open`,this.dstreams);
+     //console.log(`handleRangeRequest():: stream is not open`,this.dstreams);
       return;
     }
     const fileSize = stream.totalSize;
@@ -1675,7 +1665,7 @@ class BorgIOSmemoryMgr {
     const startShard = Math.floor(start / stream.shardSize);
     const endShard = Math.floor(end / stream.shardSize);
   
-    console.log(`handleRangeRequest():: range ${start}-${end} (shards ${startShard}-${endShard})`);
+   //console.log(`handleRangeRequest():: range ${start}-${end} (shards ${startShard}-${endShard})`);
 
     // Check if all required shards are available in cache
     const allCached = await this.checkShardsCached(stream, startShard, endShard);
@@ -1856,7 +1846,7 @@ class BorgIOSmemoryMgr {
     });
 
     const endPoint = `${service.endPoint}?${params.toString()}`;
-    console.log(`sendBinaryShardCX`,endPoint);
+   //console.log(`sendBinaryShardCX`,endPoint);
     const options = {
        hostname : service.host,
        port     : service.port,
@@ -1890,7 +1880,7 @@ class BorgIOSmemoryMgr {
              shard.res = {netPost:"FAIL",result:"RESC_FAIL",error:"res:NOT 200 and JSON.pars fail xhrError"};
            }
            this.net.emit('xhrBinShardFailed',shard);
-           console.log(`sendBinaryShardCX():: NOT 200`,body);
+          //console.log(`sendBinaryShardCX():: NOT 200`,body);
          } else {
            //console.log('bin send good',shard.shardIdx,shard.shardId);
            const res = body.toString();
@@ -1904,7 +1894,7 @@ class BorgIOSmemoryMgr {
              shard.xhrError = 'jsonParse';
              shard.errMsg   = e;
              shard.toHost   = toHost;
-             console.log('bin send JSON parse fail',shard.shardIdx,shard.shardId);
+            //console.log('bin send JSON parse fail',shard.shardIdx,shard.shardId);
              shard.res      = {netPost:"FAIL",result:"JParseFAIL",error:"res:200 but JSON.parse failed"};
              this.net.emit('xhrBinShardFailed',shard);
            }
@@ -1919,7 +1909,7 @@ class BorgIOSmemoryMgr {
           shard.xhrError = 'xTime';
           shard.errCount++;
           shard.res = {netPost:"FAIL",result:"xTimeFAIL1",error:"req.on timeout xTime"};
-          console.log(`sendBinaryShardCX():: timeout first`,shard);
+         //console.log(`sendBinaryShardCX():: timeout first`,shard);
           this.net.emit('xhrBinShardFailed',shard);
        }
        req.destroy();
@@ -1937,7 +1927,7 @@ class BorgIOSmemoryMgr {
           shard.xhrError = 'xTime';
         }
        shard.res = {netPost:"FAIL",result:"xTimeFAIL",error:"req.on timeout xTime"};
-       console.log(`sendBinaryShardCX():: timeout xTime`,shard);
+      //console.log(`sendBinaryShardCX():: timeout xTime`,shard);
        this.net.emit('xhrBinShardFailed',shard);
      })
      req.write(data);

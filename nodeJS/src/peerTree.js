@@ -244,6 +244,85 @@ class MsgObj {
     Object.assign(this, obj);
   }
 }
+class BorgPortal {
+  constructor() {
+    this.pfile = 'keys/borgPortalsList.dat';
+    this.portals = [];
+    this.loadPortals();
+  }
+
+  loadPortals() {
+    try {
+      const data = fs.readFileSync(this.pfile, 'utf8');
+      this.portals = JSON.parse(data);
+    } catch (error) {
+      console.log("borgPortalsList Update.. file doesn't exist. Initializing empty portals list.");
+      this.portals = [];
+    }
+  }
+  testConnect(url) {
+     url = `https://${url}`;
+     //console.log('trying url',url);
+     return new Promise((resolve) => {
+      const options = {
+        method: 'HEAD',
+        agent: new https.Agent({ rejectUnauthorized: false })
+      };
+
+      const req = https.request(url, options, (res) => {
+        resolve(res.statusCode === 200);
+      });
+
+      req.on('error', () => resolve(false));
+      req.end();
+    });
+  }
+  getPortalsAll(netName){
+    console.log(`getPortalsAll():: service name `,netName);
+    const index = this.portals.findIndex(portal => portal.netName === netName);
+    console.log(`applyCronoTreeTime():: index is `,index);
+    if (index === -1) {
+      return null;
+    }
+
+    return {port: this.portals[index].recpPort, nodes:[...this.portals[index].activeNodes]};
+  }
+  async selectPortal(netName) {
+    //console.log(`selectPortal():: `,this.portals);
+    const index = this.portals.findIndex(portal => portal.netName === netName);
+
+    if (index === -1) {
+      return { host: 'localhost', port: 80 };
+    }
+
+    let activeNodes = [...this.portals[index].activeNodes]; // Copy active nodes
+
+    while (activeNodes.length > 0) {
+      // Randomly select an index
+      const rnodeIndex = Math.floor(Math.random() * activeNodes.length);
+      const node = activeNodes[rnodeIndex];
+
+      const host = node.ip;
+      const port = this.portals[index].recpPort || 443;
+
+      const target = `${host}:${port}`;
+
+      const isConnected = await this.testConnect(target);
+
+      if (isConnected) {
+        //console.log(`Successful HTTPS connection: ${target}`);
+        return { host, port };
+      }
+
+      console.log(`Failed HTTPS check: ${target}, removing and retrying...`);
+      activeNodes.splice(rnodeIndex, 1);
+    }
+
+    // If no nodes worked, fall back
+    return { host: 'web.bitmonky.com', port: 443 };
+  }
+
+}
 /*
  * ======================================================================================
  * PtreeGenRequestHandler
@@ -4995,10 +5074,12 @@ class MkyMsgQMgr {
 class PeerTreeNet extends  EventEmitter {
    constructor (options,network=null,port=1336,wmon=1339,maxPeers=2,portals=[]){
       super(); 
-      this.reqReplyObj = new PtreeGenRequestHandler(this);
-      this.reqReply    = new PtreeGenRequestHandler(this,false);
-      this.bcastMgr    = new PtreeMultiReplyHandler(this);
-      this.DStream     = new DStreamMgrObj(this);
+      this.reqReplyObj  = new PtreeGenRequestHandler(this);
+      this.reqReply     = new PtreeGenRequestHandler(this,false);
+      this.bcastMgr     = new PtreeMultiReplyHandler(this);
+      this.DStream      = new DStreamMgrObj(this);
+      this.portal       = new BorgPortal();
+      this.borgMasterID = this.getBorgMasterID();
 
       this.borgIOSkey  = 'default';
       this.nodeType    = 'router';
@@ -5044,6 +5125,12 @@ class PeerTreeNet extends  EventEmitter {
       this.msgMgr   = new MkyMsgQMgr();
    } 
 
+   getBorgMasterID(){
+     return '1B1xrS6Xi6uhCoXcH8UzSETk81S2pmpWjQ';
+   }
+   deepClone(obj){
+     return clone(obj);
+   }
    verifyLogin(r) {
      //console.log(`verifyLogin():: `,r);
 
@@ -5051,6 +5138,28 @@ class PeerTreeNet extends  EventEmitter {
        return { result:false, msg:'BorgToken NOT set' };
      }
      const j = r.borgToken;
+
+/*   PROPOSED MSG TAMPERING TEST. 
+     const msg = r.msg;
+  
+     // NEW: Verify message hash
+     const fullMessage = JSON.stringify({
+       req: msg.req || 'unknown',
+       data: msg.data || msg,
+       timestamp: msg.timestamp || Date.now()
+     });
+  
+     const calculatedHash = crypto.createHash('sha256')
+       .update(fullMessage)
+       .digest('hex');
+  
+     if (j.msgHash !== calculatedHash) {
+       console.error('❌ Message tampered!');
+       console.error(`  Expected: ${j.msgHash}`);
+       console.error(`  Got:      ${calculatedHash}`);
+       return { result: false, msg: 'Message tampered with' };
+     }
+*/
 
      // Validate timestamp
      const tokTime = Number(j.reqTime);
@@ -5223,6 +5332,26 @@ class PeerTreeNet extends  EventEmitter {
          resolve(result);
        });
      });
+   }
+   getBorgToken(){
+     const reqId   = crypto.randomUUID();
+     const reqTime = Date.now();
+     const btok    = `${this.peerMUID}-${reqTime}-${reqId}`;
+
+     const borgToken = {
+       reqId   : reqId,
+       reqTime : reqTime,
+       Address : this.peerMUID,
+       sesTok  : btok,
+       pubKey  : this.publicKey,
+       sesSig  : this.signToken(btok),
+     }
+     return borgToken;
+   }
+   signToken(btok) {
+     const sig = this.signingKey.sign(this.calculateHash(btok), 'base64');
+     const hexSig = sig.toDER('hex');
+     return hexSig;
    }
    updatePortalsFile(borg){
      var portals = null;

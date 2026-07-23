@@ -19,23 +19,23 @@ class Mutex {
   async lock() {
     if (!this._locked) {
       this._locked = true;
-      console.log(`lock():: locking`);
+     //console.log(`lock():: locking`);
       return;
     }
     return new Promise( (resolve) => {
       this._waiters.push(resolve);
-      console.log(`lock():: n waiting =`, this._waiters.length);
+     //console.log(`lock():: n waiting =`, this._waiters.length);
     });
   }
 
   unlock() {
     if (this._waiters.length > 0) {
       const next = this._waiters.shift();
-      console.log(`lock():: n exiting =`, this._waiters.length);
+     //console.log(`lock():: n exiting =`, this._waiters.length);
       next();
     } else {
       this._locked = false;
-      console.log(`lock():: unlocked `, this._waiters.length);
+     //console.log(`lock():: unlocked `, this._waiters.length);
     }
   }
 }
@@ -64,7 +64,7 @@ class BorgRepoStreamMgr {
     this.shardPortals = new Map(); 
     this.initializeShardPortals();
 
-    console.log(`BorgRepoStreamMgr:: shardPortals`,this.shardPortals);
+   //console.log(`BorgRepoStreamMgr:: shardPortals`,this.shardPortals);
   }
   initializeShardPortals() {
     const portals = this.net.portal.getPortalsAll('shardTreeCell');
@@ -104,7 +104,7 @@ class BorgRepoStreamMgr {
         //console.log(`prepareTempFile():: cache file exists: ${file} (${cacheSize} bytes)`);
       }
     } catch (err) {
-      console.error("Failed to check cache file:", err);
+     //console.error("Failed to check cache file:", err);
     }
 
     // If cache exists and matches expected size, keep it
@@ -118,9 +118,9 @@ class BorgRepoStreamMgr {
     if (cacheExists) {
       try {
         fs.unlinkSync(file);
-        console.log(`prepareTempFile():: removed stale cache file (size mismatch: ${cacheSize} vs ${fileSize})`);
+       //console.log(`prepareTempFile():: removed stale cache file (size mismatch: ${cacheSize} vs ${fileSize})`);
       } catch (err) {
-        console.error("Failed to remove old temp file:", err);
+       //console.error("Failed to remove old temp file:", err);
       }
     }
 
@@ -165,20 +165,20 @@ class BorgRepoStreamMgr {
     if (!isFinal) {
       // Non-final shard must match shardSize exactly
       if (shard.shard.length !== shardSize) {
-        console.log(`writeShardToFile():: BAD_SIZE `,shard.shard.length,shardSize);
+       //console.log(`writeShardToFile():: BAD_SIZE `,shard.shard.length,shardSize);
         return { ok: false, reason: "BAD_SIZE", index };
       }
     } else {
       // Final shard must be <= remaining bytes
       if (shard.shard.length > remaining) {
-        console.log(`writeShardToFile():: BAD_SIZE_FINAL `,shard.shard.length,remaining);
+       //console.log(`writeShardToFile():: BAD_SIZE_FINAL `,shard.shard.length,remaining);
         return { ok: false, reason: "BAD_SIZE_FINAL", index };
       }
     }
     // 2. Validate shard hash
     const actualHash = this.sha256(shard.shard);
     if (actualHash !== expectedShardId) {
-      console.log(`writeShardToFile():: BAD_HASH `,actualHash,expectedShardId);
+     //console.log(`writeShardToFile():: BAD_HASH `,actualHash,expectedShardId);
       return { ok: false, reason: "BAD_HASH", index };
     }
 
@@ -281,7 +281,7 @@ class BorgRepoStreamMgr {
   }
   async streamFrom(service,fmap){
    // FOR TESTING ONLY!
-   console.log('fig',fmap);
+  //console.log('fig',fmap);
     fmap.pendingShards  = new Set([...Array(j.stream.count).keys()]);
     fmap.inFlight       = new Set();       // shardIdx values currently requested but not yet received
     fmap.inProgress     = true;
@@ -339,7 +339,7 @@ class BorgRepoStreamMgr {
 
       // FAILURE PATH
       this.net.on('xhrFail', failListener = (j) => {
-        console.log('streamTo():: xhrFail ',j);
+       //console.log('streamTo():: xhrFail ',j);
         if (j.toHost === toIp && j.req === msg.req) {
           nResponses++;
           if (nResponses >= nPortals) {
@@ -353,7 +353,7 @@ class BorgRepoStreamMgr {
       // SUCCESS PATH
       this.net.on('xhrPostOK', sendOKListener = async (j) => {
         if (j.reqId === reqId) {
-          console.log(`streamTo():: heard from  `,j.toHost);
+         //console.log(`streamTo():: heard from  `,j.toHost);
           nResponses++;
           if (j.res.result === 'STREAM_META_ACK'){
             fullStream.blastPorts.set(j.toHost,{ip:j.toHost,bannedUntil:0});
@@ -370,25 +370,25 @@ class BorgRepoStreamMgr {
             clearTimeout(timer); 
 
             if (startBlast === false) {
-              console.error(`DStreamMgrObj.sendMsg():: failed to open remote stream`);
+             //console.error(`DStreamMgrObj.sendMsg():: failed to open remote stream`);
               this.removeStream(stream.streamId);
               resolve({ result: 'noPortalsResponded' });
               return;
             }
           } 
-          console.log(`BlastPorts Are`,fullStream.blastPorts);
+         //console.log(`BlastPorts Are`,fullStream.blastPorts);
         }
       });
 
       // Timeout for first ACK
       const TIMEOUT_MS = 5000;
       timer = setTimeout(() => {
-        console.log('streamTo():: timeout waiting for first ACK');
+       //console.log('streamTo():: timeout waiting for first ACK');
         this.net.removeListener('xhrFail', failListener);
         this.net.removeListener('xhrPostOK', sendOKListener);
 
         if (startBlast === false) {
-          console.error(`DStreamMgrObj.sendMsg():: startBlast Timeout - removing stream`);
+         //console.error(`DStreamMgrObj.sendMsg():: startBlast Timeout - removing stream`);
           this.removeStream(stream.streamId);
           resolve({ result: 'noPortalsResponded' });
           return;
@@ -399,7 +399,7 @@ class BorgRepoStreamMgr {
 
       portals.forEach((portal) => {
         service.host = portal.ip;
-        console.log(`streamTo():: sending msg`,service,msg);
+       //console.log(`streamTo():: sending msg`,service,msg);
         this.sendMsgCX(JSON.parse(JSON.stringify(service)), JSON.parse(JSON.stringify(msg)));
       });
 
@@ -414,14 +414,14 @@ class BorgRepoStreamMgr {
   async doBlastShardBatch(service, streamId) {
     const stream = this.streams.get(streamId);
     if (!stream) {
-      console.log(`Stream not found.`,streamId);
+     //console.log(`Stream not found.`,streamId);
       return;
     }
     // Nothing to do if stream is already complete
     if (stream.completed) return;
 
     // Fill the window
-    console.log(`doBlastShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
+   //console.log(`doBlastShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size}`);
     while (
       stream.inFlight.size < stream.winSize &&
       stream.pendingShards.size > 0
@@ -437,13 +437,13 @@ class BorgRepoStreamMgr {
         const shardHID = this.net.calculateHash(`${shardId}-${this.net.peerMUID}-${Date.now()}`);
         const shardSig = this.net.signToken(shardHID);
         shard.hashHID  = shardHID;
-        console.log(`stream shardHashes`,stream.shardHashes[shardIdx]);
+       //console.log(`stream shardHashes`,stream.shardHashes[shardIdx]);
 
         // Mark as in-flight
         stream.inFlight.add(shardIdx);   
-        console.log(`hashing:: ${shardId}-${this.net.peerMUID}-${Date.now()}`);
-        console.log(`doBlastShardBatch():: shard.hashID `,`${shard.hashHID}:${shardHID}`);
-        console.log(`doBlastShardBatch():: service is `,service);
+       //console.log(`hashing:: ${shardId}-${this.net.peerMUID}-${Date.now()}`);
+       //console.log(`doBlastShardBatch():: shard.hashID `,`${shard.hashHID}:${shardHID}`);
+       //console.log(`doBlastShardBatch():: service is `,service);
 
         const portal = this.getNextBlastPort(stream);
         if (portal) {
@@ -451,7 +451,7 @@ class BorgRepoStreamMgr {
         }
 
         // Dispatch the shard
-        console.log(`doBlastShardBatch():: `,service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
+       //console.log(`doBlastShardBatch():: `,service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
         this.sendStreamShard(service, stream.streamId, shardIdx, shardId,shardHID,shardSig);
 
         // Optional: status update
@@ -515,7 +515,7 @@ class BorgRepoStreamMgr {
      
     // Then send raw binary shard
     service.endPoint = '/storeShard/'
-    console.log(`sendStreamShard()::`,msg);
+   //console.log(`sendStreamShard()::`,msg);
     this.sendBinaryShardCX(service, msg);
     this.setStatus(streamId,'transfering:'+shardId);
   }
@@ -688,14 +688,14 @@ class BorgRepoStreamMgr {
     stream.timeElapsed = Date.now() - stream.startAt;
 
     // Remove from active streams
-    console.log(`Stream ${stream.streamId} completed in ${stream.timeElapsed}ms`);
+   //console.log(`Stream ${stream.streamId} completed in ${stream.timeElapsed}ms`);
     let filePath = stream.tempFilePath;
     let mimeType = stream.mimeType;
-    console.log(`closeIncomingStream():: mimeType`, mimeType);
+   //console.log(`closeIncomingStream():: mimeType`, mimeType);
 
 
     if (withError) {
-      console.error("getFileFromRepo():: File read error: MAX_TRIES");
+     //console.error("getFileFromRepo():: File read error: MAX_TRIES");
       this.dstreams.delete(stream.streamId);
       return;
     }
@@ -705,7 +705,7 @@ class BorgRepoStreamMgr {
   }
   async doOpenStream(repo, service, winSize = 12) {
     let j = repo.file;
-    console.log(`doOpenStream():: repo.file`,j);
+   //console.log(`doOpenStream():: repo.file`,j);
     let shards = [];
     j.shards.forEach((shard) => shards.push({ hash: shard.shardID, shardHID: shard.shardHID }));
     const input = j.filename;
@@ -760,7 +760,7 @@ class BorgRepoStreamMgr {
     // 🔥 NEW: Try to stream from cache first (with range support)
     const streamedFromCache = await this.streamFromCacheFast(fmap);
     if (streamedFromCache) {
-      console.log(`doOpenStream():: streamed from cache for ${fmap.streamId}`);
+     //console.log(`doOpenStream():: streamed from cache for ${fmap.streamId}`);
       return {streamId: fmap.streamId,status: 'OK'};
     }
 
@@ -821,7 +821,7 @@ class BorgRepoStreamMgr {
     //console.log(`requestShardBatch():: `);
     const stream = this.dstreams.get(streamId);
     if (!stream) {
-      console.log(`requestShardBatch():: stream NOT OPEN.`);
+     //console.log(`requestShardBatch():: stream NOT OPEN.`);
       return;
     }
 
@@ -834,7 +834,7 @@ class BorgRepoStreamMgr {
     await mutex.lock();
     try {
       // Fill the window
-      console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size} winSize${stream.windowSize} `);
+     //console.log(`requestShardBatch():: pending ${stream.pendingShards.size} inFlight: ${stream.inFlight.size} winSize${stream.windowSize} `);
       let portal = {host:'localhost',port:80,endpoint:'/'};
       while (
         stream.inFlight.size < stream.windowSize &&
@@ -849,7 +849,7 @@ class BorgRepoStreamMgr {
           // The shard was found locally and the event has been emitted
           // The onShardReceived handler will process it
           // Continue to the next shard without making a network request
-          console.log(`requestShardBatch():: shard ${shardIdx} found in local cache, skipping network request`);
+         //console.log(`requestShardBatch():: shard ${shardIdx} found in local cache, skipping network request`);
           continue;
         }
 
@@ -878,8 +878,8 @@ class BorgRepoStreamMgr {
             shardSize : stream.shardSize
           }
         };
-        console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx].hash,portal.ip);
-        console.log(` `);
+       //console.log(`requestShardBatch():: sending `,shardIdx,stream.shardHashes[shardIdx].hash,portal.ip);
+       //console.log(` `);
         this.sendMsgCX(service, msg);
       }
     } finally {
@@ -889,14 +889,14 @@ class BorgRepoStreamMgr {
   async checkLocalShard(streamId, shardIdx,portal) {
     const stream = this.dstreams.get(streamId);
     if (!stream) {
-      console.log(`checkLocalShard():: stream not found ${streamId}`);
+     //console.log(`checkLocalShard():: stream not found ${streamId}`);
       return false;
     }
 
     // Check if we have a local file or buffer that already contains this shard
     const shard = stream.shardHashes[shardIdx];
     if (!shard) {
-      console.log(`checkLocalShard():: shard ${shardIdx} not found in shardHashes`);
+     //console.log(`checkLocalShard():: shard ${shardIdx} not found in shardHashes`);
       return false;
     }
 
@@ -911,7 +911,7 @@ class BorgRepoStreamMgr {
       try {
         shardData = stream.buffer.slice(start, end);
       } catch (err) {
-        console.log(`checkLocalShard():: error reading from buffer: ${err}`);
+       //console.log(`checkLocalShard():: error reading from buffer: ${err}`);
         return false;
       }
     }
@@ -923,7 +923,7 @@ class BorgRepoStreamMgr {
       
         // Check if file exists
         if (!fs.existsSync(stream.tempFilePath)) {
-          console.log(`checkLocalShard():: temp file not found ${stream.tempFilePath}`);
+         //console.log(`checkLocalShard():: temp file not found ${stream.tempFilePath}`);
           return false;
         }
 
@@ -934,33 +934,33 @@ class BorgRepoStreamMgr {
         fs.closeSync(fd);
 
         if (readBytes === 0) {
-          console.log(`checkLocalShard():: no data read from file for shard ${shardIdx}`);
+         //console.log(`checkLocalShard():: no data read from file for shard ${shardIdx}`);
           return false;
         }
 
         shardData = buffer;
       } catch (err) {
-        console.log(`checkLocalShard():: error reading from file: ${err}`);
+       //console.log(`checkLocalShard():: error reading from file: ${err}`);
         return false;
       }
     } else {
-      console.log(`checkLocalShard():: no storage available for stream ${streamId}`);
+     //console.log(`checkLocalShard():: no storage available for stream ${streamId}`);
       return false;
     }
 
     // Validate the shard data we read
     if (!shardData || shardData.length === 0) {
-      console.log(`checkLocalShard():: shard data is empty for ${shardIdx}`);
+     //console.log(`checkLocalShard():: shard data is empty for ${shardIdx}`);
       return false;
     }
 
     // Verify the shard hash matches
     const actualHash = this.sha256(shardData);
     if (actualHash !== shard.hash) {
-      console.log(`checkLocalShard():: hash mismatch for shard ${shardIdx}`);
-      console.log(`  shard: `,shard);
-      console.log(`  expected: ${shard.hash}`);
-      console.log(`  actual:   ${actualHash}`);
+     //console.log(`checkLocalShard():: hash mismatch for shard ${shardIdx}`);
+     //console.log(`  shard: `,shard);
+     //console.log(`  expected: ${shard.hash}`);
+     //console.log(`  actual:   ${actualHash}`);
       return false;
     }
 
@@ -978,7 +978,7 @@ class BorgRepoStreamMgr {
       data     : shardData
     };
 
-    console.log(`checkLocalShard():: found shard ${shardIdx} locally, emitting event`);
+   //console.log(`checkLocalShard():: found shard ${shardIdx} locally, emitting event`);
 
     // Emit the same event as if it came from the remote node
     this.net.emit('requestBinShardOk', shardObj);
@@ -1000,7 +1000,7 @@ class BorgRepoStreamMgr {
       tryIdx.nFail++;
 
       if (tryIdx.nFail > MAX_FAIL_REQ){
-        console.log(`onShardReceived():: MAX_FAIL_REQ closeIncomingStream`);
+       //console.log(`onShardReceived():: MAX_FAIL_REQ closeIncomingStream`);
         this.closeIncomingStream(stream,true);
         return true;
       }
@@ -1016,7 +1016,7 @@ class BorgRepoStreamMgr {
     const stream = this.dstreams.get(streamId);
     if (!stream) return;
     if (shard.shard === null){
-      console.log(`onShardReceived():: shard req error ${shard.shardId} ${shard.shardIdx} ${shard.error}`,shard.portal);
+     //console.log(`onShardReceived():: shard req error ${shard.shardId} ${shard.shardIdx} ${shard.error}`,shard.portal);
       const portal = this.shardPortalsMap.get(shard.portal);
       if (portal) {
         const now = Date.now();
@@ -1028,7 +1028,7 @@ class BorgRepoStreamMgr {
         // 🔥 HARD BAN: disable this portal for 2 minutes
         portal.bannedUntil = now + 2 * 60 * 1000;
 
-        console.log(`Portal ${portal.ip} banned until ${portal.bannedUntil}`);
+       //console.log(`Portal ${portal.ip} banned until ${portal.bannedUntil}`);
         portal.errors = (portal.errors || 0) + 1;
       }
 
@@ -1044,7 +1044,7 @@ class BorgRepoStreamMgr {
     // 0. Ensure this shard was expected
     if (!stream.inFlight.has(idx)) {
       // Unexpected shard — ignore or log
-      console.warn(`Shard ${idx} for stream ${streamId} not in flight`,j);
+     //console.warn(`Shard ${idx} for stream ${streamId} not in flight`,j);
       return;
     }
 
@@ -1052,7 +1052,7 @@ class BorgRepoStreamMgr {
     stream.inFlight.delete(idx);
 
     // 1. Validate + write shard
-    console.log(`onShardReceived():: writing to file ${shard.shardIdx} ${shard.shardId}`);
+   //console.log(`onShardReceived():: writing to file ${shard.shardIdx} ${shard.shardId}`);
 
     // If this is a video send shard directly to video
 
@@ -1074,7 +1074,7 @@ class BorgRepoStreamMgr {
             //console.log(`onShardReceived():: write shard to media player`,stream.nextToSend);
             client.write(chunk);
           } catch (err) {
-            console.warn("Video client disconnected", err);
+           //console.warn("Video client disconnected", err);
           }
         }
         stream.nextToSend++;
@@ -1083,9 +1083,7 @@ class BorgRepoStreamMgr {
 
     const result = await this.writeShardToFile(stream,shard);
     if (!result.ok) {
-      console.warn(
-        `Shard ${idx} rejected for stream ${streamId}: ${result.reason}`
-      );
+     //console.warn(`Shard ${idx} rejected for stream ${streamId}: ${result.reason}`);
 
       // Try Re-request this shard
 
@@ -1108,7 +1106,7 @@ class BorgRepoStreamMgr {
       stream.inFlight.size === 0 &&
       stream.pendingShards.size === 0
     ) {
-      console.log(`onShardReceived():: closeIncomingStream`);
+     //console.log(`onShardReceived():: closeIncomingStream`);
       this.closeIncomingStream(stream);
       this.net.emit(`streamDLoadFin`,{streamId: stream.streamId,status: 'OK'});
       return;
@@ -1140,10 +1138,10 @@ class BorgRepoStreamMgr {
 
     // 0. Ensure this shard was actually in flight
     if (!stream.inFlight.has(index)) {
-      console.warn(`ACK for shard ${index} of ${streamId} not in flight`);
+     //console.warn(`ACK for shard ${index} of ${streamId} not in flight`);
       return;
      }
-     console.log(`onShardSentACK():: shard: ${shard.hash} result ${shard.res.result} n ${shard.res.nStored} stored;`);
+    //console.log(`onShardSentACK():: shard: ${shard.hash} result ${shard.res.result} n ${shard.res.nStored} stored;`);
      //this.net.pushEvent('borg-event',{req:"updateUpload",text:`Shard ${index} of ${stream.shardHashes.length} - ${shard.res.nStored} Saved To PeerTreeCell`});
 
      // 1. Remove from inFlight
@@ -1158,14 +1156,14 @@ class BorgRepoStreamMgr {
        stream.inFlight.size === 0 &&
        stream.pendingShards.size === 0
      ) {
-       console.log(`onShardSentACK():: closeOutgoingStream: elasped Time`,Date.now() - stream.sentAt);
+      //console.log(`onShardSentACK():: closeOutgoingStream: elasped Time`,Date.now() - stream.sentAt);
        const yellow = s => `\x1b[33m${s}\x1b[0m`;
        const green  = s => `\x1b[32m${s}\x1b[0m`;
 
        [...stream.shardsSentOK.entries()]
        .sort((a, b) => a[0] - b[0])   // sort by shard index
        .forEach(([index, info]) => {
-          console.log(`${yellow(`shard ${index}`)}: ` +  `shardId=${green(info.shardId)}, ` +  `copies=${info.nCopys}, time=${info.excTime}ms`);
+         //console.log(`${yellow(`shard ${index}`)}: ` +  `shardId=${green(info.shardId)}, ` +  `copies=${info.nCopys}, time=${info.excTime}ms`);
        });
        this.net.emit(`streamToSTreeOK:${streamId}`);
        return this.closeOutgoingStream(stream);
@@ -1228,7 +1226,7 @@ class BorgRepoStreamMgr {
 
   // Stream from cache if valid (with range support)
   async keepStreaming(streamId,fname,ftype){
-    console.log(`keepStreaming()::`,streamId);
+   //console.log(`keepStreaming()::`,streamId);
     const input = fname;
     const origName = input.split('/').pop();
 
@@ -1243,25 +1241,25 @@ class BorgRepoStreamMgr {
     if ( await this.streamFromCacheFast(stream)){
       return true;
     }
-    console.log(`streamFromCacheFast():: failed to find stream`);
+   //console.log(`streamFromCacheFast():: failed to find stream`);
     return false;
   }
   async streamFromCacheFast(stream) {
-    console.log(`streamFromCacheFast()::`);
+   //console.log(`streamFromCacheFast()::`);
     // Check if cache file exists and has correct size
     if (!stream.tempFilePath || !fs.existsSync(stream.tempFilePath)) {
       return false;
     }
     const fhash = await this.getHash(stream.tempFilePath);
     if (fhash !== stream.streamId) {
-      console.log(`streamFromCacheFast():: cache hash not matching streamId`,fhash,stream.streamId);
+     //console.log(`streamFromCacheFast():: cache hash not matching streamId`,fhash,stream.streamId);
       return false;
     }
 
     const fstats = fs.statSync(stream.tempFilePath);
     stream.totalSize = fstats.size;
 
-    console.log(`streamFromCacheFast():: cache found for ${stream.streamId}, streaming directly!`);
+   //console.log(`streamFromCacheFast():: cache found for ${stream.streamId}, streaming directly!`);
 
     const fileSize = stream.totalSize;
     // Local Faile Found.
@@ -1272,7 +1270,7 @@ class BorgRepoStreamMgr {
     let end = fileSize - 1;
     let statusCode = 200;
 
-    console.log(`streamFromCacheFast():: range`,range);
+   //console.log(`streamFromCacheFast():: range`,range);
     if (range) {
       // Range: bytes=start-end
       const parts = range.replace(/bytes=/, "").split("-");
@@ -1308,7 +1306,7 @@ class BorgRepoStreamMgr {
     if (statusCode === 206) {
       headers["Content-Range"] = `bytes ${start}-${end}/${fileSize}`;
     }
-    console.log(headers);
+   //console.log(headers);
     //if (more === false) 
     httpRes.writeHead(statusCode, headers);
   
@@ -1319,7 +1317,7 @@ class BorgRepoStreamMgr {
     });
   
     fileStream.on("error", err => {
-      console.error("streamFromCacheFast():: file read error:", err);
+     //console.error("streamFromCacheFast():: file read error:", err);
       if (!httpRes.headersSent) {
         httpRes.writeHead(500);
         httpRes.end("File read error");
@@ -1335,7 +1333,7 @@ class BorgRepoStreamMgr {
       stream.status = "completed";
       stream.timeElapsed = Date.now() - stream.startAt;
       //this.dstreams.delete(stream.streamId);
-      console.log("streamFromCacheFast():: closing stream.timeElapsed",stream.timeElapsed);
+     //console.log("streamFromCacheFast():: closing stream.timeElapsed",stream.timeElapsed);
     });
   
     return true;
@@ -1343,7 +1341,7 @@ class BorgRepoStreamMgr {
 
   // Start initial video stream
   async startVideoStream(stream, httpRes) {
-    console.log(`startVideoStream():: starting video stream for ${stream.streamId}`);
+   //console.log(`startVideoStream():: starting video stream for ${stream.streamId}`);
   
     // Send headers
     httpRes.writeHead(200, {
@@ -1368,7 +1366,7 @@ class BorgRepoStreamMgr {
 
   // Stream a range by fetching shards on-demand
   async streamRangeWithShardFetching(stream, httpRes, start, end, startShard, endShard) {
-    console.log(`streamRangeWithShardFetching():: fetching shards ${startShard}-${endShard} on-demand`);
+   //console.log(`streamRangeWithShardFetching():: fetching shards ${startShard}-${endShard} on-demand`);
   
     // Send headers for partial content
     const contentLength = end - start + 1;
@@ -1387,7 +1385,7 @@ class BorgRepoStreamMgr {
   
     // Listen for shard arrivals
     const shardHandler = async (data) => {
-      console.log(` streamRangeWithShardFetching(`,data);
+     //console.log(` streamRangeWithShardFetching(`,data);
       if (data.error) return;
       if (data.streamId !== stream.streamId) return;
     
@@ -1411,7 +1409,7 @@ class BorgRepoStreamMgr {
           try {
             httpRes.write(chunk);
           } catch (err) {
-            console.warn("Range stream client disconnected", err);
+           //console.warn("Range stream client disconnected", err);
             // Clean up
             this.net.removeListener('requestBinShardOk', shardHandler);
             return;
@@ -1458,10 +1456,10 @@ class BorgRepoStreamMgr {
 
   // Handle range requests with concurrent shard retrieval
   async handleRangeRequest(sId, httpRes) {
-    console.log(`handleRangeRequest():: sId`,sId);
+   //console.log(`handleRangeRequest():: sId`,sId);
     const stream = this.dstreams.get(sId);
     if (!stream) {
-      console.log(`handleRangeRequest():: stream is not open`,this.dstreams);
+     //console.log(`handleRangeRequest():: stream is not open`,this.dstreams);
       return;
     }
     const fileSize = stream.totalSize;
@@ -1487,7 +1485,7 @@ class BorgRepoStreamMgr {
     const startShard = Math.floor(start / stream.shardSize);
     const endShard = Math.floor(end / stream.shardSize);
   
-    console.log(`handleRangeRequest():: range ${start}-${end} (shards ${startShard}-${endShard})`);
+   //console.log(`handleRangeRequest():: range ${start}-${end} (shards ${startShard}-${endShard})`);
 
     // Check if all required shards are available in cache
     const allCached = await this.checkShardsCached(stream, startShard, endShard);
@@ -1668,7 +1666,7 @@ class BorgRepoStreamMgr {
     });
 
     const endPoint = `${service.endPoint}?${params.toString()}`;
-    console.log(`sendBinaryShardCX`,endPoint);
+   //console.log(`sendBinaryShardCX`,endPoint);
     const options = {
        hostname : service.host,
        port     : service.port,
@@ -1702,7 +1700,7 @@ class BorgRepoStreamMgr {
              shard.res = {netPost:"FAIL",result:"RESC_FAIL",error:"res:NOT 200 and JSON.pars fail xhrError"};
            }
            this.net.emit('xhrBinShardFailed',shard);
-           console.log(`sendBinaryShardCX():: NOT 200`,body);
+          //console.log(`sendBinaryShardCX():: NOT 200`,body);
          } else {
            //console.log('bin send good',shard.shardIdx,shard.shardId);
            const res = body.toString();
@@ -1716,7 +1714,7 @@ class BorgRepoStreamMgr {
              shard.xhrError = 'jsonParse';
              shard.errMsg   = e;
              shard.toHost   = toHost;
-             console.log('bin send JSON parse fail',shard.shardIdx,shard.shardId);
+            //console.log('bin send JSON parse fail',shard.shardIdx,shard.shardId);
              shard.res      = {netPost:"FAIL",result:"JParseFAIL",error:"res:200 but JSON.parse failed"};
              this.net.emit('xhrBinShardFailed',shard);
            }
@@ -1731,7 +1729,7 @@ class BorgRepoStreamMgr {
           shard.xhrError = 'xTime';
           shard.errCount++;
           shard.res = {netPost:"FAIL",result:"xTimeFAIL1",error:"req.on timeout xTime"};
-          console.log(`sendBinaryShardCX():: timeout first`,shard);
+         //console.log(`sendBinaryShardCX():: timeout first`,shard);
           this.net.emit('xhrBinShardFailed',shard);
        }
        req.destroy();
@@ -1749,7 +1747,7 @@ class BorgRepoStreamMgr {
           shard.xhrError = 'xTime';
         }
        shard.res = {netPost:"FAIL",result:"xTimeFAIL",error:"req.on timeout xTime"};
-       console.log(`sendBinaryShardCX():: timeout xTime`,shard);
+      //console.log(`sendBinaryShardCX():: timeout xTime`,shard);
        this.net.emit('xhrBinShardFailed',shard);
      })
      req.write(data);

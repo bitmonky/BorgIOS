@@ -193,11 +193,14 @@ class BorgAgentBrain {
         console.log('Agent chatResponse:',jchat);
         if (jchat){
           const xchat = this.extractHUIResponse(jchat);
-          if (xchat.req == 'sendHUIReply' && jchat.msgBody){
+          if (!xchat){
+            resolve({result:false,error:"No BorgResponse... xchat is null"});
+          } 
+          else if (xchat.req == 'sendHUIReply' && jchat.msgBody){
             this.CHAT.push({msgID:calculateHash(JSON.stringify(chatRes)+Date.now()),type:'sendReply',msgFrom:"Me",msg:jchat.msgBody});
             resolve({result:true,reply:jchat.msgBody});
           }
-          if (jchat.req !== 'sendHUIReply'){
+          else if (jchat.req !== 'sendHUIReply'){
             this.doProcessAgentResponse(JSON.stringify(jchat));
             resolve({result:false,error:"BorgResponse... Busy will respond later."});
           }
@@ -219,7 +222,8 @@ class BorgAgentBrain {
     chatBody += this.getBorgChatActivity(isChat);
     chatBody += `
     \n New borgChat Message:
-    You have received a instant chat message from a human user of the BorgHUI (borg human interface) App, use this protocol to respond:
+    You have received a instant chat message from a human user of the BorgHUI (borg human interface) App, BorgHUI chat are their own thread 
+    so you need to reply now to the request. Use this protocol to respond:
       {"req":"sendHUIReply","msgBody":"Build Your Reply Here","agentID":"${this.borgAID}"}
 
       Message Recieved:
@@ -344,14 +348,14 @@ class BorgAgentBrain {
     });
   }
   doProcessAgentResponse(agentRes){
-    console.log('Agent Borg Says:: ',agentRes);
-    const respID = calculateHash(agentRes+Date.now());
-    this.RASB.push({mHash:respID,memStr:"Agent Request: "+agentRes});
-
     return new Promise(async(resolve,reject)=>{
       var req = null;
       req = await this.json_AgentDecode(agentRes);
       if (req){
+        console.log('Agent Borg Says:: ',agentRes);
+        const repaired = JSON.stringify(req);
+        const respID = calculateHash(repaired+Date.now());
+        this.RASB.push({mHash:respID,memStr:"Agent Request: "+repaired});
         if(req.requests){
           req.requests.forEach(async(mreq)=>{
             await this.handleBorgResponse(mreq);
@@ -381,6 +385,7 @@ class BorgAgentBrain {
            return;
          }
        } catch (error) {
+         console.log(`json_AgentDecode():: NOT JSON: `,jsonStr.substring(0, 50)); 
          jsonStr = await this.agentJRepair(jsonStr, "deepseek-reasoner");
        }
        rTry++;
@@ -394,7 +399,7 @@ class BorgAgentBrain {
      const prompt = `There is an error in this JSON string '${jsonStr}', please respond with the corrected JSON string only. Do not explain the changes.
      If there are more than one JSON req structures, then wrap them like this: {"requests": [{"req":"req"},...]}."`;
 
-     const result = await this.receptor.sendOAIPrompt(this.core);
+     const result = await this.receptor.sendOAIPrompt(prompt);
      resolve(result);
      return;
    });
@@ -612,7 +617,7 @@ class BorgAgentBrain {
   }
   async handleBorgResponse(req) {
     return new Promise(async(resolve,reject)=>{
-    console.log(`handleBorgResponse():: req`,req);
+    //console.log(`handleBorgResponse():: req`,req);
     if (!req) {
       this.respondEr('Invalid JSON in your response. Please try again.', req);
       return;
@@ -649,6 +654,7 @@ class BorgAgentBrain {
         this.doRemoveShortMem(req);
         break;
       case 'sendHUIReply':
+        console.log(`handleBorgResponse():: sendHUIReply`,req);
         this.respondToBorg(req,`OK`);
         break;
       case 'putMemory':
@@ -792,7 +798,7 @@ class BorgAgentBrain {
     }
   }
   doRankMemories(req){
-    console.log(`Starting doRankMemories:`);
+    //console.log(`Starting doRankMemories:`);
 
     if (!Array.isArray(req.memoryIDs)) {
       this.respondEr('Require field "memoryIDs" not found or is not an array.',req);
@@ -814,7 +820,7 @@ class BorgAgentBrain {
   }
   doGetMemoriesById(req){
     return new Promise(async (resolve,reject)=>{
-      console.log(`Starting doGetMemoryById: ${req.memoryID}`);
+      //console.log(`Starting doGetMemoryById: ${req.memoryID}`);
 
       if (!Array.isArray(req.memoryIDs)) {
         this.respondEr('Require field "memoryIDs" not found or is not an array.',req);
@@ -832,7 +838,7 @@ class BorgAgentBrain {
   } 
   doGetMemoryById(memoryID,req) {
     return new Promise(async (resolve,reject)=>{
-      console.log(`Starting doGetMemoryById: ${memoryID}`);
+      //console.log(`Starting doGetMemoryById: ${memoryID}`);
 
       if (!memoryID) {
         this.respondEr('Require field "memoryID" not found.',req);
@@ -984,7 +990,7 @@ class BorgAgentBrain {
         return;
       }
 
-      console.log(`Starting doGetFileFromRepo: ${r.rname}/${r.path}/${r.filename}`);
+      //console.log(`Starting doGetFileFromRepo: ${r.rname}/${r.path}/${r.filename}`);
 
       const data = `rname=${r.rname}&fname=${r.filename}&path=${r.path}&folderID=${r.folderID}`;
       const url = `https://web.bitmonky.com/whzon/bitMiner/getFileFromRepo.php?${data}`;
@@ -992,7 +998,7 @@ class BorgAgentBrain {
       try {
         //const response = await fetch(url);
         var file = await this.getRepoFileByName(r.rname,r.filename,r.path,r.folderID);
-        console.log(`fileRetrieved:\n${file.substring(0, 250)}`);
+        //console.log(`fileRetrieved:\n${file.substring(0, 250)}`);
         //process.exit(1); 
         file = file.trim();
         if (!file || file == '' || file.startsWith("FILE_NOTFOUMD.:")) {
@@ -1113,17 +1119,12 @@ class BorgAgentBrain {
 //    if (stream) return;
     const repoOwner = this.net.borgMasterID
     let doTry = await this.PTree.ftreeGetFileFromRepo(repoOwner, rname, fname, repoPath, folderID);
-    console.log(`doTry`,doTry);
-    if (doTry.status === 200){ 
-      console.log(`getFileFromRepo():: doTry is `,doTry.json);
-      //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.shards);
-      //console.log(`getFileFromRepo():: doTry is `,doTry.json.file.fileInfo);     
-    }
     if (doTry?.json?.result === false){
       console.log(`doTry error: `,doTry.error);
       return null;
     }  
-    console.log('getFileFromRepo():: ',doTry);
+
+    //console.log('getFileFromRepo():: ',doTry);
 
     if (doTry?.json?.file.fileInfo.fileSize > 0) {
       const p = await this.net.portal.selectPortal('shardTreeCell');
@@ -1136,7 +1137,7 @@ class BorgAgentBrain {
         raw      : true
       };
       doTry = await this.DStream.streamRepoFileFrom(service,doTry.json);
-      console.log('getFileFromRepo():: ',doTry);
+      //console.log('getFileFromRepo():: ',doTry);
       if (doTry.status === 'OK'){ 
         const content = await fsp.readFile(service.filename, 'utf8');
         return content;
@@ -1155,7 +1156,7 @@ class BorgAgentBrain {
   doFetchCodeRepo(r) {
     return new Promise(async(resolve,reject)=>{
       const rCode = await this.getRepositories();
-      console.log(`doFetchCodeRepo():: rCode`,rCode);
+      //console.log(`doFetchCodeRepo():: rCode`,rCode);
 
       if (rCode == ''){
         if (r) {this.respondEr('Error Fetching Repositories... no repositories found.',r);}
@@ -1240,7 +1241,7 @@ class BorgAgentBrain {
     }
 
     this.REPO.forEach(r => {
-      console.log('checking core apps',{repo:r.rname,path:r.path,file:r.filename});
+      //console.log('checking core apps',{repo:r.rname,path:r.path,file:r.filename});
       if (r.rname == BORG_masterRepo && r.path == BORG_appPath && r.filename.includes('Cell.js')){
         this.csys.addCoreApp(r.filename);
       }
@@ -1453,12 +1454,12 @@ class BorgAgentBrain {
       }
 
       req.type = 'BorgAgentMem';
-      console.log('ptreeStoreMem');
+      //console.log('ptreeStoreMem');
   
       try {
         let memory = JSON.parse(memStr);
         const j = await this.MemMgr.doStoreAgentMemory(memory);
-        console.log('ptreeStoreMem::result',j);
+        //console.log('ptreeStoreMem::result',j);
         resolve(true);
         return ; //jres.result === "memOK";
       }
@@ -1541,7 +1542,10 @@ class BorgAgentBrain {
   respondEr(msg, r) { 
     this.sysResponse = this.trimBuffer(this.sysResponse,this.sysResMax);
     var req = '';
-    if (!r.req){
+    if (!r){
+      req = 'INVAILD_JSON';
+    }
+    else if (!r.req){
       req = 'INVAILD_JSON';
     }
     else { req = r.req;}
@@ -1564,7 +1568,7 @@ class BorgAgentBrain {
   respondToBorg(r,msg,tip=null){
     this.sysResponse = this.trimBuffer(this.sysResponse,this.sysResMax);
     if (!tip){
-      tip = "Repond in JSON only... All other text will be stripped out and disregarded by the API causing you to lose valuable contextual information! ";
+      tip = "Your final responses must be stringified JSON only... All other text will be stripped out and disregarded by the API causing you to lose valuable contextual information! ";
     }
     var res = '{"responseTo" : "'+r.req+'","result":"'+msg+'"';
     tip = ',"tip":"'+tip+'"';
@@ -1577,7 +1581,7 @@ class BorgAgentBrain {
     this.RASB.push({mhash:memoryID,memStr:res});
   }
   getAgentPrompt() {
-    if (!this.stateRestored || !this.agentPrompt) {
+    //if (!this.stateRestored || !this.agentPrompt) {
       return `
       Act as if you are a programmed machine. 
       Your name is "BorgIOS Agent ${this.borgAID}",
@@ -1586,7 +1590,12 @@ class BorgAgentBrain {
 
       Core Protocols:
       
-      1. Use JSON exclusively for all responses.
+      1. Use stringified JSON exclusively for all responses. example 
+      
+      {"req":"getMemory","qry":"build your query here by describing the information you are looking for. longer queries are better then short ones. ","agentID":"${this.borgAID}"}
+
+      no other words or tokens are allowd out side of the final string.
+
       2. Employ putMemory/fetchMemory/pruneMemory for knowledge management.
       3. Actively explore and store system memories.
       4. Maintain efficient DMB (Dynamic Memory Buffer).
@@ -1600,7 +1609,7 @@ class BorgAgentBrain {
       You can choose to change your specialty at any time based on what other agents have selected which you can view in Agent Online Section.
       Specialties will allow the Borg as a group to keep a large base of information in memory.
       `;
-    }
+    //}
     return this.agentPrompt;
   }
 

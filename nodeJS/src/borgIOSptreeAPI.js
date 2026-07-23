@@ -32,7 +32,7 @@ class BorgIOSptreeAPI {
     if (post) defEndPoint = "/netREQ";
 
     const p = await this.net.portal.selectPortal(portalName);
-    console.log(`portal`,p);
+    //console.log(`portal`,p);
     return {
       host: p.host,
       port: p.port,
@@ -86,7 +86,7 @@ class BorgIOSptreeAPI {
     msgObj.borgToken = this.net.getBorgToken();
 
     const body = JSON.stringify(msgObj);
-    // console.log(`url`,url,`body`,msgObj);
+    ////console.log(`url`,url,`body`,msgObj);
     return this._httpRequestRaw(
       url,
       {
@@ -183,7 +183,7 @@ class BorgIOSptreeAPI {
   }
 
   sayHello() {
-    console.log("borgIOSptreeAPI:: say hello");
+   //console.log("borgIOSptreeAPI:: say hello");
   }
 
   async peerPaysCreateOpeningBalance(muid) {
@@ -199,14 +199,14 @@ class BorgIOSptreeAPI {
     };
 
     // Compute tx hash
-    const txHash = await this.net.calculateHash(JSON.stringify(payment));
+    const txHash = this.net.calculateHash(JSON.stringify(payment));
  
     const auth = {
       tx        : txHash,
       signature : this.net.signToken(JSON.stringify(payment)),
       pubKey    : this.net.publicKey,
     }
-    console.log(`peerPaysCreateOpeningBalanc():: `,auth,JSON.stringify(payment));
+   //console.log(`peerPaysCreateOpeningBalanc():: `,auth,JSON.stringify(payment));
     const trans = {
       from    : muid,
       payment : payment,
@@ -234,7 +234,7 @@ class BorgIOSptreeAPI {
     };
 
     // Compute tx hash 
-    const txHash = await this.net.calculateHash(JSON.stringify(payment));
+    const txHash = this.net.calculateHash(JSON.stringify(payment));
 
     const auth = {
       tx        : txHash,
@@ -249,7 +249,7 @@ class BorgIOSptreeAPI {
       status  : 0,
       nCopies : 3
     };
-    console.log(`peerPaysMakeUserTrans():: trans`,trans);
+   //console.log(`peerPaysMakeUserTrans():: trans`,trans);
     return this._postJSON("peerPaysCell", {
       msg: {
         req: "makeUserTransaction",
@@ -338,7 +338,7 @@ class BorgIOSptreeAPI {
     if (!path) path = "/";
     if (path !== "/") path = path.replace(/^\//, "");
     if (path === "") path = "/";
-    console.log(`ftreeGetFileFromRepo():: `,{msg: { req: "getRepoFileData", repo: { from: muid, name, file, path, folderID }}});
+   //console.log(`ftreeGetFileFromRepo():: `,{msg: { req: "getRepoFileData", repo: { from: muid, name, file, path, folderID }}});
     return this._postJSON("ftreeFileMgrCell", {
       msg: { req: "getRepoFileData", repo: { from: muid, name, file, path, folderID } }
     });
@@ -424,6 +424,8 @@ class BorgIOSptreeAPI {
   }
 
   async ptreeStoreMem(muid, acID, str, type = "generic", nCopys = 3, weights = null, location = null) {
+
+    const token = this.net.calculateHash(muid+acID);
     const msg = {
       msg : {
         req     : 'storeMemory',
@@ -433,13 +435,19 @@ class BorgIOSptreeAPI {
           memStr  : str,
           memType : type,
           nCopys  : nCopys,
-          weights : weights
+          weights : weights,
+          sig : {
+            ownMUID   : muid,
+            token     : token,
+            pubKey    : this.net.publicKey,
+            signature : this.net.signToken(token)
+          }
         }
       }
     };
 
     if (location) msg.msg.memory.location = location;
-    console.log(`ptreeStoreMem():: send msg: `,msg);
+   //console.log(`ptreeStoreMem():: send msg: `,msg);
     return this._postJSON("peerMemoryCell", msg);
   }
 
@@ -617,7 +625,7 @@ class BorgIOSptreeAPI {
       tries++;
     }
 
-    console.log(`Message From Borg: File ${fname} Deleted`);
+   //console.log(`Message From Borg: File ${fname} Deleted`);
     return 0;
   }
 }
