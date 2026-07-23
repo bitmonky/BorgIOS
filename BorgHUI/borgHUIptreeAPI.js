@@ -199,7 +199,7 @@ class BorgHUIptreeAPI {
     };
 
     // Compute tx hash
-    const txHash = await this.net.wallet.calculateHash(JSON.stringify(payment));
+    const txHash = this.net.wallet.calculateHash(JSON.stringify(payment));
  
     const auth = {
       tx        : txHash,
@@ -396,19 +396,35 @@ class BorgHUIptreeAPI {
   // ------------------------------------------------------------
   // MEMORY OPS
   // ------------------------------------------------------------
+  prepWords(str) {
+    if (!str || str.trim() === '') return null;
+
+    const words = [' i ', ' in ', ' on ', ' there ', ' is ', ' are ', ' as ', ' the ', ' a ', ' to ', ' and ', ' too ', ' of ', ' for '];
+    words.forEach(word => {
+      str = str.replace(new RegExp(word, 'gi'), ' ');
+    });
+
+    str = str.replace(/[\p{P}\p{S}]+/gu, " ").toLowerCase();
+
+    const list = str.split(' ').map(word => word.slice(0, this.PTC_maxWordLength));
+    const newStr = list.filter(word => word.trim() !== '').join(' ');
+
+    return newStr.length > 0 ? newStr : null;
+  }
 
   async ptreeSearchMem(muid, str, type, scope = null, scopeID = null, qryLimit = null, qryOrder = null) {
+    
     const j = {
-      ownerID: muid,
-      qryStr: str,
-      qryType: type,
-      qryStyle: "bestMatch",
+      ownerID  : muid,
+      qryStr   : this.prepWords(str),
+      qryType  : type,
+      qryStyle : "bestMatch",
       timestamp: Math.floor(Date.now() / 1000),
-      reqScore: 0.0005,
-      nResults: 100,
-      nRows: 15,
-      pg: 1,
-      qryLimit: qryLimit || " limit 40"
+      reqScore : 0.0005,
+      nResults : 100,
+      nRows    : 15,
+      pg       : 1,
+      qryLimit : qryLimit || " limit 40"
     };
 
     if (scope) {
@@ -424,6 +440,8 @@ class BorgHUIptreeAPI {
   }
 
   async ptreeStoreMem(muid, acID, str, type = "generic", nCopys = 3, weights = null, location = null) {
+
+    const token = this.net.wallet.calculateHash(muid+acID);
     const msg = {
       msg : {
         req     : 'storeMemory',
@@ -433,7 +451,13 @@ class BorgHUIptreeAPI {
           memStr  : str,
           memType : type,
           nCopys  : nCopys,
-          weights : weights
+          weights : weights,
+          sig : {
+            ownMUID   : muid,
+            token     : token,
+            pubKey    : this.net.wallet.publicKey,
+            signature : this.net.wallet.signToken(token)
+          }
         }
       }
     };

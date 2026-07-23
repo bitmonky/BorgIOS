@@ -448,20 +448,22 @@ class BorgHUImemoryMgr {
     const isFinal   = (index === stream.count - 1);
 
     // 2. Validate shard hash
+    const expectedShardId = shard.shardId;
     const actualHash = this.sha256(shard.shard);
     if (actualHash !== expectedShardId) {
       console.log(`writeShardToFile():: BAD_HASH `,actualHash,expectedShardId);
       return { ok: false, reason: "BAD_HASH", index };
     }
 
-    // 3. Random-access write
-    const tempFilePath = `memories/${stream.shardId}.mem`;    //stream.tempFilePath.replace('MEM_ID',shard.shardId);
-    const fh = await fs.promises.open(tempFilePath, 'r+');
-    try {
-      await fh.write(shard.shard, 0, shard.shard.length, 0);
-    } finally {
-      await fh.close();
-    }
+    const tempFilePath = `memories/${shard.shardId}.mem`;
+
+    // 3. write to memory cache
+    const writeStream = fs.createWriteStream(tempFilePath, { 
+      flags: 'w',  // truncate/overwrite
+      autoClose: true 
+    });
+    writeStream.write(shard.shard);
+    writeStream.end();
 
     return { ok: true, index };
   }

@@ -1433,8 +1433,13 @@ class bitMonkyWallet{
      if (doTry?.status === 404){
        htm = 'Borg is currently offline... try again later';
      }
-     else if (doTry.status === 200 && doTry?.json.result){
-       htm = `<div class="infoCardClear" style="width:100%">${doTry.json.reply}</div>`;
+     else if (doTry.status === 200){
+       if (doTry?.json.result){
+         htm = `<div class="infoCardClear" style="width:100%">${doTry.json.reply}</div>`;
+       }
+       else {
+         htm = `<div class="infoCardClear" style="width:100%">${doTry.json.error}</div>`;
+       }
      }
      console.log(`doSendBorgChatMsg():: doTry`,doTry);
 
@@ -1885,11 +1890,13 @@ class bitMonkyWallet{
   async doSendWalletOptions(m,res){
     let doTry  = 'Fill this in later';
     const html = `
-      <div ID='menuBar' align='right' style='background:#222324;padding:0.5em 1em 0.5em 1em;'>
-      <a href='javaScript:doCloseWalletOpt();'>Close[x]</a>
+      <div class='infoCardClear'>
+      <div ID='menuBar' align='right' style='background:none;padding:0.5em 0em 0.5em 1em;'>
+      <input type='button' value=' Close ' onclick='doCloseWalletOpt();'>
       </div>
       <div ID='walletBody' style='background:#151617;padding:0.5em;'>
       <div ID='autoSelSpot'></div>
+      </div>
     `;
 
     const j = {
