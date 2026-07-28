@@ -41,6 +41,10 @@
     /* This creates the glow animation */
     animation: borgGlow 6s ease-in-out infinite;
   }
+  pre {
+    white-space: pre-wrap;
+    word-break: break-all; /* Forces breaking of long unbroken strings */
+  }
 
   @keyframes borgGlow {
     0%   { filter: brightness(0.89); }
@@ -101,20 +105,70 @@ aside {
   font-size: 0.85em;
   color: #aaa;
 }
+asideChat {
+    margin: 0em 0em 0em 1.5em;
+    height: calc(100vh - 6.5em);
+    display: flex;
+    flex-direction: row;
+    align-items: start;
+    background: rgba(0, 0, 0, 0.35) !important; /* dark glass */
+    border-radius: 10px;
+    padding: .8em 0em 0em 0em;
+    overflow: scroll;
+}
+asideChat::-webkit-scrollbar {
+  display: none;
+}
+
+/* ===== Layout fix: page fills exact viewport height, ===== */
+/* ===== left nav + chat panel stay fixed width, only the content section flexes ===== */
+html, body {
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+header {
+  height: 12vh !important;
+  margin-bottom: 0 !important;
+  overflow: hidden;
+}
+main {
+  display: flex !important;
+  flex-direction: row;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  width: 100%;
+  height: calc(100vh - 12vh) !important;
+  overflow: hidden;
+}
+main > aside {
+  flex: 0 0 190px !important;
+  width: 150px !important;
+  max-width: 150px;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+main > asideChat {
+  flex: 0 0 auto !important;
+  height: 100% !important;
+  max-height: 100%;
+  overflow-y: auto;
+}
+main > section {
+  flex: 1 1 auto !important;
+  min-width: 0;
+  height: 100% !important;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+main > section .container {
+  height: 100% !important;
+}
 </style>
-<script>
-const evt = new EventSource("/borgEvents");
-
-evt.addEventListener("upload-progress", (e) => {
-  const msg = JSON.parse(e.data);
-  console.log("progress:", msg);
-});
-
-evt.addEventListener("borg-event", (e) => {
-  const msg = JSON.parse(e.data);
-  console.log(msg.hello);
-});
-</script>
 </head>
 <body onload="init();">
     <div class='chatAlert' ID='videoChatWindow' style='position:fixed;border-radius:.5em;display:none;top:25px;left:25px;background:#222222;'><div id='videoChatFrame' style='border:0px;padding:.25em;'></div></div>
@@ -219,6 +273,7 @@ padding:5px 15px 15px 15px;position:fixed;top:1em;left:1em;'>
    </div>
    </div>
    </div>
+   <div id="borgSpacer" style="height:1em;width:100%;color:#ababab;text-align:right;margin-bottom:2em;padding-right:1.5em;font-family: monospace; font-size: 16px;"></div>
    </header>
    <main style='height:calc(86vh);'>
         <aside style='margin-left:0.5em;'>
@@ -226,9 +281,18 @@ padding:5px 15px 15px 15px;position:fixed;top:1em;left:1em;'>
             <button id="exploreBtn" type="button" onclick="wzGetPage('/');">
 <svg class="main-menu-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M10.512 1.009a.833.833 0 0 0-1.024 0l-7.5 5.833a.833.833 0 0 0-.321.658v9.167a2.5 2.5 0 0 0 2.5 2.5H15.833a2.5 2.5 0 0 0 2.5-2.5V7.5c0-.257-.118-.5-.321-.658l-7.5-5.833Zm2.821 16.49h2.5a.833.833 0 0 0 .834-.832v-8.76L10 2.723 3.333 7.908v8.759a.833.833 0 0 0 .834.833h2.5V10c0-.46.373-.833.833-.833h5c.46 0 .833.373.833.833v7.5Zm-5 0h3.334v-6.666H8.333V17.5Z"></path></svg>
             Home</button>
-            <button id="profile" type="button">
+            <button id="profile" type="button" onclick="showSideChat();">
+
 <svg class="linkButtonIcon_cff89e" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24"><path fill="currentColor" d="M13 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" class=""></path><path fill="currentColor" d="M3 5v-.75C3 3.56 3.56 3 4.25 3s1.24.56 1.33 1.25C6.12 8.65 9.46 12 13 12h1a8 8 0 0 1 8 8 2 2 0 0 1-2 2 .21.21 0 0 1-.2-.15 7.65 7.65 0 0 0-1.32-2.3c-.15-.2-.42-.06-.39.17l.25 2c.02.15-.1.28-.25.28H9a2 2 0 0 1-2-2v-2.22c0-1.57-.67-3.05-1.53-4.37A15.85 15.85 0 0 1 3 5Z" class=""></path></svg>
 Chat Room + </button>
+
+<button id="filesBtn" type="button"
+  onclick="hideDiv('transactionSpot');doSendBorgFileSys('transactionSpot');">
+  <svg x="0" y="0" class="icon_ae0b42" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M4 4a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4Z" />
+  </svg><br/>
+My Files
+</button>
 
 <button
 id="inboxBtn" type="button" onclick="wzGetMoshBox();"
@@ -275,12 +339,86 @@ var(--white); --button-hover-background: var(--fa-yellow); --button-color: var(-
 width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-bottom: 0;"><span><i class="fa-solid fa-piggy-bank fa-fw"></i></span> <span class="icon-name">Earn</span></button>
 
 
-	</aside>
+    </aside>
+    <asideChat style=''>
+            <div id="profileField">
+    <div ID='wzChatterCol' style="width:calc(100% - 1em);min-height:vh;overflow:hidden;">
+    <div ID='wzChatLoader' class='infoCardClear' style='color:#bcbcbc;min-height:5em;margin:.5em .5em .5em .5em;'>BorgCom Channel .: 00-1 of 9</br>
+    <textarea ID='sideChatInput' style='width:calc(100% - 0em);margin:0px;height:4em;background:none;'></textarea>
+    </div>
+    <div ID="borgChatLoading" display="none">
+    <div style='padding:.5em;display:inline;height:28px;color:#777777;' ><div class='mkyloader'></div>Assimilating User Input...</div>" +
+    "</div>"
+
+    <div style="padding:1.5em 0em;color:white;" ID="wzStreamDisplay"></div>
+    </div>
+             <div id="profileTop" style="display:block;">
+                    <div>
+                        <!--img id="img3" alt="BitMonky Chat - More Channels Icon" src="https://image.bitmonky.com/img/gearOrange.png">
+                        <a id="returnTo" style='color:lightGray;' href="#">Return to</a>
+                        -->
+                        <div id="profileTopHidden">
+                            <i class="closeSignin">X</i>
+                            <div id="profileTopHidden-A">
+                                <div>
+                                    <label for="checkbox">
+                                        <input type="checkbox" name="checkbox" id="checkbox" title="checkbox"/>
+                                        My History Only
+                                    </label>
+                                    <!--img alt="BitMonky Chat - More Channels Icon" src="https://image.bitmonky.com/img/gearOrange.png"-->
+                                </div>
+
+                            </div>
+                            <h6>MonkyTalk Channels</h6>
+                            <div id="profileTopHidden-B">
+                                <span>Channel Name</span>
+                                <span>Total Posts: Online</span>
+                            </div>
+                            <div id="profileTopHidden-C">
+                                <div>
+                                    <img src="https://image.bitmonky.com/img/bitGoldCoin.webp" alt="userphoto">
+                                    <a href="#">Username </a>
+                                    <span>Multilingual</span>
+                                </div><
+                                <span>7591696</span>
+                            </div>
+                            <div id="profileTopHidden-D">
+                                <span>Next</span>
+                                <span>Top</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!--
+                    <input type='button' name=" Lounge ">
+                    <input type='button' name=" General Chat">
+                    -->  
+              </div>
+                <div id="profMainContainer">
+                  <div id="profileMid">
+                    <div id="profileInfo">
+                      <span>Topic  - Lounge II</span>
+                      <p>A Chat Room Started By - <span>Peter</span></p>
+                    </div>
+                    <img alt="Peter" src="https://image.bitmonky.com/getMbrImg.php?id=17621">
+		  </div>
+                  <div id='profTextInput'>
+                      <textarea id="textField" placeholder="...Right click on memeber photos to call them" cols="30" ></textarea>
+                  </div>
+		  <div id="profileBtns">
+                    <button id="profileSendBtn" type="button">Send</button>
+                    <button id="profileShareBtn" type="button">Share Photo</button>
+                    <span>Language: all</span>
+                  </div>
+                </div>
+             </div>
+           </div>
+        </asideChat>
+
 	<section style='height:86vh;'>
         <style>
 
 .container {
-    padding: 0em 1.5em 0em 1.5em;
+    padding: 0em 0.8em 0em 1.5em;
     height: 84vh; 
     width: 100%;
     max-width:100%;
@@ -307,7 +445,6 @@ width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-b
 .container INPUT[type="button"] {
   display: inline-block;
   background: rgba(0, 0, 0, 0.35) !important;
-  white-space: nowrap;
   width: auto;
   margin: 0.5em 0;
   font-size: 1em;
@@ -328,10 +465,41 @@ width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-b
         <div style="display:none">
 	  <div ID="wzVidViewControl" style="display:none;" ></div>
         </div>
-        <div id="borgClock" style="text-align:right;padding-right:1.5em;font-family: monospace; font-size: 18px;"></div>
         <div class='container'>
+        <div id 'walletRestoreContainer' class='infoCardClear' style='display:none;'>
+ 
+           <div id="walletBackup">
+             <!-- Show mnemonic -->
+             <div id="mnemonicDisplay" style="display:none;">
+               <h3>Your BORG Identity Mnemonic</h3>
+               <div class="mnemonic-phrase">
+                 <!-- Words displayed here -->
+               </div>
+               <p class="warning">
+               ⚠️ Store this phrase securely!<br>
+               Anyone with this phrase can access your identity.<br>
+               Never share it with anyone.
+               </p>
+               <input type="button" onclick="copyMnemonic()" value="Copy to Clipboard ">
+               <input type="button" onclick="downloadMnemonic()" value=" Download Backup ">
+             </div>
+
+             <!-- Restore wallet -->
+             <div id="walletRestore">
+               <h3>Restore Wallet from Mnemonic</h3>
+               <textarea id="restoreMnemonic" placeholder="Enter your 27-word mnemonic phrase..."></textarea>
+               <input type="button" onclick="restoreWallet()" value=" Restore Wallet " >
+             </div>
+          </div>
+        </div>
+
         <div ID="accountInfo" style='width:100%;color:white'></div>
-        <div ID="serviceMenu" style='width:100%;color:white'></div>
+
+<div style="display:flex; align-items:flex-start;">
+   <div id="servSidePanel" style="margin-right:1.5em;display:none; width:60%; color:white;"></div>
+   <div id="serviceMenu" style="flex:1; color:white;"></div>
+</div>
+
         <div ID="serviceView"></div>
         </div>
         <div ID='wzMainLoader'></div>
@@ -362,3 +530,26 @@ width: 100%;  --button-font-weight: var(--font-weight-normal); --button-margin-b
 <div style='display:none;'>
 </body>
 </html>
+<script>
+let aside = document.querySelector("aside");
+let asideChat = document.querySelector("asideChat");
+let chatStatus = 'closed';
+
+function showSideChat(action='open'){
+    const icon = '<svg class="linkButtonIcon_cff89e" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24"><path fill="currentColor" d="M13 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" class=""></path><path fill="currentColor" d="M3 5v-.75C3 3.56 3.56 3 4.25 3s1.24.56 1.33 1.25C6.12 8.65 9.46 12 13 12h1a8 8 0 0 1 8 8 2 2 0 0 1-2 2 .21.21 0 0 1-.2-.15 7.65 7.65 0 0 0-1.32-2.3c-.15-.2-.42-.06-.39.17l.25 2c.02.15-.1.28-.25.28H9a2 2 0 0 1-2-2v-2.22c0-1.57-.67-3.05-1.53-4.37A15.85 15.85 0 0 1 3 5Z" class=""></path></svg>';
+    if (chatStatus == 'closed') {
+        chatStatus = 'open';
+        asideChat.style.display = 'flex';
+        asideChat.style.width = "450px"
+        profile.innerHTML = icon+" Chat Room [-]"
+        profileField.style.display = "flex"
+        profileIsOpen = true;
+    } else {
+        chatStatus='closed';
+        asideChat.style.display = "none"
+        profile.innerHTML = icon+" Chat Room +"
+        profileField.style.display = "none"
+        profileIsOpen = false;
+    }
+}
+</script>
