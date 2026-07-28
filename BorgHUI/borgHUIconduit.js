@@ -601,7 +601,7 @@ class bitMonkyWSrv extends  EventEmitter {
           
      try {
        j = JSON.parse(msg);
-       //console.log(`handleRequest():: values:`,msg);
+       console.log(`handleRequest():: values:`,j);
 
        if (j.req){
          if (j.req == 'useNewWallet'){
@@ -632,6 +632,10 @@ class bitMonkyWSrv extends  EventEmitter {
          }
          if (j.req  === 'createBorgMemory'){
            this.wallet.doCreateBorgMemory(j,res);
+           return;
+         }
+         if (j.req  === 'displayBorgMemory'){
+           await this.wallet.doDisplayBorgMemory(j,res);
            return;
          }
          if (j.req  === 'sendBorgChatMsg'){
@@ -1431,7 +1435,7 @@ class bitMonkyWallet{
      let doTry = await this.net.PTree.askTheBorg(this.ownMUID,j.parms.prompt);
      let htm = 'Service Not Available';
      if (doTry?.status === 404){
-       htm = 'Borg is currently offline... try again later';
+       htm = '<div class="infoCardClear" style="width:100%">Borg is currently offline... try again later</div>';
      }
      else if (doTry.status === 200){
        if (doTry?.json.result){
@@ -1443,12 +1447,38 @@ class bitMonkyWallet{
      }
      console.log(`doSendBorgChatMsg():: doTry`,doTry);
 
-     j.html   = `<h2>Borg Response.</h2>`;
+     j.html   = `<h3>Borg Response.</h3>`;
      j.html  += htm;
      j.result = true;
      j.action = j.req;
      console.log(`doSendPeerQryResults():: `,j);
      res.end(JSON.stringify(j));
+   }
+   async doDisplayBorgMemory(j,res){
+     console.log(`doDisplayBorgMemory():: `,j);
+
+     j.html   = `memory created`;
+     j.result = true;
+     j.action = j.req;
+     console.log(`doDisplayBorgMemory():: `,j);
+     res.end(JSON.stringify(j));
+
+     const p = await this.net.portal.selectPortal('shardTreeCell');
+
+     const service = {
+       endPoint : '/netREQ/',
+       host     : p.host,
+       port     : p.port,
+       raw      : true
+     };
+     const memories = [];
+     const m = j.parms;
+     const qry = 'displayFullMemory.mem';
+
+     memories.push({hash: m.memoryHash,ownMUID: m.ownMUID, shardHID: m.memoryID});
+
+     this.net.MStream.doOpenMemStream(memories, service, qry,'dispFull');
+
    }
    async doCreateBorgMemory(j,res){
      let memPrompt = this.net.MStream.doStoreMemory(j.memory);
@@ -1482,14 +1512,14 @@ class bitMonkyWallet{
        out.data.forEach( (r)=>{
          if (r.pmcMemObjID && r.pmcMemObjID != 'null'){
            html += `<div class="infoCardClear" style="width:100%" ID="mem-${r.pmcMemObjID}">memory - ${r.pmcMemObjID}</div>`;
-           memories.push({hash: r.pmcMemObjID, shardHID: this.calculateHash(`${r.pmcMemObjID}-${r.pmcMownerID}`)});
+           memories.push({hash: r.pmcMemObjID,ownMUID: r.pmcMownerID, shardHID: this.calculateHash(`${r.pmcMemObjID}-${r.pmcMownerID}`)});
          }
        }); 
      } catch(e) {
        console.log(e);
      } 
 
-     j.html   = `<h2>Search Results .:</h2>`;
+     j.html   = `<div class="infoCardClear"><h2>Search Results .:</h2></div>`;
      j.html  += html;
      j.result = true;
      j.action = j.req;

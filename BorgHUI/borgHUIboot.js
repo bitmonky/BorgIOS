@@ -20,6 +20,7 @@
 var hasAccount = false;
 var qryAction  = 'not set';
 var borgMUID   = null;
+var videoFObj  = null;
 
 var service = {
   host     : SERVICE_HOST,
@@ -50,13 +51,19 @@ function handleBorgMsg(msg){
     return;
   }
   if (msg.req === 'updateMemQry'){
-    doUpdateMemQry(msg);
-    return;
+    if (msg.error === true) {
+      hideDiv(`mem-${msg.hash}`);
+      return;
+    } 
+    if (msg.display === 'qry'){
+      doUpdateMemQry(msg);
+      return;
+    }
+    doUpdateFullMemory(msg); 
   }
 }
 function doUpdateMemQry(msg){
   let div = document.getElementById(`mem-${msg.hash}`);
-  console.log(`doUpdateMemQry():: div`,msg);
   if (div){
     if (msg.error === true){
       div.style.display='none';
@@ -67,7 +74,6 @@ function doUpdateMemQry(msg){
     let memoryData;
     try {
       memoryData = JSON.parse(msg.html);
-      console.log(memoryData);
     } catch(e) {
       // If it's not JSON, use the html as is
       div.innerHTML = msg.html;
@@ -75,8 +81,8 @@ function doUpdateMemQry(msg){
     }
     
     // Build the listing HTML
-    let listingHTML = '';
-
+    let listingHTML = `<a href="javascript:doGetFullMemory('${msg.ownMUID}','${msg.memoryID}','${msg.hash}');"><div>`;
+    
     if (memoryData.renderHtml){
       div.innerHTML = memoryData.renderHtml;
       return;
@@ -105,9 +111,100 @@ function doUpdateMemQry(msg){
         </div>
       </div>
       <div style="clear: both;"></div>
-    `;
+    </div></a>`;
     
     div.innerHTML = listingHTML;
+  }
+}
+function doUpdateFullMemory(msg){
+  
+  let div = document.getElementById(`servSidePanel`);
+  showDiv(`servSidePanel`);
+  let memoryData;
+  try {
+    memoryData = JSON.parse(msg.html);
+    console.log(memoryData);
+  } catch(e) {
+    // If it's not JSON, use the html as is
+    div.innerHTML = msg.html;
+    return;
+  }
+
+  let media = '';
+  let isVideo = false;
+  if (memoryData.ftype && memoryData.ftype.startsWith('image/')) {
+      media = `
+        <div style="display: flex; align-items: center; justify-content: center;">
+        <img src="http://localhost/netREQ/file=${memoryData.memoryID}"
+               alt="${memoryData.title || 'Memory image'}"
+               style="width:calc(100% - .5em);margin:1em 0em 1.5em 0em;">
+        </div>
+      `;
+  }
+
+  if (memoryData.ftype && memoryData.ftype.startsWith('video/')) {
+     isVideo = true;
+     media = `
+        <div style="display: flex; align-items: center; justify-content: center;margin:1em 0em 1.5em 0em;">
+        <video id='videoFSpot' style='text-align: center;width:100%;height:45em;' controls>
+        <source src="http://localhost/netREQ/file=${memoryData.memoryID}" type="video/mp4"
+          alt="${memoryData.title || 'Memory video'}"
+          style="width:calc(100% - .5em);margin:1em 0em 1.5em 0em;">
+        </video>
+        </div>
+      `;
+  }
+
+  const htm = `<div class="infoCardClear" style="width:100%";>
+        <div style="font-weight: bold; font-size: 1.8em;">
+          ${memoryData.title || 'Untitled'}
+        </div>
+        ${media}
+        ${memoryData.description ? `<div style="color: #ddd; margin: 0.3em 0;">${memoryData.description}</div>` : ''}
+        <div style="font-size: 0.85em; color: #999;">
+          ${memoryData.tags ? `Tags: ${memoryData.tags.join(', ')}` : ''}
+          ${memoryData.date ? ` • ${memoryData.date}` : ''}
+        </div>
+        </div> 
+  `;
+  div.innerHTML = htm;
+  if (isVideo){
+    videoFObj = document.getElementById('videoFSpot');   
+    if (videoFObj){
+      if (!videoFObj._hasMetaListener) {
+        videoFObj.addEventListener("loadedmetadata", onFVMetaLoaded);
+        videoFObj._hasMetaListener = true;
+      }
+    }
+  }
+}
+function doGetFullMemory(ownID,memoryID,memoryHash){
+  sendRequest({
+    req: "displayBorgMemory",
+    parms: {
+      ownMUID    : ownID,
+      memoryID   : memoryID,
+      memoryHash : memoryHash,
+    }
+  });
+}
+function onFVMetaLoaded() {
+  const video = videoFObj;
+
+  console.log("metadata loaded");
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+
+  video.loop = true;
+
+  if (h > w) {
+    console.log("Portrait");
+    video.classList.add("portraitVideo");
+    video.classList.remove("landscapeVideo");
+  } else {
+    console.log("Landscape");
+    video.classList.add("landscapeVideo");
+    video.classList.remove("portraitVideo");
   }
 }
 function doUpdateMemQryOld(msg){
@@ -190,6 +287,28 @@ function init() {
   getBorgTime();
   getAccountInfo();
 }
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {  
+    event.preventDefault();
+    sendChatMsg();
+  }
+});
+function sendChatMsg(){
+  cbox = document.getElementById('sideChatInput');
+  if (!cbox || document.activeElement !== cbox){
+    return;
+  }
+  let msg = cbox.value; 
+  resetTextarea(cbox);
+  return;
+}
+function resetTextarea(textarea) {
+  textarea.value = '';
+  textarea.setSelectionRange(0, 0);  // Reset cursor
+  textarea.scrollTop = 0;            // Reset scroll position
+  textarea.focus();
+  alert('Chat Feature Coming Soon...');
+}
 function getBorgTime(){
   console.log(`getBorgTime():: TTTT:TTT:TTTT: `);
   sendRequest({req: "sendBorgTime"});
@@ -201,8 +320,8 @@ function doUpateBorgTime(j){
 }
 function updateBorgClock() {
   const now = new Date(); // this uses your overridden Date.now()
-  document.getElementById('borgClock').textContent =
-  new Date().toLocaleString();
+  const clock = document.getElementById('borgClock');
+  if (clock) clock.textContent = `Borg Unified Time: ${new Date().toLocaleString()}`;
 }
 
 function chkYouTubeImage(img) {
@@ -338,6 +457,7 @@ function doSendUpdateResByUrl(url, res, callbck = null, extendTime = 50) {
 }
 
 function doSendBorgFileSys() {
+  hideDiv(`servSidePanel`);
   sendRequest({
     req: "sendBorgFileSys",
     parms: { mode: MODE }
@@ -554,14 +674,16 @@ function doSendPeerMemQry(hashStr = null) {
   });
 }
 function doSearch() {
-  hideDiv("transactionSpot");
-
   var cqry   = document.getElementById("sQry");
   var prompt = cqry.value || "";
 
   cqry.value = prompt;
 
-  showSearching();
+  if (chatStatus === 'closed'){
+    showSideChat();
+  }
+
+  showDiv(`borgChatLoading`);
 
   var ranTime = new Date().getMilliseconds();
 
@@ -697,8 +819,8 @@ function handleResponse(j) {
   }
 
   if (j.action === "sendBorgChatMsg") {
-    hideSearching();
-    doShowQryResults(j);
+    //hideSearching();
+    doShowBorgResponse(j);
   }
 
   if (j.action === "sendPeerQryResults") {
@@ -863,7 +985,21 @@ function doShowStoresList(j) {
     document.body.appendChild(spot);
   }
 }
-
+function doShowBorgResponse(j) {
+  if (chatStatus === 'closed'){
+    showSideChat();
+  }
+  hideDiv(`borgChatLoading`);
+  var spot = document.getElementById("wzStreamDisplay");
+  if (spot) {
+    spot.innerHTML = j.html;
+  } else {
+    spot = document.createElement("DIV");
+    spot.id = "serviceMenu";
+    spot.innerHTML = j.html;
+    document.body.appendChild(spot);
+  }
+}
 function doShowQryResults(j) {
   var spot = document.getElementById("serviceMenu");
   if (spot) {
@@ -981,6 +1117,9 @@ function doShowAccountInfo(j) {
   if (!spot) return;
   if (!j.nFarms) j.nFarms = 'No Farms Registerd ';
   var htm = "<div ID='doShowAcc' class='infoCardClear' style='width:100%'>";
+  htm += '   <div id="borgClock" style="width:100%;color:#ababab;text-align:right;padding-bottom:0.5em;';
+  htm += `font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;monospace; `;
+  htm += 'font-size: 16px;"></div>';
   htm += "<a href='javascript:openBorgUserEdit(false);'>";
   htm += "<img ID='borgMyICON' style='width:5em;height:6em;margin:0em 0em 1.5em 1.5em;float:right;border-radius:50%;' src='" + j.icon + "'/></a>";
   htm += "Account Owner: " + format(j.name);

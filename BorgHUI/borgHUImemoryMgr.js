@@ -799,6 +799,8 @@ class BorgHUImemoryMgr {
             portal   : data.toHost,
             shardId  : data.hash,
             shardIdx : data.index,
+            ownerID  : data.ownerID,
+            memoryID : data.hashID,
             error    : data.error,
             shard    : data.data
           }
@@ -895,7 +897,7 @@ class BorgHUImemoryMgr {
     // remove stream
     this.dstreams.delete(stream.streamId);
   }
-  async doOpenMemStream(memories, service, qry, winSize = 12) {
+  async doOpenMemStream(memories, service, qry, dispType='qry', winSize = 12) {
     console.log(`doOpenStream():: repo.file`,memories);
 
     const fmap = {
@@ -903,6 +905,7 @@ class BorgHUImemoryMgr {
       inRetry      : new Map(),
       nextToSend   : 0,
       service      : service,
+      dispType     : dispType,
       streamId     : this.net.wallet.calculateHash(JSON.stringify(memories)),
       filename     : this.net.wallet.calculateHash(qry),
       origName     : qry.slice(0,80),
@@ -1245,13 +1248,22 @@ class BorgHUImemoryMgr {
 
     // If this is a video send shard directly to video
 
-    // 1b. Send Memory To Memory Qry Dispplay
+    // 1b. Send Memory To Memory Qry to Display
     const memIdx = shard.shardId;
 
     console.log(`Memory Found `,shard);
-    // Use BorgEnventAPI to send memory to browser.
-    this.net.pushEvent('borg-event',{req:"updateMemQry",error:false,hash:shard.shardId,html:shard.shard.toString()});
 
+    // Use BorgEnventAPI to send memory to browser.
+    this.net.pushEvent(
+      'borg-event',{
+         req      : "updateMemQry",
+         error    : false,hash:shard.shardId,
+         display  : stream.dispType,
+         ownMUID  : shard.ownerID,
+         memoryID : shard.memoryID,
+         html     : shard.shard.toString()
+    });
+    console.log(`Sending to browser`,shard,stream.dispType);
     const result = await this.writeShardToFile(stream,shard);
     if (!result.ok) {
       console.warn(
@@ -1744,6 +1756,7 @@ class BorgHUImemoryMgr {
                shard.toHost = msg.toHost;
                shard.error = false;
                shard.data  = body;
+               console.log(`GOTSHARD`,shard);
              }
              this.net.emit('requestBinShardOk',shard);
              return;
