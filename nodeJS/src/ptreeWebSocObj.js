@@ -4,7 +4,7 @@ const http = require('http');
 const fs = require('fs');
 
 class PeerWebSocObj {
-  constructor(peerTree, wsPort, secure = false) {
+  constructor(peerTree, wsPort, secure = true) {
     this.peer = peerTree;
     this.port = wsPort;
     this.secureReceptor = secure;
@@ -48,8 +48,8 @@ class PeerWebSocObj {
       // Allowlist enforcement
       if (this.secureReceptor && !this.allow.includes(clientIP)) {
         console.error(`Rejected WebSocket connection from ${clientIP}`);
-        ws.close(1008, 'Not allowed');
-        return;
+        //ws.close(1008, 'Not allowed');
+        //return;
       }
 
       const clientId = this._generateClientId();
@@ -99,13 +99,13 @@ class PeerWebSocObj {
   readConfigFile() {
     try {
       if (!this.secureReceptor) throw { message: 'PeerWebSocObj: secureReceptor NOT set to true' };
-      const raw = fs.readFileSync('keys/mailTree.conf').toString();
+      const raw = fs.readFileSync('keys/chatOrganCell.conf').toString();
       const j = JSON.parse(raw);
       this.secureReceptor = j.receptor.secure || false;
       this.port = j.receptor.port || this.port;
       this.allow = j.receptor.allow || this.allow;
     } catch (err) {
-      this.secureReceptor = false;
+      //this.secureReceptor = false;
       console.error('WARNING - WebSocket Security Mode is OFF receptor is public::: !', err.message);
     }
   }
@@ -238,7 +238,8 @@ class PeerWebSocObj {
     try {
       // Use the peer's net.verifyLogin if available
       if (this.peer && this.peer.net && this.peer.net.verifyLogin) {
-        const doTry = this.peer.net.verifyLogin(borgToken);
+        const tok = {borgToken:borgToken};
+	const doTry = this.peer.net.verifyLogin(tok);
         if (doTry.result === true) {
           return true;
         }

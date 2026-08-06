@@ -110,6 +110,33 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
     super(peerTree, port);
     this.cell = peerTree;
   }
+  async handleWSMessage(msg, ws, clientId, identity) {
+    // Prepare the response with additional data
+    const responseMsg = {
+      ...msg,
+      serverReceived: Date.now(),
+      handledBy: this.constructor.name,
+      json : {},
+      status: 'processed'
+    };
+    console.log(`handleWSMessage():: `,responseMsg,clientId,identity);
+
+    switch (msg.req) {
+      case 'createBorgChannel':
+        responseMsg.json = await this.doCreateBorgChannel(msg);
+        break;
+
+      default:
+        responseMsg.json = {error: true,msg: 'No Handler Found For Request'};
+    }
+  
+    // Send the enhanced response using parent logic
+    super.handleWSMessage(responseMsg, ws, clientId, identity);
+  }
+  async doCreateBorgChannel(msg){
+    console.log(`doCreateBorgChannel():: starting`,msg);
+    return {error:true,msg: 'doCreateBorgChannel method incomplete'};
+  }  
 }
 
 // ---------------------------------------------------------
