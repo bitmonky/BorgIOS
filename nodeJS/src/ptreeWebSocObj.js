@@ -5,7 +5,7 @@ const fs = require('fs');
 
 class PeerWebSocObj {
   constructor(peerTree, wsPort, secure = true) {
-    this.peer = peerTree;
+    this.cell = peerTree;
     this.port = wsPort;
     this.secureReceptor = secure;
     this.allow = ["127.0.0.1"];
@@ -190,6 +190,10 @@ class PeerWebSocObj {
           reqId: borgToken.reqId,
           reqTime: borgToken.reqTime
         };
+        console.log(` _handleAuthentication():: result`,result);
+        this._setupClientConnection(ws, clientId);
+
+        this.handleWSNewUser(borgToken);
 
         // Map Address to clientId
         this.clientIdentities.set(borgToken.Address, clientId);
@@ -236,10 +240,10 @@ class PeerWebSocObj {
 
   checkBorgToken(borgToken) {
     try {
-      // Use the peer's net.verifyLogin if available
-      if (this.peer && this.peer.net && this.peer.net.verifyLogin) {
+      // Use the cell's net.verifyLogin if available
+      if (this.cell && this.cell.net && this.cell.net.verifyLogin) {
         const tok = {borgToken:borgToken};
-	const doTry = this.peer.net.verifyLogin(tok);
+	const doTry = this.cell.net.verifyLogin(tok);
         if (doTry.result === true) {
           return true;
         }
@@ -261,9 +265,20 @@ class PeerWebSocObj {
       return false;
     }
   }
-
+  handleWSNewUser(borgToken){
+  }
   // Main message handler - to be overridden by subclasses
   handleWSMessage(msg, ws, clientId, identity) {
+    // Default implementation - echo back with identity
+    this._sendToClient(ws, {
+      type: 'response',
+      clientId: clientId,
+      address: identity.Address,
+      original: msg,
+      timestamp: Date.now()
+    });
+  }
+  replyToMessage(msg, ws, clientId, identity) {
     // Default implementation - echo back with identity
     this._sendToClient(ws, {
       type: 'response',
@@ -296,6 +311,7 @@ class PeerWebSocObj {
 
   // Send message to a specific client by ID
   sendToClient(clientId, data) {
+    console.log(`ptreeWebSocObj.js`,clientId,data);
     const ws = this._getWebSocket(clientId);
     if (ws) {
       return this._sendToClient(ws, data);
