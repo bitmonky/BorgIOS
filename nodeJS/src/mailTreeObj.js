@@ -199,6 +199,10 @@ class mailTreeCellReceptor{
                 this.reqQryBorgUsers(j.msg,res);
                 return;
               }
+              if (j.msg.req == 'findUserProfile'){
+                this.reqQryBorgUserProfile(j.msg,res);
+                return;
+              }
               if (j.msg.req == 'getInBoxKey'){
                  this.reqInBoxKey(j.msg,res);
                  return;
@@ -309,6 +313,17 @@ class mailTreeCellReceptor{
       return;
     }
     res.end(JSON.stringify({result:false}));
+  }
+  async reqQryBorgUserProfile(j,res){
+     const msg = {
+       to      : 'mailCells',
+       req     : 'sendUserProfile',
+       reqId   : crypto.randomUUID(),
+       ownMUID : j.ownMUID,
+     }
+     const result = await this.peer.doQryBorgUserProfile(msg);
+     res.end(JSON.stringify({result:true,tRec : result}));
+     return;
   }
   async reqQryBorgUsers(j,res){
      const msg = {
@@ -841,7 +856,11 @@ class mailTreeObj {
           console.log('DOPOW stopNodeGenIP-XX Received:',j.remIp);
           this.doPowStop(j.remIp);
         }
-        if (j.msg.req == 'sendMatchingUsers'){
+        if (j.msg.req === 'sendUserProfile'){
+          this.doSendUserProfile(j.msg,j.remIp);
+          return;
+        }
+        if (j.msg.req === 'sendMatchingUsers'){
           this.doSendUserQryResult(j.msg,j.remIp);
           return;
         }
@@ -1078,12 +1097,50 @@ class mailTreeObj {
         this.net.sendReply(remIp,reply);
      }  
   }
+  doQryBorgUserProfile(msg) {
+    return new Promise((resolve) => {
+      const results = new Map();
+
+      const mkyReply = (r) => {
+        if (r.req === 'sendUserProfileResult' && r.reqId === msg.reqId) {
+          if (r.result === true) {
+            const rec = r.tRec;
+            if (!rec.msubMUID) {
+              if (rec.msubBorgNic === null) rec.msubBorgNic = `BORG-${rec.msubMUID.slice(0, 15)}`;
+              console.log(`doQryBorgUserProfile():: setting `,rec.msubBorgNic);
+            }
+            this.net.removeListener("mkyReply", mkyReply);
+            clearTimeout(gtime);
+            resolve(rec);
+          }
+
+        }
+      };
+
+      const gtime = setTimeout(() => {
+        console.log("Qry max time Timeout:");
+        this.net.removeListener("mkyReply", mkyReply);
+
+        // Convert to sorted array on timeout too
+        const sorted = [...results.values()]
+          .sort((a, b) => a.msubMUID.localeCompare(b.msubMUID));
+
+          resolve(sorted);
+      }, 900);
+
+      // Avoid duplicate listeners
+      this.net.removeListener("mkyReply", mkyReply);
+      this.net.on("mkyReply", mkyReply);
+
+      this.net.broadcast(msg);
+    });
+  }
   doQryBorgUsers(msg) {
     return new Promise((resolve) => {
       const results = new Map();
 
       const mkyReply = (r) => {
-        if (r.req === 'endMatchingUsersResult' && r.reqId === msg.reqId) {
+        if (r.req === 'sendMatchingUsersResult' && r.reqId === msg.reqId) {
           if (r.result === true && Array.isArray(r.tRec)) {
             r.tRec.forEach((rec) => {
               if (!results.has(rec.msubMUID)) {
@@ -1126,9 +1183,34 @@ class mailTreeObj {
       this.net.broadcast(msg);
     });
   }
+  doSendUserProfile(j,remIp){
+     var reply = {
+       req    : 'sendUserProfileResult',
+       reqId  : j.reqId,
+       result : false
+     }
+     const SQL = `select * from mailSubscriber where msubMUID = ?`;
+     const params = [j.ownMUID];
+     console.log(`doSendUserProfile(j,remIp):: `,SQL,params);
+
+     con.query(SQL ,params, async(err, result,fields)=>{
+       if (err){
+         console.log(err);
+       }
+       else {
+         if (result.length == 0) {
+           return;
+         }
+         reply.result = true;
+         reply.tRec   = result[0];
+
+         if (result.length > 0 ) this.net.sendReply(remIp,reply);
+       }
+     });
+  }
   doSendUserQryResult(j,remIp){
      var reply = {
-       req    : 'endMatchingUsersResult',
+       req    : 'sendMatchingUsersResult',
        reqId  : j.reqId,
        result : false
      }

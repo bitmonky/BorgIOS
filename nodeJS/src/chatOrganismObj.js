@@ -2,9 +2,10 @@
 * Distributed Chat Organism
 */
 
-const PtreeReceptor    = require('./ptreeReceptorObj');
-const PtreeWebSoc      = require('./ptreeWebSocObj');
-const {MkyWebConsole}  = require('./networkWebConsole.js');
+const PtreeReceptor       = require('./ptreeReceptorObj');
+const PtreeWebSoc         = require('./ptreeWebSocObj');
+const {MkyWebConsole}     = require('./networkWebConsole.js');
+const {BorgIOSptreeAPI}   = require("./borgIOSptreeAPI.js");
 
 const db            = require('./bchatDB');
 const crypto        = require('crypto');
@@ -31,7 +32,7 @@ class channelObj {
     this.title = null;
     this.desc  = null;
     this.chats = [];
-    this.users = [];
+    this.users = new Set();
     this.memories = new Map;  // Chat History Log a collection of chatMemoriesObj
   }
   pushNewMsg(ownMUID,msg){
@@ -47,7 +48,12 @@ class channelObj {
         this.net.websoc.sendNewMsg(user,chat);
       }
     });
-    this.cell.pushOutNewChat(ownMUID,msg);
+    msg.chanID = this.ID;
+    msg.ownMUID = ownMUID;
+    if (!msg?.isBCast === true){
+      msg.isBCast = true;
+      this.cell.pushOutNewChat(ownMUID,msg);
+    }
   }
 }
 // ------------------------------------------------------------
@@ -71,6 +77,30 @@ class channelMgr {
     if (channel) channel.pushNewMsg(ownMUID,msg);
     else console.log(`pushNewMsg(ownMUID,msg):: channel not found `);
   }
+  addUser(userMUID,chanID){
+    const channel = this.liveChannels.get(chanID);
+    channel.users.add(userMUID);
+    console.log(`addUser(userMUID,chanID):: `,channel.users);    
+  }
+  getUserProfiles(users){
+    const ups = [];
+    users.forEach( (userId) =>{
+      const profile = this.cell.activeUsers.get(userId);
+      ups.push(profile); 
+    });
+    return ups;
+  }
+  async getChanState(chanID){
+    const channel = this.liveChannels.get(chanID);
+    let state = {
+      chanID : chanID,
+      users  : this.getUserProfiles(channel.users),
+      chats  : channel.chats,
+      title  : channel.title,
+      desc   : channel.desc
+    }
+    return state;
+  }
   getColdChannelById(roomId){
     console.log(`getColdChannelById(msg.roomId):: `,roomId)
     return null;
@@ -93,7 +123,8 @@ class channelMgr {
 }
 class ChatOrganismObj {
   constructor(peerTree, reset) {
-    this.chatLog = [];   // distributed chat history
+    this.PTree        = new BorgIOSptreeAPI(peerTree);
+    this.activeUsers  = new Map(); 
     this.reset        = reset;
     this.isRoot       = null;
     this.status       = 'starting';
@@ -113,7 +144,22 @@ class ChatOrganismObj {
   // Broadcast a chat message to all nodes
   // ---------------------------------------------------------
   pushOutNewChat(muid,msg){
+    const pmsg = {
+      msg : msg
+    }
     console.log(`pushOutNewChat(muid,msg):: pushing new msg`,muid,msg);  
+    this.net.broadcast(msg)
+  }
+  async attachUser(userMUID){
+    // Keep a map of user profile info to reduce calls to mailTree 
+    const profile = await this.PTree.mailTreeQryBorgUserProfile(userMUID);
+    console.log(`attachUser(userMUID):: profile`,profile);
+    if (profile.error === false && profile.status === 200 && profile.json.result === true){
+      this.activeUsers.set(userMUID,profile.json.tRec);
+      console.log(`attachUser(userMUID):: `,this.activeUsers);
+      return;
+    }
+    console.log(`attachUser(userMUID):: FAILED `,userMUID);
   }
   sendChatMessage(username, text) {
     const msg = {
@@ -141,6 +187,11 @@ class ChatOrganismObj {
       //console.log('ignoring bcast to self',this.net.nIp);
       return;
     }
+    if (j.msg.type === 'chat'){
+      this.doPushOutNewChat(j.remIp,j.msg);
+      return;
+    }
+
     if (j.msg.req){
       if (j.msg.req == 'sendNodeList'){
         this.doPow(j.msg,j.remIp);
@@ -171,6 +222,17 @@ class ChatOrganismObj {
     if (!j.msg)
       return;
     const msg = j.msg;
+  }
+  async doPushOutNewChat(remIp,msg) {
+    if (this.websoc.rooms === null) await this.websoc.init();
+    if (this.websoc.rooms === null) {
+      this.websoc.rooms = new channelMgr(this);
+    }
+    await this.attachUser(msg.ownMUID);
+    this.websoc.rooms.addUser(msg.ownMUID,this.net.borgMasterID);
+
+    await this.websoc.rooms.pushNewMsg(msg.ownMUID,msg);
+
   }
   // ---------------------------------------------------------
   // RPC: direct message to a specific node
@@ -451,13 +513,15 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
     if (this.rooms === null)
       this.rooms = new channelMgr(this.cell);
     
-    //this.rooms.addUser(borgToken);
+    await this.cell.attachUser(borgToken.Address);
+
+    this.rooms.addUser(borgToken.Address,this.cell.net.borgMasterID);
     const msg = {
       type: 'openBorgChannel',
       chan: {
         chanID    : this.cell.net.borgMasterID,
         title     : 'Borg Space Lounge',
-        chanState : {},
+        chanState : await this.rooms.getChanState(this.cell.net.borgMasterID)
       },
       timestamp: Date.now()
     } 
