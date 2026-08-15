@@ -5,25 +5,25 @@ let dba = null;
 
 // Load DB config
 try {
-  dba = fs.readFileSync('shellfarmerdbconf');
+  dba = fs.readFileSync('bchatdbconf');
 } catch {
-  console.log('database config file `shellfarmerdbconf` NOT Found.');
+  console.log('database config file `bchatdbconf` NOT Found.');
 }
 
 try {
   dba = JSON.parse(dba);
 } catch {
-  console.log('Error parsing `shellfarmerdbconf` file');
+  console.log('Error parsing `bchatdbconf` file');
 }
 
-let conSF = createConnectionSF();
+let con = createConnection();
 
-function createConnectionSF() {
+function createConnection() {
   const connection = mysql.createConnection({
     host: "127.0.0.1",
     user: dba.user,
     password: dba.pass,
-    database: "shellFarmer",
+    database: "bchat",
     dateStrings: "date",
     multipleStatements: true,
     supportBigNumbers: true
@@ -34,7 +34,7 @@ function createConnectionSF() {
       console.error('Error connecting to BTrader database:', err);
       setTimeout(createConnection, 2000); // Retry
     } else {
-      console.log('Connected to BTrader database');
+      console.log('Connected to bchat database');
     }
   });
 
@@ -46,7 +46,7 @@ function createConnectionSF() {
 
       console.log('Reconnecting after fatal error...');
       connection.destroy();
-      con = createConnectionSF(); // Reconnect
+      con = createConnection(); // Reconnect
     }
   });
 
@@ -54,6 +54,6 @@ function createConnectionSF() {
 }
 
 module.exports = {
-  getConnectionSF: () => conSF
+  getConnection: () => con
 };
 
