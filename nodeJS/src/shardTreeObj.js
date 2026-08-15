@@ -396,7 +396,7 @@ class shardTreeCellReceptor{
 
     j.shard.pubKey = j.borgToken.pubKey;
 
-    const dLoc = this.peer.deleteLocalShard(j);
+    const dLoc = await this.peer.deleteLocalShard(j);
 
     const dres = await this.peer.receptorReqDeleteMyShard(j);
     if (dres.length + dLoc == 0)
@@ -994,36 +994,38 @@ class shardTreeObj {
   }
   async deleteLocalShard(j){
     return new Promise((resolve)=>{
-      var SQL = `SELECT count(*) nRec ,shardOwnerID,shardOwnSignature as sownID FROM shardTree.shards where shardHash = ? and shardHashID = ?`;
+      var SQL = `SELECT count(*) nRec ,shardOwnerID as sownID,shardOwnSignature FROM shardTree.shards where shardHash = ? and shardHashID = ?`;
       const values = [j.shard.hash,j.shard.hashID];
       console.log(`deleteLocalShard():: `,SQL,values,j);
-
-      con.query(SQL , async(err, result,fields)=>{
+      
+      con.query(SQL,values, async(err, result,fields)=>{
         if (err){
           console.log(err);
           resolve(0);
           return;
         }
         else {
-          if (result.length === 0){
+          const tRec = result[0];
+          if (tRec.nRec == 0){
             console.log(`deleteLocalShard():: shard dbRec not found `,result);
-            resove(0);
+            resolve(0);
             return;
           }
-          const tRec = result[0];
+          let sSig;
           try {
-            const sSig = JSON.parse(tRec.shardOwnSignature);
+            sSig = JSON.parse(tRec.shardOwnSignature);
           } catch(e) {
             console.log(`deleteLocalShard():: `,e);
             resolve(0);
             return;
           }
+          console.log(`deleteLocalShard():: sSig`,sSig,tRec); 
           if (sSig.sig !== j.shard.delAuth){
             console.log(`deleteLocalShard():: authFailed`,j.shard.delAuth,sSig.sig);
             resolve(0);
             return;
           }
-          SQL = `Delete from FROM shardTree.shards where shardHash = ? and shardHashID = ?`;
+          SQL = `Delete from shardTree.shards where shardHash = ? and shardHashID = ?`;
           con.query(SQL ,values, async(err, result,fields)=>{
             if (err){
               console.log(`deleteLocalShard()::`,err);
@@ -1031,7 +1033,7 @@ class shardTreeObj {
               return;
             }
           });
-          sownID = result[0].sownID;
+          const sownID = tRec.sownID;
           var fsdat = null;
           let fname = j.shard.hash+'.srd';
           if (sownID) fname = `${sownID}-${fname}`;
@@ -1051,6 +1053,9 @@ class shardTreeObj {
   async checkLocalForShard(j){
     return new Promise((resolve)=>{
       var SQL = `SELECT count(*) nRec ,shardOwnerID as sownID FROM shardTree.shards where shardHash ='${j.shard.hash}' and shardHashID = '${j.shard.hashID}'`;
+      if (j.shard?.isMemory === true) {
+        SQL = `SELECT count(*) nRec ,shardOwnerID as sownID FROM shardTree.shards where shardHash ='${j.shard.hash}'`;
+      }
       //console.log(`checkLocalForShard():: `,SQL,j);
 
       con.query(SQL , async(err, result,fields)=>{
@@ -1103,7 +1108,11 @@ class shardTreeObj {
   }
   doSendShardToOwner(j,remIp){
      console.log('shard request from: ',remIp);
+  
      var SQL = `SELECT count(*) nRec ,shardOwnerID as sownID FROM shardTree.shards where shardHash ='${j.shard.hash}' and shardHashID = '${j.shard.hashID}'`;
+     if (j.shard?.isMemory === true) {
+       SQL = `SELECT count(*) nRec ,shardOwnerID as sownID FROM shardTree.shards where shardHash ='${j.shard.hash}'`;
+     }
 
      con.query(SQL , async(err, result,fields)=>{
        if (err){
@@ -1426,7 +1435,7 @@ class shardTreeObj {
        //console.log(' receptorReqSendMyShard):: Send Shard Request Timeout:',j);
         this.net.removeListener('mkyReply', mkyReply);
         resolve(null);
-      },15950);
+      },1300);
      //console.log('bptorReqSendMyShard()::  request for shard data: ',j);
       var req = {
         to    : 'shardCells',
@@ -1460,6 +1469,9 @@ class shardTreeObj {
     if (doTry.result === 'OK'){
       //console.log(`doSendByBinStream():: doTry`,doTry);
       const shardBuf = await this.doWaitForShard(r.shardId,doTry.strReqId);
+      if (shardBuf === null){
+        return null;
+      } 
       const shardCopy = Buffer.from(shardBuf);
       console.log(`this.auditShardHealth(${r.shardHID},${r.shardId},shardCopy);`);
       this.auditShardHealth(r.shardHID,r.shardId,shardCopy);
@@ -1474,7 +1486,7 @@ class shardTreeObj {
        //console.log('doWaitForShard():: wait for Shard binary Timeout:',shardId);
         this.net.removeListener('shardReady', mkyReply);
         resolve(null);
-      },950);
+      },1500);
 
       this.net.on('shardReady',mkyReply = (s) =>{
        //console.log(`doWaitForShard():: heard for reqId: ${reqId}`,s);
@@ -1551,7 +1563,7 @@ class shardTreeObj {
            return;
          }
          if (nCopys > nMin ){
-           this.pruneShardCopys(shardId,hosts);   
+           this.pruneShardCopys(shardId,hash,hosts);   
            resolve('pruning');
            return;
          }
@@ -1567,7 +1579,7 @@ class shardTreeObj {
       this.net.broadcast(bcast);
     });
   }
-  async pruneShardCopys(shardId,hosts){
+  async pruneShardCopys(shardId,hash,hosts){
     console.log(`pruneShardCopys():: `,shardId,hosts.size);
     // pic one shard randomly from hosts
     const arr = [...hosts];
@@ -1580,7 +1592,7 @@ class shardTreeObj {
       response : 'deleteShardResult',         
       shard : {
         hash   : hash,
-        hashID : shardID,
+        hashID : shardId,
       }
     }
     let doTry = await this.net.reqReply.waitForReply(ip,msg);
@@ -1830,9 +1842,9 @@ class shardTreeObj {
       },950);
 
       this.net.on('shardReady',mkyReply = (s) =>{
-       //console.log(`waitForStoreShardBuf():: heard for reqId: ${shardId}`,s);
-        if (s.fileInfo.shard.hash === shardId){ 
-         //console.log(`waitForStoreShardBuf():: received shard`,shardId);
+        console.log(`waitForStoreShardBuf():: heard for reqId: ${shardId}`,s);
+        if (s.fileInfo?.shard?.hash === shardId || s.fileInfo === `ftree/${shardId}.srd`){ 
+          console.log(`waitForStoreShardBuf():: received shard`,shardId);
           clearTimeout(gtime);
           this.net.removeListener('shardReady', mkyReply);
           resolve(s);

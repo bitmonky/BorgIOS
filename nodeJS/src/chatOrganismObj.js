@@ -42,19 +42,50 @@ class channelObj {
       time : msg.serverReceived
     }
     this.chats.push(chat);
-    console.log(`pushNewMsg():: `,msg,this.chats);
+    console.log(`pushNewMsg(ownMUID,msg):: `,this.cell.websoc.loungeHosts,this.cell.net.rnet.myIp);
+ 
+    // Distribute new msg 
+
+    // 1. Persist New Chat To Database.
+    if (msg?.isBCast !== true){
+      this.cell.websoc.loungeHosts.forEach((host)=>{
+        console.log(`pushNewMsg(ownMUID,msg):: persist`);
+        this.cell.writeNewChatToChanLog(this.ID,chat);
+      });
+    }
+
+    console.log(`pushNewMsg():: `,msg,this.chats,this.users);
+    // 2. push message to connected clients.
     this.users.forEach( (user) => {
-      if (user !== ownMUID){
-        this.net.websoc.sendNewMsg(user,chat);
+      if (user !== ownMUID ){
+        this.cell.websoc.sendNewMsg(this.ID,user,chat);
       }
     });
+    
+    // 3. push out to other hotNodes for the channel.
     msg.chanID = this.ID;
     msg.ownMUID = ownMUID;
-    if (!msg?.isBCast === true){
+    if (msg?.isBCast !== true){
       msg.isBCast = true;
       this.cell.pushOutNewChat(ownMUID,msg);
     }
   }
+  pushToClientsNewUser(newUserID,profile)  {
+    console.log(` pushToClientsNewUser(newUserID,profile):: starts here:`,newUserID,profile);
+    const msg = {
+      type         : 'borgUserJoined',
+      user : {
+        newUserID    : newUserID,
+        profile      : profile
+      }
+    }
+    this.users.forEach( (user) => {
+      if (user !== newUserID ){
+        this.cell.websoc.sendToAddress(user, msg);
+      }
+    });
+  }
+
 }
 // ------------------------------------------------------------
 // Manages the current Nodes active chat channels
@@ -80,7 +111,20 @@ class channelMgr {
   addUser(userMUID,chanID){
     const channel = this.liveChannels.get(chanID);
     channel.users.add(userMUID);
+    const profile = this.cell.activeUsers.get(userMUID);
+   
     console.log(`addUser(userMUID,chanID):: `,channel.users);    
+
+    // push out new user joinned to network.
+
+    if (chanID === this.cell.net.borgMasterID){
+      this.websoc.hotNodes.forEach(( node) => {
+        if (node.remIp !== this.cell.net.rnet.myIp){
+          this.cell.doNodePushOutNewUser(node.remIp,chanID,userMUID,profile);
+        }
+      });
+    }
+    channel.pushToClientsNewUser(userMUID,profile);
   }
   getUserProfiles(users){
     const ups = [];
@@ -92,6 +136,7 @@ class channelMgr {
   }
   async getChanState(chanID){
     const channel = this.liveChannels.get(chanID);
+    console.log(`getChanState(chanID):: channel`,channel);
     let state = {
       chanID : chanID,
       users  : this.getUserProfiles(channel.users),
@@ -115,8 +160,6 @@ class channelMgr {
     lounge.title  = 'Borg Space Lounge';
     lounge.desc   = 'Relax and enjoy the space.';
     lounge.ownID  = this.cell.net.borgMasterID;
-
-    console.log(`getBorgLounge():: `,lounge);
 
     return {roomId:lounge.ID,lounge}
   }
@@ -145,10 +188,41 @@ class ChatOrganismObj {
   // ---------------------------------------------------------
   pushOutNewChat(muid,msg){
     const pmsg = {
+      req : 'pushOutNewChat',
       msg : msg
     }
     console.log(`pushOutNewChat(muid,msg):: pushing new msg`,muid,msg);  
-    this.net.broadcast(msg)
+    // pass message to the other hotNodes for distribution 
+
+    this.websoc.hotNodes.forEach( (node) => {
+      if (node.remIp !== this.net.rnet.myIp) {
+        this.net.sendMsg(node.remIp,msg);
+      }
+    });
+  }
+  doNodePushOutNewUser(remIp,chanID,userId,profile){
+    const msg = {
+      req     : 'pushNewUserToClients',    
+      chanId  : chanId,
+      userId  : userId,
+      profile : profile
+    }
+    this.net.sendMsg(remIp,msg);
+  }
+  async writeNewChatToChanLog(chanId,chat) {
+    const SQL = 'INSERT into `bchat`.`tblChanState` (csCCMasterID,csFrom,csText,csTime) values (?,?,?,?) ';
+    const params = [chanId,chat.from,chat.text,chat.time];
+    const newChatId = await new Promise((resolve, reject) => {
+      this.db.query(SQL, params, (err, result) => {
+        if (err) {
+          resolve(null);
+          reply.result = 'DB_FAIL';
+          return;
+        }
+        resolve('OK');
+      });
+    });
+    console.log(`writeNewChatToChanLog(chanId,chat):: `,chanId,chat,SQL,params,newChatId);  
   }
   async attachUser(userMUID){
     // Keep a map of user profile info to reduce calls to mailTree 
@@ -182,17 +256,17 @@ class ChatOrganismObj {
   // Handle incoming broadcast chat messages
   // ---------------------------------------------------------
   async handleBCast(j) {
-    //console.log('handleBCast():: ',j);
-    if (j.remIp == this.net.nIp) {
-      //console.log('ignoring bcast to self',this.net.nIp);
-      return;
-    }
-    if (j.msg.type === 'chat'){
-      this.doPushOutNewChat(j.remIp,j.msg);
+    console.log('handleBCast():: heard! ',j);
+    if (j.remIp == this.net.nIp && j.msg?.include !== 'self') {
+      console.log('ignoring bcast to self',this.net.nIp,j);
       return;
     }
 
     if (j.msg.req){
+      if (j.msg.req === 'findHotChan'){
+        this.doFindHotChan(j.msg,j.remIp);
+        return;
+      }
       if (j.msg.req == 'sendNodeList'){
         this.doPow(j.msg,j.remIp);
         return;
@@ -224,6 +298,11 @@ class ChatOrganismObj {
     const msg = j.msg;
   }
   async doPushOutNewChat(remIp,msg) {
+    await this.attachUser(msg.ownMUID);
+    this.websoc.rooms.addUser(msg.ownMUID,this.net.borgMasterID);
+    await this.websoc.rooms.pushNewMsg(msg.ownMUID,msg);
+  }
+  async doOpenNewHotNode(remIp,msg) {
     if (this.websoc.rooms === null) await this.websoc.init();
     if (this.websoc.rooms === null) {
       this.websoc.rooms = new channelMgr(this);
@@ -287,13 +366,36 @@ class ChatOrganismObj {
       this.handleDirectChatReq(j);
       return true;
     }
+    if (j.req === 'pushOutNewChat'){
+      this.doPushOutNewChat(j.remIp,j.msg);
+      return;
+    }
     if (j.req === 'storeNewChannel'){
       this.doStoreNewChannel(j);
       return true;
     }
     return false;
   }
+  async findActiveChanHosts(chanId=this.net.borgMasterID) {
+    let BCast = {
+      req      : 'findHotChan',
+      response : 'findHotChanResult',
+      chanId   : chanId,
+      include  : 'self'
+    }
+    let hotNodes = await this.net.bcastMgr.getReplies(BCast,500);
+
+    console.log(`checkForBorgMasterChannel():: hotnodes `,hotNodes);
+    if (Array.isArray(hotNodes)) {
+      return hotNodes.map(item => ({ remIp: item.reply.remIp, status: item.reply.status }));
+    }
+    if (hotNodes.result === 'NOBODY') {
+      return null;
+    }
+    return false;
+  }
   async cellCreateBorgChannel(j){
+
     let found = await this.checkForBorgMasterChannel();
     console.log(`cellCreateBorgChannel():: found`,found);
     if (found === false || found === null ){
@@ -361,24 +463,46 @@ class ChatOrganismObj {
   async checkForBorgMasterChannel(){
     let BCast = {
       req      : 'getMasterChannel',
-      response : 'getMasterChannelResult'
+      response : 'getMasterChannelResult',
+      include  : 'self'
     }
     let doTry = await this.net.bcastMgr.getReplies(BCast);
 
-    console.log(`checkForBorgMasterChannel():: `,doTry);
-    if (Array.isArray(doTry) && doTry.length === 0) {
-      return doTry;
+    //console.log(`checkForBorgMasterChannel():: `,doTry);
+    if (Array.isArray(doTry)) {
+      return doTry.map(item => ({ remIp: item.reply.remIp, result: item.reply.result }));
     }
     if (doTry.result === 'NOBODY') {
       return null;
     }
     return false;
   }
+  async doFindHotChan(j,remIp){
+    const reply = {
+      response : 'findHotChanResult',
+      reqId    : j.reqId,
+      result   : 'OK',
+      include  : 'self'
+    }
+
+    const rooms = this.websoc.rooms
+    if (rooms === null) {
+      return;
+    }
+    let hotChan = rooms.liveChannels.get(j.chanId);
+    if (!hotChan) {
+      return;
+    } 
+    reply.status = {isHot:true,ncons: hotChan.users.size};
+    console.log(`doFindHotChan(j,remIp):: found... sending`,remIp,reply);
+    this.net.sendReply(remIp, reply);
+  }
   async doGetMasterChannel(remIp,j){
     const reply = {
       response : 'getMasterChannelResult',
       reqId    : j.reqId,
-      result   : 'OK'
+      result   : 'OK',
+      include  : 'self'
     }
     const SQL = 'Select count(*) nRec from `bchat`.`tblChatChan` where ccMasterID = ?';
     const params = [this.net.borgMasterID];
@@ -395,7 +519,7 @@ class ChatOrganismObj {
     });
     // reply only if found.
     console.log(`nRec:: is`,nRec);
-    if (nRec){
+    if (nRec > 0){
       console.log(`sending reply`,remIp,reply);
       reply.result = 'OK';
       this.net.sendReply(remIp, reply);
@@ -453,9 +577,10 @@ class ChatOrganismObj {
         this.net.removeListener('mkyReply', mkyReply);
         resolve(IPs);
       },7*1000);
-
+      const reqId = crypto.randomUUID();
       var req = {
         req    : 'sendNodeList',
+        reqId  : reqId,
         nodes  : maxIP,
         xnodes : excludeIps,
         work   : crypto.randomBytes(20).toString('hex')
@@ -463,9 +588,9 @@ class ChatOrganismObj {
 
       this.net.broadcast(req);
       this.net.on('mkyReply', mkyReply = (r)=>{
-        if (r.req == 'pNodeListGenIP'){
+        if (r.req === 'pNodeListGenIP' && r.reqId === reqId) {
           //console.log('mkyReply NodeGen is:',r);
-          if (IPs.length < maxIP  && !IPs.includes(r.remIp)){
+          if (IPs.length < maxIP  && !IPs.includes(r.remIp)) {
             IPs.push(r.remIp);
           }
           else {
@@ -487,7 +612,7 @@ class ChatOrganismObj {
     if (j.xnodes.includes(this.net.nIp)){
       return;
     }
-    this.net.gpow.doPow(2,j.work,remIp);
+    this.net.gpow.doPow(2,j.work,remIp,j.reqId);
   }
 }
 
@@ -499,20 +624,48 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
   }
   async init(){
     let found = await this.cell.checkForBorgMasterChannel();
+    this.hotNodes = await this.cell.findActiveChanHosts();
+    if (this.hotNodes?.result === 'NOBODY' || this.hotNodes === null) this.hotNodes = [];
+ 
+    console.log(`init():: hotNodes`,this.hotNodes);
     if (Array.isArray(found)) {
       this.loungeHosts = found;
       console.log(`websoc.init():: found`,found);
-      this.rooms = null; //new channelMgr(this.cell);
+      //this.rooms = null; //new channelMgr(this.cell);
       return
     }
     this.loungeHosts = [];
   }
+  thisNodeIsHot(){
+    this.hotNodes.forEach( (node) =>{
+      if (node.ip === this.cell.net.rnet.myIp)
+        return true;
+    });
+    return false;
+  }
+  doRedirectToHotNode(user,chanId=this.cell.net.borgMasterID){
+    const randomIndex = Math.floor(Math.random() * this.hotNodes.length);
+    const msg = {
+      type         : 'doRedirectToIp',
+      redirectToIp : this.hotNodes[randomIndex].remIp,
+      chanId       : chanId
+    }
+    this.sendToAddress(user, msg);
+  }
   async handleWSNewUser(borgToken){
     console.log(`handleWSNewUser():: `,borgToken);
-    await this.init();
-    if (this.rooms === null)
-      this.rooms = new channelMgr(this.cell);
-    
+    this.isRedirect = borgToken.data.isRedirect;
+    if (this.isRedirect === false){
+      await this.init();
+      if (this.hotNodes.length > 0){
+        if (this.thisNodeIsHot() !== true) {
+          this.doRedirectToHotNode(borgToken.Address);
+          return;
+        } 
+      }
+      if (this.rooms === null)
+        this.rooms = new channelMgr(this.cell);
+    } 
     await this.cell.attachUser(borgToken.Address);
 
     this.rooms.addUser(borgToken.Address,this.cell.net.borgMasterID);
@@ -527,8 +680,14 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
     } 
     this.sendToAddress(borgToken.Address, msg);
   }
-  sendNewMsg(user,chat){
-    console.log(`sendNewMsg(user,chat):: `,user,chat);
+  sendNewMsg(chanId,user,chat){
+    console.log(`sendNewMsg(user,chat):: `,chanId,user,chat);
+    const msg = {
+      type        : 'pushBorgChat',
+      chanId      : chanId,
+      chatMessage : chat
+    }
+    this.sendToAddress(user, msg);
   }
   async handleWSMessage(msg, ws, clientId, identity) {
     // Prepare the response with additional data
@@ -560,6 +719,7 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
   }
   async doCreateBorgChannel(msg){
     msg.data.ownMUID = msg.borgToken.Address;
+    
     console.log(`doCreateBorgChannel():: starting`,msg);
     let doTry = await this.cell.cellCreateBorgChannel(msg);
     console.log(`doCreateBorgChannel():: doTry`,doTry);

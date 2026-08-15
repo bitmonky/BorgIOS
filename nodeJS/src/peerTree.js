@@ -127,9 +127,8 @@ process.on('unhandledRejection', (reason, promise) => { // Updated
     } else {
        console.error('process.on():: unhandledRejection NoStack',reason);
     }
-    //errorLog.end(() => {
-       process.exit(1);
-    //});
+    console.log('unhandledRejection',reason);
+    process.exit(1);
 });
 
 var   defPulse            = 5*1000;
@@ -402,7 +401,6 @@ class PtreeGenRequestHandler {
 
       let timer;
       let failListener, replyListener, sendOKListener;
-
       // -------------------------
       // DELIVERED PATH
       // -------------------------
@@ -475,7 +473,7 @@ class PtreeMultiReplyHandler {
     this.net = net;
   }
 
-  getReplies(req, maxGroups = 1, timeout = 5000) {
+  getReplies(req, maxGroups = 3, timeout = 1250) {
     return new Promise((resolve) => {
 
 
@@ -503,13 +501,13 @@ class PtreeMultiReplyHandler {
       // DELIVERY CONFIRMATION (xhrPostOK)
       // -----------------------------------------
       this.net.on('xhrPostOK', sendOKListener = (j) => {
-        //console.log(`getReplies():: heard `,j);
-        if (j.msg.reqId === reqId) {
+        if (j?.msg?.reqId === reqId) {
 
           this.net.removeListener('xhrPostOK', sendOKListener);
 
           // Start timeout ONLY after delivery confirmed
           timer = setTimeout(() => {
+            console.log('removing mkyReply',timeout);
             this.net.removeListener('xhrFail', failListener);
             this.net.removeListener('mkyReply', replyListener);
 
@@ -522,8 +520,8 @@ class PtreeMultiReplyHandler {
       // FAILURE PATH
       // -----------------------------------------
       this.net.on('xhrFail', failListener = (j) => {
-       //console.log(`getReplies():: heard `,j);
-        if (j.msg.req === action && j.msg.reqId === reqId) {
+        console.log(`getReplies():: FAIL heard `,j);
+        if (j?.msg?.req === action && j?.msg?.reqId === reqId) {
 
           clearTimeout(timer);
 
@@ -539,17 +537,15 @@ class PtreeMultiReplyHandler {
       // SUCCESS PATH (multiple grouped replies)
       // -----------------------------------------
       this.net.on('mkyReply', replyListener = (j) => {
-
+        //console.log(`SUCCESS PATH (multiple grouped replies)`,j,reqId,response);
         if (
           j.reqId === reqId &&
-          j.req === action &&
-          j.response === response
+          j.response === response &&
+          j.result === 'OK'
+          
         ) {
           // Create a grouping key (you can customize this)
-          const key = JSON.stringify({
-            remIp: j.remIp,
-            payload: j.payload || j.data || j.result || null
-          });
+          const key = j.remIp;
 
           if (groups.has(key)) {
             // Increment nCopies
@@ -578,7 +574,7 @@ class PtreeMultiReplyHandler {
       // -----------------------------------------
       // SEND BROADCAST REQUEST
       // -----------------------------------------
-     //console.error('getReplies():: SEND BROADCAST REQUEST',req);
+      console.error('getReplies():: SEND BROADCAST REQUEST',req);
       this.net.broadcast(req);
     });
   }
@@ -1230,6 +1226,7 @@ class MkyRouting {
    // Search any previously known nodes and request the whoIsRoot response.
    // =====================================================================
    findWhoIsRoot(i=0){
+     //console.log(`findWhoIsRoot():: `);
      this.rootMap.clear();
      let startQry = Date.now(); 
      return new Promise( async (resolve,reject)=>{
@@ -2242,15 +2239,15 @@ class MkyRouting {
        reqId: reqId
      };
 
-    //console.error('MkyRouting.doMakeJoinRequest():: begin:', msg);
+     console.error('MkyRouting.doMakeJoinRequest():: begin:', msg,rip);
      const joinRes = await this.resultFromJoinReq(rip, reqId,msg);
-    //console.error('MkyRouting.doMakeJoinRequest():: joinRes::', joinRes);
+     console.error('MkyRouting.doMakeJoinRequest():: joinRes::', joinRes);
 
      if (joinRes === 'joinSuccess') {
 
        if (this.myIp === this.r.rootNodeIp){
          // X?toFIX - This should never happen!! but for now this is a fix
-         //console.error(`MkyRouting.doMakeJoinRequest():: joining node  asigned rootNodeIp but NOT root conflict`,reqId);
+         console.error(`MkyRouting.doMakeJoinRequest():: joining node  asigned rootNodeIp but NOT root conflict`,reqId);
          this.net.setNodeBackToStartup('joining node  asigned rootNodeIp but not root conflict');
          return;
        }
@@ -2261,7 +2258,7 @@ class MkyRouting {
      //let reply = {resultFromJoin : 'FAILED',reqId : reqId};
      //this.net.endResCX(rip,JSON.stringify(reply));
 
-     //console.error('MkyRouting.doMakeJoinRequest():: FAILED Join', joinRes);
+     console.error('MkyRouting.doMakeJoinRequest():: FAILED Join', joinRes);
      this.net.setNodeBackToStartup(`Init join request Failed with: ${joinRes}`);
    }
    resultFromJoinReq(ip, reqId,msg) {
@@ -3734,12 +3731,14 @@ class MkyRouting {
      return new Promise((resolve) =>{
        const SQL = `SELECT count(*) as nRec FROM shellFarmer.tblWhiteList where nodeIp = ?`;
        let params = [Ip]; 
+       //console.log(SQL,params);
        this.net.db.query(SQL,params, (err, result,fields)=>{
          if (err){
            console.log(err);
            resolve(true);
            return;
          }
+         console.log(result);
          if (result[0].nRec > 0){
            resolve(false);
            return;
@@ -3770,12 +3769,13 @@ class MkyRouting {
      }
      if (j.req === 'joinReq'){
        if (await this.notInWhiteList(remIp)){
+         console.log(remIp,`{"addResult":"UKNOWN_NO_SOUP_4U","reqId":"${j.reqId}"}`);
          this.net.endResCX(remIp,`{"addResult":"UKNOWN_NO_SOUP_4U","reqId":"${j.reqId}"}`);
          return;
        }
        //console.error ('MkyRouting.handleReq():: Starting:qued',remIp,j);
        if (this.dropWatcher.has(j.nodeIp) || await this.rootSaysWhoHasNodeIp(j.nodeIp) !== null){
-        //console.error(`handleReq():: req:joinReq Rejecting: `,j.nodeIp);
+         //console.error(`handleReq():: req:joinReq Rejecting: `,j.nodeIp);
          this.net.endResCX(remIp,`{"addResult":"sorryTryNewRoot","reqId":"${j.reqId}"}`);
        } else {
          this.queJoinRequest(remIp,j);
@@ -5453,7 +5453,7 @@ class PeerTreeNet extends  EventEmitter {
          nodes =  fs.readFileSync(this.nodesFile);
        }
        catch {
-         console.error('no nodes file found');resolve([]);
+         console.error('no nodes file found',this.nodesFile);resolve([]);
          resolve([]);
          return;
        }
@@ -5873,6 +5873,7 @@ class PeerTreeNet extends  EventEmitter {
    To be used by peerTree Apps NOT the internal network.
    */
    broadcast(inMsg){
+      //console.log(`this.net.broadcast():: `,inMsg);
       inMsg.appLevelBcast = true;
       this.rnet.bcast(inMsg);
    }
@@ -6209,7 +6210,7 @@ class PeerTreeNet extends  EventEmitter {
   }
   async setNodeBackToStartup(msg='noMsg',bestNewRootIp=null,retry=false){
     
-   //console.error(`setNodeBackToStartup():: status: ${this.rnet.status}  BNR ${bestNewRootIp} msg was ${msg} `);
+   console.error(`setNodeBackToStartup():: status: ${this.rnet.status}  BNR ${bestNewRootIp} msg was ${msg} `);
    console.error(`setNodeBackToStartup():: cellLock: ${this.rnet.cellLock}  BNR ${retry}  tryJoins ${this.rnet.tryJoins}`);
 
 
@@ -6559,7 +6560,7 @@ class PeerTreeNet extends  EventEmitter {
         return;
       }
 
-      if (toHost == this.rnet.myIp)
+      if (toHost == this.rnet.myIp && msg.include  !== 'self')
         return;
 
       if(corx){

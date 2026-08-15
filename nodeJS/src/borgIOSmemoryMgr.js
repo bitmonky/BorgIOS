@@ -253,7 +253,7 @@ class BorgIOSmemoryMgr {
     };
 
     // Try streaming file to the shardTreeCell network.
-    let doTry = await this.borg.DStream.streamTo(service);
+    let doTry = await this.borg.DStream.streamTo(service,'memoryfile');
    //console.log(`doUploadFile():: doTry`,doTry);
    //console.log(`doUploadFile():: hashes`,doTry.stream.shardHashes);
 

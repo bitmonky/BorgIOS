@@ -203,7 +203,6 @@ class peerMemCellReceptor{
     this.smgr     = new pSearchMgr;
     var bserver = https.createServer(options, (req, res) => {
 
-      res.writeHead(200);
       if (req.url == '/keyGEN'){
         // Generate a new key pair and convert them to hex-strings
         const key = ec.genKeyPair();
@@ -211,7 +210,8 @@ class peerMemCellReceptor{
         const privateKey = key.getPrivate('hex');
         console.log('pub key length' + publicKey.length,publicKey);
         console.log('priv key length' + privateKey.length,publicKey);
-         res.end('{"publicKey":"' + publicKey + '","privateKey":"' + privateKey + '"}');
+        res.writeHead(200);
+        res.end('{"publicKey":"' + publicKey + '","privateKey":"' + privateKey + '"}');
       }
       else if (req.url === '/netREQ' && req.method === 'POST') {
         // Handle the POST request for /netREQ
@@ -225,10 +225,11 @@ class peerMemCellReceptor{
             const parsedBody = JSON.parse(decodeURIComponent(body)); // Parse the JSON body
             console.log('Received POST data:', parsedBody);
             const j = parsedBody;
-            this.processRequest(j.msg,res);
+            this.processRequest(j,res);
           } 
           catch (err) {
             console.log('Error parsing JSON:',err,decodeURIComponent(body));
+            res.writeHead(200);
             res.end('{"result":false,"error":"json parse error"}');
           }
         });
@@ -251,6 +252,7 @@ class peerMemCellReceptor{
           this.processRequest(j,res);
         }
         else {
+          res.writeHead(200);
           res.end('Wellcome To The PeerTree KeyGEN Server\nUse end point /keyGEN to request key pair');
         }
       }
@@ -259,7 +261,30 @@ class peerMemCellReceptor{
     bserver.listen(this.recPort);
     console.log('peerTree Memory Receptor running on port:'+this.recPort);
   }
-  processRequest(j,res){
+  checkBorgToken(j,res) {
+
+    let doTry = this.peer.net.verifyLogin(j);
+    if (doTry.result === true){
+      return true;
+    }
+    // Reject Request.
+    console.log(`checkBorgToken():: doTry`,doTry,j);
+    res.setHeader('Content-Type', 'application/json');
+    let rc = 450;
+    if (doTry.msg == 'Token expired') rc = 451;
+
+    res.writeHead(rc);
+    res.end(`{"result":false,"error": "Invalid BorgToken Request Rejected","msg":"${doTry.msg}"}`);
+    return false;
+  }
+  processRequest(req,res){
+    // Validate Borg Token.
+    if (this.checkBorgToken(req,res) === false){
+      return;
+    }
+    let j = req.msg;
+    res.writeHead(200);
+
     console.log(j);
     if (j.req == 'storeMemory'){
       this.prepMemoryReq(j,res);
@@ -285,7 +310,7 @@ class peerMemCellReceptor{
       return true;
     });
     if(i === null){
-      this.searches.push({id:inId,data : []});
+      ehis.searches.push({id:inId,data : []});
       return this.searches.length -1;
     }
     return i;
@@ -307,14 +332,11 @@ class peerMemCellReceptor{
   }
   async makeRemoveMemoryReq(j,res){
     console.log('makeRemoveMemoryReq:: ',j);
-    j.memory.token = this.openMemKeyFile(j);
-    j.memory.signature = this.signRequest(j);
-    j.memory.signature.ownMUID = j.memory.from;
     var breq = {
       to : 'peerMemCells',
       removeMem : j.memoryID,
-      authorize : j.memory.signature,
-      ownerMUID : j.ownMUID
+      authorize : j.sig,
+      ownerMUID : j.sig.ownMUID
     }
     console.log('bcast remove memory request to memoryCell group: ',breq.removeMem);
     this.peer.net.broadcast(breq);
@@ -323,11 +345,12 @@ class peerMemCellReceptor{
   }
   async doSearch(j,res){
     console.log('doSearch qryStr is: ',j.qry.qryStr);
-    j.qry.qryStr = j.qry.qryStr.trim();
     if(j.qry.qryStr === null || j.qry.qryStr == ' ' || j.qryStr == ''){
       res.end('{"result": null,"data":"Empty Or Null Qry"}');
       return;
     }
+    j.qry.qryStr = j.qry.qryStr.trim();
+
     var qry = {
       key  : j.qry.key,
       timestamp : Date.now(),
@@ -784,7 +807,7 @@ class peerMemoryObj {
 	  this.doSeqMatchQry(j.msg,j.remIp);
       }
       if (j.msg.removeMem){
-        this.removeMem(j.msg,j.remIp);
+        this.removeMemory(j.msg,j.remIp);
         return;
       }
       if (j.msg.req == 'sendNodeList'){
@@ -1164,14 +1187,15 @@ class peerMemoryObj {
   }
   async removeMemory(j,res){
     console.log('got request remove memory from:'+res,j);
-    var m = j.memory;
-    m.signature = await this.getMemAuthorizedBy(j);
-    if (!this.isValidSig(m.signature)){
+    if (!this.isValidSig(j.authorize)){
       console.log('removeMemory::Authorization Signature Is Not Valid or Denied');
       return;
     }
-    var SQL = "delete from peerBrain.peerMemoryCell where pmcMownerID= '',pmcMemObjID=''";
-    con.query(SQL , (err, result,fields)=>{
+    var SQL = "delete from peerBrain.peerMemoryCell where pmcMownerID= ? and pmcMemObjID=?";
+    const params = [j.authorize.ownMUID,j.removeMem];
+    console.log(`removeMemory():: `,SQL,params);
+
+    con.query(SQL,params, (err, result,fields)=>{
       if (err){
         console.log(err);
         this.net.endRes(res,'{"memRemoveRes":false,"error":'+JSON.stringify(err)+'}');

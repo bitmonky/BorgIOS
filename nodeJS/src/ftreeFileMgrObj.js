@@ -1840,7 +1840,7 @@ class ftreeFileMgrCellReceptor{
               await this.updateAndSignRepo(repoID_master,repo.from+repo.name+rhash,rhash,con);
             }		    
            //console.log('XXXXXXXXXXX');
-	    return dbResult(con,resolve,repoID_master);
+	    return dbResult(con,resolve,{repoID_master,fuid:repo.FUID,ftype: f.ftype});
           }
           else {
             return dbFail(con,resolve,'InsertLocalRepoFile::insertLocalFileShards Failed');
@@ -1868,7 +1868,7 @@ class ftreeFileMgrCellReceptor{
       res.end('{"result":false,"nRecs":0,"repo":"'+pj.msg+'"}');
       return;
     }
-    newFileRepoID = pj.value;  
+    newFileRepoID = pj.value.repoID_master;  
    //console.log('Got newFileID: ',newFileRepoID);
 
     j.repo.data = await this.getLocalRepoRec(newFileRepoID);
@@ -1893,7 +1893,7 @@ class ftreeFileMgrCellReceptor{
        //console.log('repo storage failed on:',IP);
       }
       if (n==IPs.length -1){
-        res.end('{"result":"repoInsertFileOK","nStored":'+nStored+',"repo":'+JSON.stringify(j)+',"hosts":'+JSON.stringify(hosts)+'}');
+        res.end('{"result":"repoInsertFileOK","nStored":'+nStored+',"fuid":"'+pj.value.fuid+'","repo":'+JSON.stringify(j)+',"hosts":'+JSON.stringify(hosts)+'}');
       }
       n = n + 1;
     }

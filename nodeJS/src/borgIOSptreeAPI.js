@@ -86,7 +86,7 @@ class BorgIOSptreeAPI {
     msgObj.borgToken = this.net.getBorgToken();
 
     const body = JSON.stringify(msgObj);
-    ////console.log(`url`,url,`body`,msgObj);
+    console.log(`url`,url,`body`,msgObj);
     return this._httpRequestRaw(
       url,
       {
@@ -292,6 +292,10 @@ class BorgIOSptreeAPI {
       msg: { req: "createRepo", repo: { from: muid, name, nCopys } }
     });
   }
+  async mailTreeQryBorgUserProfile(userMUID){
+    const msg = { req: 'findUserProfile',ownMUID: userMUID};
+    return this._postJSON("mailTreeCell",{msg:msg});
+  }
   async mailTreeGetFarms(ownMUID){
     const msg = { req: 'qryMyFarms',from : ownMUID};
     return this._postJSON("mailTreeCell",{msg:msg});
@@ -451,6 +455,32 @@ class BorgIOSptreeAPI {
     return this._postJSON("peerMemoryCell", msg);
   }
 
+  async deleteMemory(muid, memoryID) {
+    const token = this.net.calculateHash(muid+memoryID);
+    const req = {
+      msg : {
+        req      : "removeMemory",
+        memoryID :  memoryID,
+        sig : {
+          ownMUID   : muid,
+          token     : token,
+          pubKey    : this.net.publicKey,
+          signature : this.net.signToken(token)
+        }
+      }
+    };
+
+    let doTry = await this._postJSON("peerMemoryCell",req);
+    console.log(doTry);
+    if (doTry.error === false && doTry.status === 200 && doTry.json.result === 1){
+      doTry = await ptreeDeleteShard(muid, doTry.result.shardID, memoryID);
+      console.log(doTry);
+      if (doTry.error === false && doTry.status === 200 && doTry.json.result === true){
+        return true;
+      }
+    }
+    return false;
+  }
   async ptreeDeleteMem(muid, memHash) {
     return this._postJSON("peerMemoryCell", {
       msg: { req: "removeMemory", memory: { ownMUID: muid, memoryID: memHash, nCopys: 0 } }

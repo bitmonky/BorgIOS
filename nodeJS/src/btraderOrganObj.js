@@ -7,6 +7,12 @@ const PtreeReceptor = require('./ptreeReceptorObj');
 const db = require('./btraderDB');
 const crypto = require('crypto');
 
+class MsgObj {
+  constructor(obj) {
+    Object.assign(this, obj);
+  }
+}
+
 // ---------------------------------------------------------
 // Deterministic Decimal Math (9 decimal fixed precision)
 // ---------------------------------------------------------
@@ -174,7 +180,7 @@ class BTraderOrganObj {
     this.db        = db.getConnection();
     this.ordBookStatus = 'startup';
     this.ordBookStart();
-    this.testSendFile();
+    setTimeout(()=> {this.testSendFile();},10*1000);
     // GET ORDER BOOK
     this.loadOrderBookFromSQL();
   }
@@ -284,7 +290,25 @@ class BTraderOrganObj {
       response : 'getFileResult',
       filename : '/mkyDoge/dogecoin-1.14.5-x86_64-linux-gnu.tar.gz'
    } 
-   
+   let list = ['172.105.15.49','139.177.195.184','172.105.110.34','172.105.106.134', '172.105.22.200','172.105.98.225'];
+   //let list = ['172.105.98.225'];
+
+   for (let ip of list) {
+     this.net.DStream.sendMsg(new MsgObj(msg), ip,'file',35)
+    .then(res => {
+        if (res && res.result === 'STREAM_META_ACK') {
+          console.log(`File ${msg.filename} sent to ${ip}`);
+        } else {
+          console.log(`FAILED sending ${msg.filename} to ${ip}`, res);
+        }
+      })
+      .catch(err => {
+        console.log(`ERROR sending ${msg.filename} to ${ip}`, err);
+      });
+    }
+  }
+/*
+   let list = ['172.105.106.134','172.105.22.200']   
    let doSend = await this.net.DStream.sendMsg(msg,'172.105.106.134');
    if (doSend.result === 'STREAM_META_ACK'){
       console.log(`File : ${msg.filename} sent`);
@@ -292,6 +316,7 @@ class BTraderOrganObj {
    }
    console.log(`File : ${msg.filename} send FAILED`,doSend);
   }
+*/
   getFile(j){
     console.log(`btrader.getFile:: file retrieved thx:`,j);
     return true;

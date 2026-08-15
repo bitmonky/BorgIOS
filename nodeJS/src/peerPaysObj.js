@@ -320,7 +320,7 @@ class peerPaysCellReceptor{
 
     // examin transaction to ensure the from user is the same as the borgToke.
     let trans = j.trans;
-    if (trans.from !== borgToken.Address && trans.payment.amount > 0){
+    if (trans.from !== borgToken.Address || trans.payment.amount < 0){
       res.end('{"result":"tranFail","trans": JSON.stringify(trans),"error" : "From Address or Invalid send amount..."}');
       return;
     }    
