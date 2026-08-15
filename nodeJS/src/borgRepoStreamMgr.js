@@ -204,6 +204,12 @@ class BorgRepoStreamMgr {
     const filename = msg.filename;
     let streamId;
     let shards;
+
+    let isMemoryFile = false;
+    if (type === 'memoryfile'){
+      type = 'file';
+      isMemoryFile = true;
+    }
     
     // CASE 1: File-based stream (deterministic)
     if (type === 'file') {
@@ -227,6 +233,7 @@ class BorgRepoStreamMgr {
       service,
       streamId,
       filename,
+      isMemFile   : isMemoryFile,
       requestMutex: new Mutex(),
       reqId       : msg.reqId,
       shardSize   : shards.shardSize,
@@ -434,7 +441,10 @@ class BorgRepoStreamMgr {
 
         const shard    = stream.shardHashes[shardIdx];
         const shardId  = shard.hash;
-        const shardHID = this.net.calculateHash(`${shardId}-${this.net.peerMUID}-${Date.now()}`);
+        let shardHID = this.net.calculateHash(`${shardId}-${this.net.peerMUID}-${Date.now()}`);
+        if (stream.isMemFile){
+          shardHID = this.net.calculateHash(`${shardId}-${this.net.peerMUID}`);
+        }
         const shardSig = this.net.signToken(shardHID);
         shard.hashHID  = shardHID;
        //console.log(`stream shardHashes`,stream.shardHashes[shardIdx]);
