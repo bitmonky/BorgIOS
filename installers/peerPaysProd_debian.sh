@@ -46,6 +46,7 @@ cd /peerTree
 
 # Core BorgIOS / PeerPays files
 curl https://admin.bitmonky.com/bitMDis/peerTree.js          -o peerTree.js
+curl https://admin.bitmonky.com/bitMDis/sFarmAccountant.js  -o sFarmAccountant.js
 curl https://admin.bitmonky.com/bitMDis/peerCrypt.js         -o peerCrypt.js
 curl https://admin.bitmonky.com/bitMDis/addslashes.js        -o addslashes.js
 curl https://admin.bitmonky.com/bitMDis/mkyDatef.js          -o mkyDatef.js
