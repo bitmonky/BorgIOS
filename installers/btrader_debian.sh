@@ -37,7 +37,8 @@ cd /peerTree
 # Download PeerTree core libs
 # ---------------------------------------------------------
 curl https://admin.bitmonky.com/bitMDis/peerTree.js          -o peerTree.js
-curl https://admin.bitmonky.com/bitMDis/sFarmAccountant.js  -o sFarmAccountant.js
+# served from git until ftreeFileMgrCell is the repo
+curl https://raw.githubusercontent.com/bitmonky/borgIOS/main/nodeJS/src/sFarmAccountant.js  -o sFarmAccountant.js
 curl https://admin.bitmonky.com/bitMDis/DStreamMgrObj.js     -o DStreamMgrObj.js
 curl https://admin.bitmonky.com/bitMDis/peerCrypt.js         -o peerCrypt.js
 curl https://admin.bitmonky.com/bitMDis/addslashes.js        -o addslashes.js
