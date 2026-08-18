@@ -1,0 +1,119 @@
+name: mailtree-lab
+
+# Four real mailTree cells, each with its OWN mariadb (own mailTree schema) so
+# that sealed mail replication across cells is observable per cell.
+# Each cell container also runs its own co-located cronoTreeCell (localhost time
+# authority every borgIOS cell depends on).
+
+x-db: &db
+  image: mariadb:11
+  environment:
+    MARIADB_ROOT_PASSWORD: root
+    MARIADB_DATABASE: shellFarmer
+    MARIADB_USER: shellfarmer
+    MARIADB_PASSWORD: shellfarmer
+  volumes:
+    - ./sql:/docker-entrypoint-initdb.d:ro
+  healthcheck:
+    test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+
+x-cell: &cell
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: mailtree-lab:latest
+  environment: &cellenv
+    DB_USER: shellfarmer
+    DB_PASS: shellfarmer
+  volumes:
+    - /home/ubuntu/repos/PeerTree/scripts:/src/peertree:ro
+    - /home/ubuntu/mailtree-src/nodeJS/src:/src/borgios:ro
+  restart: unless-stopped
+  stop_grace_period: 2s
+
+services:
+  mdb1:
+    <<: *db
+    container_name: mt-db1
+    networks: {mtnet: {ipv4_address: 198.51.101.5}}
+  mdb2:
+    <<: *db
+    container_name: mt-db2
+    networks: {mtnet: {ipv4_address: 198.51.101.6}}
+  mdb3:
+    <<: *db
+    container_name: mt-db3
+    networks: {mtnet: {ipv4_address: 198.51.101.7}}
+  mdb4:
+    <<: *db
+    container_name: mt-db4
+    networks: {mtnet: {ipv4_address: 198.51.101.8}}
+
+  m1:
+    <<: *cell
+    container_name: mt-m1
+    depends_on: {mdb1: {condition: service_healthy}}
+    environment:
+      <<: *cellenv
+      NODE_NAME: m1
+      DB_HOST: mdb1
+    volumes:
+      - /home/ubuntu/repos/PeerTree/scripts:/src/peertree:ro
+      - /home/ubuntu/mailtree-src/nodeJS/src:/src/borgios:ro
+      - ./state/m1:/peerTree/keys
+    networks: {mtnet: {ipv4_address: 198.51.101.11}}
+
+  m2:
+    <<: *cell
+    container_name: mt-m2
+    depends_on: {mdb2: {condition: service_healthy}}
+    environment:
+      <<: *cellenv
+      NODE_NAME: m2
+      DB_HOST: mdb2
+      BOOTSTRAP_IPS: 198.51.101.11
+    volumes:
+      - /home/ubuntu/repos/PeerTree/scripts:/src/peertree:ro
+      - /home/ubuntu/mailtree-src/nodeJS/src:/src/borgios:ro
+      - ./state/m2:/peerTree/keys
+    networks: {mtnet: {ipv4_address: 198.51.101.12}}
+
+  m3:
+    <<: *cell
+    container_name: mt-m3
+    depends_on: {mdb3: {condition: service_healthy}}
+    environment:
+      <<: *cellenv
+      NODE_NAME: m3
+      DB_HOST: mdb3
+      BOOTSTRAP_IPS: 198.51.101.11,198.51.101.12
+    volumes:
+      - /home/ubuntu/repos/PeerTree/scripts:/src/peertree:ro
+      - /home/ubuntu/mailtree-src/nodeJS/src:/src/borgios:ro
+      - ./state/m3:/peerTree/keys
+    networks: {mtnet: {ipv4_address: 198.51.101.13}}
+
+  m4:
+    <<: *cell
+    container_name: mt-m4
+    depends_on: {mdb4: {condition: service_healthy}}
+    environment:
+      <<: *cellenv
+      NODE_NAME: m4
+      DB_HOST: mdb4
+      BOOTSTRAP_IPS: 198.51.101.11,198.51.101.12,198.51.101.13
+    volumes:
+      - /home/ubuntu/repos/PeerTree/scripts:/src/peertree:ro
+      - /home/ubuntu/mailtree-src/nodeJS/src:/src/borgios:ro
+      - ./state/m4:/peerTree/keys
+    networks: {mtnet: {ipv4_address: 198.51.101.14}}
+
+networks:
+  mtnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 198.51.101.0/24

@@ -1874,7 +1874,9 @@ class mailTreeObj {
         catch(err) {console.log('stored envelope is not valid JSON:',row.mbxHash);}
       }
       if (mail.length === 0) return;
-      this.net.sendReply(remIp,{req:'sendMyMailResult',reqId:j.reqId,result:true,mail:mail});
+      // include:'self' so a holder that is also the asking cell still answers
+      // its own broadcast -- sendReply() drops loopback replies without it.
+      this.net.sendReply(remIp,{req:'sendMyMailResult',reqId:j.reqId,result:true,mail:mail,include:'self'});
     });
   }
   // Deletes held mail on the addressee's own signed request.
@@ -1895,7 +1897,8 @@ class mailTreeObj {
         req      : 'deleteMyMailResult',
         reqId    : j.reqId,
         result   : true,
-        nDeleted : result.affectedRows || 0
+        nDeleted : result.affectedRows || 0,
+        include  : 'self'
       });
     });
   }
