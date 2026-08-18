@@ -47,12 +47,21 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
   const clear={subject:'local copy probe',body:'local copy body '+crypto.randomBytes(4).toString('hex')};
   const env=mailCrypto.sealMail(key,{from:A.ownMUID,to:B.ownMUID,msg:clear});
-  const snd=await post('m1',{req:'sendMail',mail:{to:env.to,from:env.from,hash:env.hash,nCopys:3,envelope:env}},A);
+  const snd=await post('m1',{req:'sendMail',mail:{to:env.to,from:env.from,hash:env.hash,nCopys:Number(process.env.NCOPYS||3),envelope:env}},A);
   await sleep(1500);
   const holders=Object.keys(DBS).filter(k=>q(k,`select count(*)n from mailTree.mailInBox where mbxHash='${env.hash}'`).split('\n')[1]!=='0');
   console.log('sendMail nStored=',snd.json.nStored,'holders=',holders.join(','));
 
   const ask = ASK && holders.includes(ASK) ? ASK : holders[0];
+
+  // Retrieval with the WHOLE group up, asked at a holder: the local read must not
+  // duplicate or inflate the result when the broadcast echo comes back.
+  const pre=await post(ask,{req:'listMyMail'},B);
+  const preMine=((pre.json&&pre.json.mail)||[]).filter(m=>m.hash===env.hash);
+  const preHosts=preMine.length?(preMine[0].hosts||[]):[];
+  console.log(`whole group up, asked holder ${ask}: nRecs=${pre.json&&pre.json.nRecs} copiesOfHash=${preMine.length} hosts=${JSON.stringify(preHosts)} uniqueHosts=${new Set(preHosts).size} holders=${holders.length}`);
+  console.log(preMine.length===1 && new Set(preHosts).size===preHosts.length ? 'PASS: no duplicated/inflated retrieval result' : 'FAIL: duplicated or inflated retrieval result');
+
   const stop = holders.filter(h=>h!==ask);
   stop.forEach(h=>execSync(`docker stop ${CONT[h]}`));
   console.log(`asking holder ${ask}; stopped other holders ${stop.join(',')}`);
