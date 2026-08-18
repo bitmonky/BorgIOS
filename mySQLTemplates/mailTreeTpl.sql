@@ -160,8 +160,8 @@ CREATE TABLE `mailInBox` (
   `mbxHash` char(64) NOT NULL,
   `mbxEnvelope` mediumtext NOT NULL,
   `mbxSig` text DEFAULT NULL,
-  `mbxDate` datetime DEFAULT NULL,
-  `mbxStored` datetime DEFAULT NULL,
+  `mbxDate` bigint(20) DEFAULT NULL,      -- ms epoch, sender's cronoTree clock
+  `mbxStored` bigint(20) DEFAULT NULL,    -- ms epoch, this cell's cronoTree clock
   PRIMARY KEY (`mbxID`),
   UNIQUE KEY `ndxMbxToHash` (`mbxToMUID`,`mbxHash`),
   KEY `ndxMbxTo` (`mbxToMUID`)

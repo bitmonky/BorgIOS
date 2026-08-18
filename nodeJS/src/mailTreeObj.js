@@ -48,6 +48,12 @@ function sealedMailHash(env){
     .update(`${env.wrappedKey}${env.ct}${env.tag}`,'utf8')
     .digest('hex');
 }
+// Every date this cell stores comes from its own clock, which peerTree.js has
+// already corrected to cronoTree unified time -- never from the database, whose
+// now() is the DB host's uncorrected clock.
+function cellTime(){
+  return new Date().toISOString().slice(0,19).replace('T',' ');
+}
 function deriveKey(password) {
     const salt = crypto.randomBytes(16); // Generate a random salt for additional security
     const iterations = 100000; // More iterations = stronger security
@@ -551,7 +557,7 @@ class mailTreeCellReceptor{
     const nCopys = Math.max(1,Math.min(Number(mail.nCopys) || 3, 10));
 
     var SQL = "SELECT mcelAddress FROM mailTree.mailCells ";
-    SQL += "where mcelLastStatus = 'online' and  timestampdiff(second,mcelLastMsg,now()) < 50 order by rand() limit "+nCopys;
+    SQL += "where mcelLastStatus = 'online' and  timestampdiff(second,mcelLastMsg,'"+cellTime()+"') < 50 order by rand() limit "+nCopys;
     con.query(SQL,async (err, result, fields)=> {
       if (err) {
         console.log(err);
@@ -597,7 +603,7 @@ class mailTreeCellReceptor{
     j.mail.token = this.openMailKeyFile(j);
     j.mail.signature = this.signRequest(j);
     var SQL = "SELECT mcelAddress FROM mailTree.mailCells ";
-    SQL += "where mcelLastStatus = 'online' and  timestampdiff(second,mcelLastMsg,now()) < 50 order by rand() limit "+j.mail.nCopys;
+    SQL += "where mcelLastStatus = 'online' and  timestampdiff(second,mcelLastMsg,'"+cellTime()+"') < 50 order by rand() limit "+j.mail.nCopys;
     //console.log(SQL);
     var nStored = 0;
     con.query(SQL,async (err, result, fields)=> {
@@ -816,13 +822,13 @@ class mailTreeObj {
       else {
         if (result[0].nRec == 0){
           SQL = "insert into mailTree.mailCells (mcelAddress,mcelLastStatus,mcelLastMsg)";
-          SQL += "values ('"+j.remIp+"','New',now())";
+          SQL += "values ('"+j.remIp+"','New','"+cellTime()+"')";
           con.query(SQL,(err, result, fields)=>{
             if (err) console.log(err);
           });
         }
 	else {
-          SQL = "update mailTree.mailCells set mcelLastStatus = 'online',mcelLastMsg = now() ";
+          SQL = "update mailTree.mailCells set mcelLastStatus = 'online',mcelLastMsg = '"+cellTime()+"' ";
           SQL += "where mcelAddress = '"+j.remIp+"'";
           //console.log(SQL);
           con.query(SQL,(err, result, fields)=>{
@@ -841,7 +847,7 @@ class mailTreeObj {
         else {
           if (result[0].nRec == 0){
             SQL = "insert into mailTree.mailCells (mcelAddress,mcelLastStatus,mcelLastMsg)";
-            SQL += "values ('"+node.ip+"','New',now())";
+            SQL += "values ('"+node.ip+"','New','"+cellTime()+"')";
             con.query(SQL, function (err, result, fields) {
               if (err) console.log(err);
             });
@@ -1810,13 +1816,16 @@ class mailTreeObj {
       mail.hash,
       JSON.stringify(env),
       JSON.stringify({token:mail.sig.token,pubKey:mail.sig.pubKey,signature:mail.sig.signature}),
-      new Date(env.date || Date.now())
+      Number(env.date) || Date.now(),
+      Date.now()
     ];
     // Same mail arriving twice (resend, or a second copy request) is not an
     // error: the hash is the identity, so keep the copy already held.
+    // Both dates come from the cell's cronoTree-corrected clock, never the
+    // database's own clock.
     const SQL = `INSERT INTO mailTree.mailInBox
       (mbxToMUID,mbxFromMUID,mbxHash,mbxEnvelope,mbxSig,mbxDate,mbxStored)
-      VALUES (?,?,?,?,?,?,now())
+      VALUES (?,?,?,?,?,?,?)
       ON DUPLICATE KEY UPDATE mbxStored = mbxStored`;
 
     con.query(SQL,values,(err)=>{
