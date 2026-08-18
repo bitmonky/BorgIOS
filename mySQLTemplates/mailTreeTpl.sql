@@ -81,6 +81,9 @@ CREATE TABLE `mailSubscriber` (
   `msubID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `msubMUID` varchar(64) DEFAULT NULL,
   `msubPubKey` text DEFAULT NULL,
+  -- RSA mail key: senders wrap the one-time message key to this. Separate from
+  -- msubPubKey, which is the EC key the client signs requests with.
+  `msubMailPubKey` text DEFAULT NULL,
   `msubIconFName` varchar(284) DEFAULT NULL,
   `msubIconFCSum` varchar(84) DEFAULT NULL,
   `msubIconRName` varchar(284) DEFAULT NULL,
@@ -90,7 +93,7 @@ CREATE TABLE `mailSubscriber` (
   `msubBorgNic` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`msubID`),
   KEY `ndxMsubMUID` (`msubMUID`)
-) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -98,9 +101,9 @@ CREATE TABLE `mailSubscriber` (
 -- Dumping data for table `mailSubscriber`
 --
 
-LOCK TABLES `shellFarmerRegistry` WRITE;
-/*!40000 ALTER TABLE `shellFarmerRegistry` DISABLE KEYS */;
-/*!40000 ALTER TABLE `shellFarmerRegistry` ENABLE KEYS */;
+LOCK TABLES `mailSubscriber` WRITE;
+/*!40000 ALTER TABLE `mailSubscriber` DISABLE KEYS */;
+/*!40000 ALTER TABLE `mailSubscriber` ENABLE KEYS */;
 UNLOCK TABLES;
 
 DROP TABLE IF EXISTS `shellFarmerRegistry`;
@@ -143,6 +146,26 @@ CREATE TABLE `tblwzMUID` (
 ) ENGINE=InnoDB AUTO_INCREMENT=65619 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_czech_ci;
 
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Sealed mail held for a recipient. One row per copy per cell; the envelope is
+-- opaque - only the addressee's private key opens it.
+--
+
+DROP TABLE IF EXISTS `mailInBox`;
+CREATE TABLE `mailInBox` (
+  `mbxID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `mbxToMUID` varchar(64) NOT NULL,
+  `mbxFromMUID` varchar(64) DEFAULT NULL,
+  `mbxHash` char(64) NOT NULL,
+  `mbxEnvelope` mediumtext NOT NULL,
+  `mbxSig` text DEFAULT NULL,
+  `mbxDate` datetime DEFAULT NULL,
+  `mbxStored` datetime DEFAULT NULL,
+  PRIMARY KEY (`mbxID`),
+  UNIQUE KEY `ndxMbxToHash` (`mbxToMUID`,`mbxHash`),
+  KEY `ndxMbxTo` (`mbxToMUID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 

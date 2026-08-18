@@ -41,6 +41,13 @@ function calculateHash(txt) {
   const crypto = require('crypto');
   return crypto.createHash('sha256').update(txt).digest('hex');
 }
+// Content address of a sealed mail envelope. Must match the client side
+// (borgHUImailCrypto.mailHash) so every copy lands under the same hash.
+function sealedMailHash(env){
+  return crypto.createHash('sha256')
+    .update(`${env.wrappedKey}${env.ct}${env.tag}`,'utf8')
+    .digest('hex');
+}
 function deriveKey(password) {
     const salt = crypto.randomBytes(16); // Generate a random salt for additional security
     const iterations = 100000; // More iterations = stronger security
@@ -223,12 +230,16 @@ class mailTreeCellReceptor{
                 this.reqStoreMail(j.msg,res);
                 return;
 	      }	      
+              if (j.msg.req == 'listMyMail'){
+                this.reqListMyMail(j.msg,res);
+                return;
+              }
               if (j.msg.req == 'getMyMail'){
                 this.reqRetrieveMail(j.msg,res);
                 return;
               }
               if (j.msg.req == 'deleteMail'){
-                this.reqStoreMail(j.msg,res);
+                this.reqDeleteMail(j.msg,res);
                 return;
               }
 
@@ -288,16 +299,15 @@ class mailTreeCellReceptor{
     };
     return mToken;
   }
+  // Only the addressee can delete: the MUID comes from the verified borgToken,
+  // never from the payload.
   async reqDeleteMail(j,res){
-    var dres = {result : 0, msg : 'no mails deleted'};
-    j.mail.signature = this.signRequest(j);
-    dres = await this.peer.receptorReqDeleteMyMail(j);
-    if (dres){
-      res.end('{"result" : 1}');
-    }
-    else {
-      res.end('{"result" : 0}');
-    }
+    const nGone = await this.peer.receptorReqDeleteMyMail({
+      MUID : j.sig.ownMUID,
+      hash : j.mail?.hash || null,
+      sig  : j.sig
+    });
+    res.end(JSON.stringify({result : nGone > 0, nDeleted : nGone}));
   }
   bufferToBase64(arr){
     var i, str = '';
@@ -306,13 +316,32 @@ class mailTreeCellReceptor{
     }
     return decodeURIComponent(str);
   }
+  /* Registry lookup. Returns both keys the network holds for a client MUID:
+     pubKey     - EC key the client signs requests with
+     mailPubKey - RSA key senders wrap message keys to
+     Missing registration answers result:false, so a sender fails closed
+     instead of posting something a cell could read. */
   async reqInBoxKey(j,res){
-    const pubKey = await this.peer.receptorReqInBoxKey(j);
-    if (pubKey){
-      res.end(JSON.stringify({result:true,pubKey:pubKey}));
+    const keys = await this.peer.receptorReqInBoxKey(j);
+    if (keys && (keys.publicKey || keys.mailPubKey)){
+      res.end(JSON.stringify({
+        result     : true,
+        pubKey     : keys.publicKey || null,
+        mailPubKey : keys.mailPubKey || null
+      }));
       return;
     }
     res.end(JSON.stringify({result:false}));
+  }
+  // Inbox listing: broadcast for cells holding mail for this MUID, they answer
+  // with the sealed envelopes. Nothing here can read them.
+  async reqListMyMail(j,res){
+    const mail = await this.peer.receptorReqSendMyMail({
+      MUID : j.sig.ownMUID,
+      hash : j.mail?.hash || null,
+      sig  : j.sig
+    });
+    res.end(JSON.stringify({result:true,nRecs:mail.length,mail:mail}));
   }
   async reqQryBorgUserProfile(j,res){
      const msg = {
@@ -467,23 +496,18 @@ class mailTreeCellReceptor{
     }
   }
   async reqRetrieveMail(j,res){
-    var data = {result : 0, msg : 'no results found'};
-    var stime = Date.now();
-    data = await this.peer.receptorReqSendMyMail(j);
-    if (j.mail.encrypted) {
-      var scrm  = Buffer.from(data.data.data).toString();
-      scrm  = decrypt(Buffer.from(scrm,'base64'),this.mailToken.mailCipher);
-      data.data = scrm.toJSON();
-
-    }
-    data.data = this.bufferToBase64(data.data.data);
+    const stime = Date.now();
+    const mail  = await this.peer.receptorReqSendMyMail({
+      MUID : j.sig.ownMUID,
+      hash : j.mail?.hash || null,
+      sig  : j.sig
+    });
     console.log('Mail Request Time: ',Date.now() - stime);
-    if (data){
-      res.end('{"result": 1,"data" : '+JSON.stringify(data)+'}');
-    }
-    else {
+    if (mail.length === 0){
       res.end('{"result" : 0, "msg" : "no results found"}');
+      return;
     }
+    res.end(JSON.stringify({result:1,nRecs:mail.length,mail:mail}));
   }
   signRequest(j){
     const stoken = j.mail.token.ownMUID + new Date(); 
@@ -495,7 +519,77 @@ class mailTreeCellReceptor{
     }
     return sig;
   }
+  /* Sealed mail: the client encrypted the body with a one-time message key and
+     wrapped that key to the recipient's registry key, so this cell only picks
+     the holders and hands the envelope on unchanged. */
+  reqStoreSealedMail(j,res){
+    const mail = j.mail;
+    const env  = mail.envelope;
+
+    if (env.from !== j.sig.ownMUID){
+      res.end('{"result":false,"mail":"envelope sender does not match the signed request"}');
+      return;
+    }
+    if (!env.to){
+      res.end('{"result":false,"mail":"envelope has no recipient"}');
+      return;
+    }
+    const hash = sealedMailHash(env);
+    if (mail.hash && mail.hash !== hash){
+      res.end('{"result":false,"mail":"envelope hash does not match its contents"}');
+      return;
+    }
+    // Carry the sender's own signature to the holders: they verify the sender,
+    // not this cell.
+    const payload = {
+      to       : env.to,
+      from     : env.from,
+      hash     : hash,
+      envelope : env,
+      sig      : j.sig
+    };
+    const nCopys = Math.max(1,Math.min(Number(mail.nCopys) || 3, 10));
+
+    var SQL = "SELECT mcelAddress FROM mailTree.mailCells ";
+    SQL += "where mcelLastStatus = 'online' and  timestampdiff(second,mcelLastMsg,now()) < 50 order by rand() limit "+nCopys;
+    con.query(SQL,async (err, result, fields)=> {
+      if (err) {
+        console.log(err);
+        res.end('{"result":false,"nStored":0,"mail":"mail cell query failed"}');
+        return;
+      }
+      if (result.length == 0){
+        res.end('{"result":false,"nStored":0,"mail":"No Nodes Available"}');
+        return;
+      }
+      var nStored = 0;
+      var hosts   = [];
+      for (var rec of result){
+        try {
+          const qres = await this.peer.receptorReqStoreSealedMail(payload,rec.mcelAddress);
+          if (qres){
+            nStored = nStored + 1;
+            hosts.push({host:qres.remMUID,ip:qres.remIp});
+          }
+        }
+        catch(err) {
+          console.log('mail storage failed on:',rec.mcelAddress);
+        }
+      }
+      res.end(JSON.stringify({
+        result  : nStored > 0,
+        nStored : nStored,
+        hash    : hash,
+        hosts   : hosts,
+        mail    : nStored > 0 ? 'mailOK' : 'no cell accepted the mail'
+      }));
+    });
+  }
   reqStoreMail(j,res){
+    if (j.mail?.envelope){
+      this.reqStoreSealedMail(j,res);
+      return;
+    }
     if(j.mail.encrypt){
       j.mail.data = encrypt(j.mail.data,this.mailToken.mailCipher);
       j.mail.data = j.mail.data.toString('base64');
@@ -800,6 +894,10 @@ class mailTreeObj {
       this.storeMail(j,remIp);
       return true;
     }
+    if (j.req == 'storeSealedMail'){
+      this.storeSealedMail(j,remIp);
+      return true;
+    }
     if (j.req == 'gotUAddMe'){
       this.group.addPeer(j.me);
       this.net.endRes(res,'');
@@ -844,6 +942,12 @@ class mailTreeObj {
         }
         if (j.msg.req == 'sendMail'){
           this.doSendMailToOwner(j.msg,j.remIp);
+        }
+        if (j.msg.req == 'sendMyMail'){
+          this.doSendMyMail(j.msg,j.remIp);
+        }
+        if (j.msg.req == 'deleteMyMail'){
+          this.doDeleteMyMail(j.msg,j.remIp);
         }
         if (j.msg.req == 'deleteMail'){
           this.doDeleteMailByOwner(j.msg,j.remIp);
@@ -910,18 +1014,17 @@ class mailTreeObj {
      }
      if (this.isValidSig(j.sig)){
        //*store the public key and reply true
-       const SQL = `select msubPubKey from mailTree.mailSubscriber where msubMUID = '${j.MUID}'`;
-       console.log(SQL);
-       con.query(SQL , (err, result,fields)=>{
+       const SQL = `select msubPubKey,msubMailPubKey from mailTree.mailSubscriber where msubMUID = ?`;
+       con.query(SQL ,[j.MUID], (err, result,fields)=>{
          if (err){
            console.log(err);
-           result.msg = err;
+           return;
          }
          else {
            if (result.length > 0){
              res.result = true;
-             res.publicKey = result[0].msubPubKey;
-             console.log(`doSendInBoxKey():: `,result[0]);
+             res.publicKey  = result[0].msubPubKey;
+             res.mailPubKey = result[0].msubMailPubKey;
              this.net.sendReply(remIp,res);
            }
          }
@@ -1045,6 +1148,7 @@ class mailTreeObj {
            j.icon?.path   || null,
            j.icon?.ftype  || null,
            j.nic          || null,
+           j.mailPubKey   || null,
            j.sig.ownMUID
          ];
 
@@ -1052,8 +1156,10 @@ class mailTreeObj {
            // -----------------------------------------
            // USER EXISTS → UPDATE
            // -----------------------------------------
+           // coalesce: a client that has not sent a mail key yet must not wipe
+           // the one already registered, or mail addressed to it stops sealing.
            const updateSQL = ` UPDATE mailTree.mailSubscriber SET msubIconFName  = ?, msubIconFCSum  = ?, msubIconRName  = ?, msubIconFolder = ?,
-              msubIconPath   = ?, msubIconFType  = ?, msubBorgNic  = ?  WHERE msubMUID = ? `;
+              msubIconPath   = ?, msubIconFType  = ?, msubBorgNic  = ?, msubMailPubKey = coalesce(?,msubMailPubKey)  WHERE msubMUID = ? `;
 
            con.query(updateSQL, values, (err2, result2) => {
              if (err2) {
@@ -1065,11 +1171,12 @@ class mailTreeObj {
            });
  
          } else {
-           const SQL = ` INSERT INTO mailTree.mailSubscriber (msubMUID, msubPubKey,msubIconFName, msubIconFCSum, msubIconRName,
-             msubIconFolder, msubIconPath, msubIconFType, msubBorgNic)  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+           const SQL = ` INSERT INTO mailTree.mailSubscriber (msubMUID, msubPubKey, msubMailPubKey, msubIconFName, msubIconFCSum, msubIconRName,
+             msubIconFolder, msubIconPath, msubIconFType, msubBorgNic)  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
            const values = [
              j.sig.ownMUID,
              j.sig.pubKey,
+             j.mailPubKey   || null,
              j.icon?.fname  || null,
              j.icon?.fcsum  || null,
              j.icon?.rname  || null,
@@ -1439,17 +1546,22 @@ class mailTreeObj {
       const reqId = crypto.randomUUID();
       let mkyReply = null;
 
+      // A cell whose registry row predates the mail key still answers, so the
+      // first reply is only kept as a fallback while waiting for one that
+      // actually carries a mail key.
+      let best = null;
+
       const gtime = setTimeout( ()=>{
-        console.log('Request User InBoxKey Request Timeout:',j);
         this.net.removeListener('mkyReply', mkyReply);
-        resolve(null);
+        if (!best) console.log('Request User InBoxKey Request Timeout:',j);
+        resolve(best);
       },1000);
 
       const bcast = {
         to    : 'mailCells',
         req   : 'sendInBoxKey',
         reqId : reqId,
-        MUID  : j.ownMUID,
+        MUID  : j.toMUID || j.ownMUID,
         sig   : j.sig
       }
       this.net.broadcast(bcast);
@@ -1457,9 +1569,12 @@ class mailTreeObj {
         //console.log('mkyReply is:',r);
         if (r.req == 'sendInBoxKeyResult' && reqId === r.reqId){
           if (r.result === true){
+            if (!best) best = {publicKey : r.publicKey, mailPubKey : r.mailPubKey || null};
+            if (!r.mailPubKey) return;
+            best.mailPubKey = r.mailPubKey;
             this.net.removeListener('mkyReply', mkyReply);
             clearTimeout(gtime);
-            resolve(r.publicKey);
+            resolve(best);
           } 
         }
       });
@@ -1523,26 +1638,91 @@ class mailTreeObj {
       });
     });
   }
+  /* Mail retrieval: ask the whole mail group who is holding mail for this MUID.
+     Every holder answers, so replies are collected for the full window and
+     de-duplicated by envelope hash - the same mail lives on nCopys cells. */
   receptorReqSendMyMail(j){
-    return new Promise( (resolve,reject)=>{
-      const gtime = setTimeout( ()=>{
-        console.log('Send Mail Request Timeout:',j);
-        resolve(null);
-      },20*1000);
-      //console.log('bcasting reques for mail data: ',j);
-      var req = {
-        to : 'mailCells',
-	req : 'sendMail',
-        mail : j.mail
+    return new Promise( (resolve)=>{
+      const reqId = crypto.randomUUID();
+      const found = new Map();
+      let mkyReply = null;
+
+      setTimeout( ()=>{
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve([...found.values()]);
+      },3*1000);
+
+      const req = {
+        to    : 'mailCells',
+        req   : 'sendMyMail',
+        reqId : reqId,
+        MUID  : j.MUID,
+        hash  : j.hash || null,
+        sig   : j.sig
       }
 
       this.net.broadcast(req);
-      this.net.once('mkyReply', r =>{
-        //console.log('mkyReply is:',r);
-	if (r.req == 'pMailDataResult'){
-          //console.log('mailData Request',r);
+      this.net.on('mkyReply', mkyReply = (r) =>{
+        if (r.req !== 'sendMyMailResult' || r.reqId !== reqId) return;
+        for (const m of (r.mail || [])){
+          const held = found.get(m.hash);
+          if (held) {held.hosts.push(r.remIp); continue;}
+          m.hosts = [r.remIp];
+          found.set(m.hash,m);
+        }
+      });
+    });
+  }
+  // Deletes every copy the group holds. Counts the rows cells confirmed gone.
+  receptorReqDeleteMyMail(j){
+    return new Promise( (resolve)=>{
+      const reqId = crypto.randomUUID();
+      let nGone = 0;
+      let mkyReply = null;
+
+      setTimeout( ()=>{
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve(nGone);
+      },3*1000);
+
+      const req = {
+        to    : 'mailCells',
+        req   : 'deleteMyMail',
+        reqId : reqId,
+        MUID  : j.MUID,
+        hash  : j.hash || null,
+        sig   : j.sig
+      }
+
+      this.net.broadcast(req);
+      this.net.on('mkyReply', mkyReply = (r) =>{
+        if (r.req === 'deleteMyMailResult' && r.reqId === reqId && r.result === true){
+          nGone = nGone + (r.nDeleted || 0);
+        }
+      });
+    });
+  }
+  // Hands one sealed envelope to one holder cell.
+  receptorReqStoreSealedMail(mail,toIp){
+    return new Promise( (resolve)=>{
+      let mkyReply = null;
+      const gtime = setTimeout( ()=>{
+        console.log('Sealed Mail Store Timeout:',toIp);
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve(null);
+      },10*1000);
+
+      const req = {
+        req  : 'storeSealedMail',
+        mail : mail
+      }
+
+      this.net.sendMsg(toIp,req);
+      this.net.on('mkyReply', mkyReply = (r) =>{
+        if (r.mailStorHash === mail.hash && r.remIp == toIp){
+          this.net.removeListener('mkyReply', mkyReply);
           clearTimeout(gtime);
-          resolve(r);
+          resolve(r.mailStoreRes === true ? r : null);
         }
       });
     });
@@ -1602,6 +1782,112 @@ class mailTreeObj {
       if (err){
         console.log(err);
       }
+    });
+  }
+  /*****************************************************************
+  Sealed mail held for a recipient
+  ================================================================
+  The envelope arrives already encrypted: this cell verifies the sender
+  signed it, checks the content hash, and stores the blob verbatim. It
+  holds no key that can open it.
+  */
+  storeSealedMail(j,remIp){
+    const mail = j.mail || {};
+    const env  = mail.envelope;
+
+    const fail = (why)=>{
+      console.log('sealed mail rejected:',why);
+      this.net.endRes(remIp,JSON.stringify({mailStoreRes:false,mailStorHash:mail.hash||null,error:why}));
+    }
+    if (!env || !env.to || !env.from || !env.ct || !env.tag || !env.wrappedKey) return fail('envelope is incomplete');
+    if (!this.isValidSig(mail.sig))         return fail('Invalid Signature For Request');
+    if (mail.sig.ownMUID !== env.from)      return fail('signature does not match envelope sender');
+    if (sealedMailHash(env) !== mail.hash)  return fail('envelope hash does not match its contents');
+
+    const values = [
+      env.to,
+      env.from,
+      mail.hash,
+      JSON.stringify(env),
+      JSON.stringify({token:mail.sig.token,pubKey:mail.sig.pubKey,signature:mail.sig.signature}),
+      new Date(env.date || Date.now())
+    ];
+    // Same mail arriving twice (resend, or a second copy request) is not an
+    // error: the hash is the identity, so keep the copy already held.
+    const SQL = `INSERT INTO mailTree.mailInBox
+      (mbxToMUID,mbxFromMUID,mbxHash,mbxEnvelope,mbxSig,mbxDate,mbxStored)
+      VALUES (?,?,?,?,?,?,now())
+      ON DUPLICATE KEY UPDATE mbxStored = mbxStored`;
+
+    con.query(SQL,values,(err)=>{
+      if (err){
+        console.log('sealed mail store failed:',err);
+        this.net.endRes(remIp,JSON.stringify({mailStoreRes:false,mailStorHash:mail.hash,error:'db error'}));
+        return;
+      }
+      this.net.endRes(remIp,JSON.stringify({mailStoreRes:true,mailStorHash:mail.hash}));
+    });
+  }
+  /* Answers a retrieval broadcast when this cell holds mail for the MUID.
+     The requester must have signed as the addressee, so a cell cannot fish
+     for somebody else's mail. Silence when nothing is held. */
+  doSendMyMail(j,remIp){
+    if (!this.isValidSig(j.sig)){
+      console.log('mail request signature invalid... no mail sent');
+      return;
+    }
+    if (j.sig.ownMUID !== j.MUID){
+      console.log('mail request is not signed by the addressee... no mail sent');
+      return;
+    }
+    let SQL = `select mbxHash,mbxEnvelope,mbxSig,mbxDate from mailTree.mailInBox where mbxToMUID = ?`;
+    const values = [j.MUID];
+    if (j.hash){
+      SQL += ' and mbxHash = ?';
+      values.push(j.hash);
+    }
+    SQL += ' order by mbxDate desc limit 500';
+
+    con.query(SQL,values,(err,result)=>{
+      if (err){console.log(err); return;}
+      if (result.length === 0) return;
+
+      const mail = [];
+      for (const row of result){
+        try {
+          mail.push({
+            hash     : row.mbxHash,
+            envelope : JSON.parse(row.mbxEnvelope),
+            sig      : row.mbxSig ? JSON.parse(row.mbxSig) : null,
+            date     : row.mbxDate
+          });
+        }
+        catch(err) {console.log('stored envelope is not valid JSON:',row.mbxHash);}
+      }
+      if (mail.length === 0) return;
+      this.net.sendReply(remIp,{req:'sendMyMailResult',reqId:j.reqId,result:true,mail:mail});
+    });
+  }
+  // Deletes held mail on the addressee's own signed request.
+  doDeleteMyMail(j,remIp){
+    if (!this.isValidSig(j.sig) || j.sig.ownMUID !== j.MUID){
+      console.log('mail delete signature invalid... nothing deleted');
+      return;
+    }
+    let SQL = `delete from mailTree.mailInBox where mbxToMUID = ?`;
+    const values = [j.MUID];
+    if (j.hash){
+      SQL += ' and mbxHash = ?';
+      values.push(j.hash);
+    }
+    con.query(SQL,values,(err,result)=>{
+      if (err){console.log(err); return;}
+      this.net.sendReply(remIp,{
+        req      : 'deleteMyMailResult',
+        reqId    : j.reqId,
+        result   : true,
+        nDeleted : result.affectedRows || 0
+      });
     });
   }
   storeMail(j,remIp){
