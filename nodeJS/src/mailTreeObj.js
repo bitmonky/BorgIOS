@@ -1659,16 +1659,16 @@ class mailTreeObj {
       },3*1000);
 
       const req = {
-        to    : 'mailCells',
-        req   : 'sendMyMail',
-        reqId : reqId,
-        MUID  : j.MUID,
-        hash  : j.hash || null,
-        sig   : j.sig
+        to     : 'mailCells',
+        req    : 'sendMyMail',
+        reqId  : reqId,
+        MUID   : j.MUID,
+        hash   : j.hash || null,
+        sig    : j.sig,
+        origin : this.net.rnet?.myIp || null
       }
 
-      this.net.broadcast(req);
-      this.net.on('mkyReply', mkyReply = (r) =>{
+      const collect = (r) =>{
         if (r.req !== 'sendMyMailResult' || r.reqId !== reqId) return;
         for (const m of (r.mail || [])){
           const held = found.get(m.hash);
@@ -1676,6 +1676,16 @@ class mailTreeObj {
           m.hosts = [r.remIp];
           found.set(m.hash,m);
         }
+      };
+
+      this.net.broadcast(req);
+      this.net.on('mkyReply', mkyReply = collect);
+      // This cell may hold mail too, and a broadcast never comes back to its
+      // originator when that originator is the root, so read the local inbox
+      // directly rather than waiting for an echo that may never arrive.
+      this.doSendMyMail(req,null,(r)=>{
+        r.remIp = this.net.rnet?.myIp || null;
+        collect(r);
       });
     });
   }
@@ -1692,20 +1702,26 @@ class mailTreeObj {
       },3*1000);
 
       const req = {
-        to    : 'mailCells',
-        req   : 'deleteMyMail',
-        reqId : reqId,
-        MUID  : j.MUID,
-        hash  : j.hash || null,
-        sig   : j.sig
+        to     : 'mailCells',
+        req    : 'deleteMyMail',
+        reqId  : reqId,
+        MUID   : j.MUID,
+        hash   : j.hash || null,
+        sig    : j.sig,
+        origin : this.net.rnet?.myIp || null
       }
 
-      this.net.broadcast(req);
-      this.net.on('mkyReply', mkyReply = (r) =>{
+      const collect = (r) =>{
         if (r.req === 'deleteMyMailResult' && r.reqId === reqId && r.result === true){
           nGone = nGone + (r.nDeleted || 0);
         }
-      });
+      };
+
+      this.net.broadcast(req);
+      this.net.on('mkyReply', mkyReply = collect);
+      // Delete this cell's own copy directly: it holds copies like any other,
+      // and the root never receives its own broadcast.
+      this.doDeleteMyMail(req,null,collect);
     });
   }
   // Hands one sealed envelope to one holder cell.
@@ -1840,7 +1856,9 @@ class mailTreeObj {
   /* Answers a retrieval broadcast when this cell holds mail for the MUID.
      The requester must have signed as the addressee, so a cell cannot fish
      for somebody else's mail. Silence when nothing is held. */
-  doSendMyMail(j,remIp){
+  doSendMyMail(j,remIp,onLocal){
+    // Handled locally already; ignore this cell's own broadcast echoed back.
+    if (!onLocal && j.origin && j.origin === this.net.rnet?.myIp) return;
     if (!this.isValidSig(j.sig)){
       console.log('mail request signature invalid... no mail sent');
       return;
@@ -1874,13 +1892,15 @@ class mailTreeObj {
         catch(err) {console.log('stored envelope is not valid JSON:',row.mbxHash);}
       }
       if (mail.length === 0) return;
-      // include:'self' so a holder that is also the asking cell still answers
-      // its own broadcast -- sendReply() drops loopback replies without it.
-      this.net.sendReply(remIp,{req:'sendMyMailResult',reqId:j.reqId,result:true,mail:mail,include:'self'});
+      const reply = {req:'sendMyMailResult',reqId:j.reqId,result:true,mail:mail};
+      if (onLocal) {onLocal(reply); return;}
+      this.net.sendReply(remIp,reply);
     });
   }
   // Deletes held mail on the addressee's own signed request.
-  doDeleteMyMail(j,remIp){
+  doDeleteMyMail(j,remIp,onLocal){
+    // Handled locally already; ignore this cell's own broadcast echoed back.
+    if (!onLocal && j.origin && j.origin === this.net.rnet?.myIp) return;
     if (!this.isValidSig(j.sig) || j.sig.ownMUID !== j.MUID){
       console.log('mail delete signature invalid... nothing deleted');
       return;
@@ -1893,13 +1913,14 @@ class mailTreeObj {
     }
     con.query(SQL,values,(err,result)=>{
       if (err){console.log(err); return;}
-      this.net.sendReply(remIp,{
+      const reply = {
         req      : 'deleteMyMailResult',
         reqId    : j.reqId,
         result   : true,
-        nDeleted : result.affectedRows || 0,
-        include  : 'self'
-      });
+        nDeleted : result.affectedRows || 0
+      };
+      if (onLocal) {onLocal(reply); return;}
+      this.net.sendReply(remIp,reply);
     });
   }
   storeMail(j,remIp){
