@@ -15,10 +15,13 @@ const {DStreamMgrObj} = require('./DStreamMgrObj.js');
 // Cells are deployed by curling individual files, so a node updated before
 // sFarmAccountant.js is published must still serve; it just cannot bill.
 let SFarmAccountant = null;
-try {
-  ({SFarmAccountant} = require('./sFarmAccountant.js'));
-} catch (err) {
-  console.warn('peerTree:: sFarmAccountant.js unavailable, accounting disabled:',err.message);
+
+if (process.title == 'cronoTreeCell'){
+  try {
+    ({SFarmAccountant} = require('./sFarmAccountant.js'));
+  } catch (err) {
+    console.warn('peerTree:: sFarmAccountant.js unavailable, accounting disabled:',err.message);
+  }
 }
 
 const db = require('./shellFarmerDB');
@@ -5142,8 +5145,11 @@ class PeerTreeNet extends  EventEmitter {
       this.db           = db.getConnectionSF();
       this.loginMap     = await this.loadLoginsFromFile();
       setInterval(() => {this.pruneLoginMapTimer();}, 60_000);
-      this.accountant?.start({priceServiceIp:this.options?.priceServiceIp})
-        .catch(err => console.error('PeerTreeNet.initFarmerTools():: accountant start failed',err));
+      if (process.title == 'cronoTreeCell'){
+        console.log(`initFarmerTools():: Start The Accountant`);
+        this.accountant?.start({priceServiceIp:this.options?.priceServiceIp})
+          .catch(err => console.error('PeerTreeNet.initFarmerTools():: accountant start failed',err));
+      }
    } 
    doHotStartInitialize(){
       this.isStreaming = new Map;

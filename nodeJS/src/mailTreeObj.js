@@ -791,7 +791,7 @@ class mailTreeObj {
       this.net.on('mkyReply', mkyReply = (r)=>{
         if (r.req === 'pNodeListGenIP'){
           console.log('mkyReply NodeGen is:',r.remIp);
-          if (IPs.length <= maxIP){
+          if (IPs.length <= maxIP && !IPs.includes(r.remIp)){
             console.log('mkyReply maxIP ${maxIP} NodeGen is: ',r.remIp);
             IPs.push(r.remIp);
           }
@@ -1656,7 +1656,7 @@ class mailTreeObj {
       setTimeout( ()=>{
         this.net.removeListener('mkyReply', mkyReply);
         resolve([...found.values()]);
-      },3*1000);
+      },675);
 
       const req = {
         to     : 'mailCells',

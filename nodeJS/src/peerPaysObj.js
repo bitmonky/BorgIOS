@@ -964,7 +964,7 @@ class peerPaysObj {
         if (r.req == 'activePayerIP'){
           console.log('mkyReply Active Payer is:',r);
           if (this.verifyActivePayer(r)){
-            if (IPs.length < maxIP){
+            if (IPs.length < maxIP && !IPs.includes(r.remIp)){
               IPs.push(r.remIp);
             }
             else {
@@ -1013,7 +1013,7 @@ class peerPaysObj {
          console.log(`broadcast heard:: `, r);
         if (r.req == 'pNodeListGenIP' && r.reqId == reqId){
           console.log('mkyReply NodeGen is:',r);
-          if (IPs.length < maxIP){
+          if (IPs.length < maxIP && !IPs.includes(r.remIp)){
             IPs.push(r.remIp);
           }
           else {

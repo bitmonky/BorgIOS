@@ -42,6 +42,9 @@ class SFarmAccountant {
   // Lifecycle
   // ================================
   async start(opts = {}) {
+
+    console.log(`sFarmAccountant.start():: dir `, this.invoiceDir);
+
     this.priceServiceIp = opts.priceServiceIp || this.priceServiceIp;
     this.farmerMUID     = opts.farmerMUID     || await this.loadFarmerMUID();
 
@@ -58,6 +61,7 @@ class SFarmAccountant {
                     this.farmerMUID, this.net.peerMUID);
       return false;
     }
+    console.log(`sFarmAccountant.start():: dir `, this.invoiceDir);
     fs.mkdirSync(this.invoiceDir, { recursive: true });
 
     const tick = Math.max(60_000, Math.min(this.policy.cycleMs, DAY_MS) / 24);
