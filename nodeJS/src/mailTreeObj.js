@@ -418,9 +418,9 @@ class mailTreeCellReceptor{
     console.log(`reqQryMyFarms():: heard j`,j);
     j.ownMUID  = j.sig.ownMUID;
 
-    let regIPs = await this.peer.receptorReqMyFarmIPs(j);
+    let regIPs = await this.peer.receptorReqMyFarmIPs(j.IP);
     if (regIPs.length === 0){
-      console.log(`reqRegisterMyFarm():: no available`,regIPs);
+      console.log(`reqQryMyFarms():: no available`,regIPs);
       res.end('{"result":false,"nRecs":0,"msg":"No Farms Found.. Try later"}');
       return;
     }
@@ -429,6 +429,7 @@ class mailTreeCellReceptor{
   async reqRegisterMyFarm(j,res){
     console.log(`reqRegisterInBox():: heard j`,j);
     j.ownMUID  = j.sig.ownMUID;
+    j.date     = new Date(Date.now()).toISOString().slice(0, 19).replace('T', ' ');
     let maxIPs = j.nCopies || 3;
     j.nCopies  = maxIPs;
 
@@ -1105,12 +1106,14 @@ class mailTreeObj {
          // Create New Farm Registration
 
          const values = [
-           j.farmerMUID,
-           j.farmerFIP,
+           j.ownMUID,
+           j.farm.IP,
            j.date
          ];
 
          const SQL = `INSERT into mailTree.shellFarmerRegistry (sregFarmerMUID,sregFarmerFIP,sregRegDate) values (?, ?, ?)`;
+         console.log(`doRegisterMyFarm():: `,j,SQL,values);
+
          con.query(SQL ,values, (err, result,fields)=>{
            if (err){
              console.log(err);
@@ -1644,9 +1647,11 @@ class mailTreeObj {
       });
     });
   }
+
   /* Mail retrieval: ask the whole mail group who is holding mail for this MUID.
      Every holder answers, so replies are collected for the full window and
      de-duplicated by envelope hash - the same mail lives on nCopys cells. */
+  
   receptorReqSendMyMail(j){
     return new Promise( (resolve)=>{
       const reqId = crypto.randomUUID();
