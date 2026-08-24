@@ -414,6 +414,17 @@ class mailTreeCellReceptor{
     }   
     return;
   } 
+  async reqQryFarmAvailable(j){
+    console.log(`reqQryFarmAvailable():: heard j`,j);
+    j.ownMUID  = j.sig.ownMUID;
+
+    let ownerID = await this.peer.receptorReqFarmOwnByIP(j.farm.IP);
+    if (ownerID){
+      console.log(`reqQryFarmAvailable():: farm available`,ownerID);
+      return ownerID;
+    }
+    return null;
+  }
   async reqQryMyFarms(j,res){
     console.log(`reqQryMyFarms():: heard j`,j);
     j.ownMUID  = j.sig.ownMUID;
@@ -427,7 +438,11 @@ class mailTreeCellReceptor{
     res.end('{"result":true,"nRecs":reqIPs.length,farms:reqIPs,"msg":"Farms Found...OK"}');
   }
   async reqRegisterMyFarm(j,res){
-    console.log(`reqRegisterInBox():: heard j`,j);
+    console.log(`reqRegisterMyFarm():: heard j`,j);
+    if (await this.reqQryFarmAvailable(j) !== null) {
+      res.end('{"result":false,"nRecs":0,"msg":"Farm Already registered"}');
+      return;
+    }
     j.ownMUID  = j.sig.ownMUID;
     j.date     = new Date(Date.now()).toISOString().slice(0, 19).replace('T', ' ');
     let maxIPs = j.nCopies || 3;
@@ -940,6 +955,10 @@ class mailTreeObj {
         if (j.msg.req == 'hello'){
           var qres = {req : 'helloBack', mNodeID : this.net.peerMUID };
           this.net.sendReply(j.remIp,qres);
+        }
+        if (j.msg.req === 'sendFarmOwnByIP'){
+          this.doSendFarmOwnByIP(j.msg,j.remIp);
+          return;
         }
         if (j.msg.req == 'sendInBoxKey'){
           this.doSendInBoxKey(j.msg,j.remIp);
@@ -1519,6 +1538,62 @@ class mailTreeObj {
         }
       });
     });
+  }
+  receptorReqFarmOwnByIP(ip){
+    return new Promise( (resolve,reject)=>{
+      const reqId = crypto.randomUUID();
+      let IPs = [];
+      let mkyReply = null;
+
+      const gtime = setTimeout( ()=>{
+        console.log('max reply time completed:',j,IPs);
+        this.net.removeListener('mkyReply', mkyReply);
+        resolve(null);
+      },1500);
+
+      const bcast = {
+        to    : 'mailCells',
+        req   : 'sendFarmOwnByIP',
+        reqId : reqId,
+        IP    : ip,
+      }
+      console.log(`receptorReqMyFarmIPs():: `,bcast);
+      this.net.broadcast(bcast);
+      this.net.on('mkyReply',mkyReply = (r) =>{
+        //console.log('recptorReqMyFarmPs():: heard:',r);
+        if (r.response === 'sendFarmOwnByIPResult' && reqId === r.reqId){
+          this.net.removeListener('mkyReply', mkyReply);
+          clearTimeout(gtime);
+          console.log('receptorReqFarmOwn():: mkyReply is:',r.ownId);
+          resolve (r.ownId);
+        }
+      });
+    });
+  }
+  doSendFarmOwnByIP(j,remIp){
+     const reply = {
+       response : 'sendFarmOwnByIPResult',
+       reqId    : j.reqId,
+       ownId    : null,
+     }
+
+     //*look for the IP farm registration
+     const SQL = `select sregFarmerMUID from mailTree.shellFarmerRegistry where sregFarmerFIP = ?`
+     const params = [j.IP];
+     console.log(SQL,params);
+     con.query(SQL,params , (err, result,fields)=>{
+       if (err){
+         console.log(err);
+       }
+       else {
+         if (result.length > 0){
+           reply.result  = true;
+           reply.ownId   = result[0].sregFarmerMUID;
+           console.log(`doSendInBoxKey():: `,result);
+           this.net.sendReply(remIp,reply);
+         }
+       }
+     });
   }
   receptorReqMyFarmIPs(j){
     return new Promise( (resolve,reject)=>{
