@@ -1,6 +1,6 @@
 # BorgIOS
 ### Borg Internet Operating System
-**A self-organizing, self-healing, self-funding distributed network where your USB stick is your identity and the network is your computer.**
+**A self-organizing, self-healing distributed network operating system.**
 
 Disclaimer: This project is experimental and under active development. BorgIOS and BorgHUI Conduit may contain bugs, incomplete features, or breaking changes. It is not intended for production use, and no guarantees are made regarding reliability, data integrity, or security.
 
@@ -10,21 +10,18 @@ Disclaimer: This project is experimental and under active development. BorgIOS a
 
 ## What Is BorgIOS?
 
-BorgIOS is a peer-to-peer network operating system built from the ground up on a single principle: **the network owns itself**.
+BorgIOS is a peer-to-peer network operating system where services are self organizing networks of identical cells.
 
-No central servers. No domain names. No certificate authorities. No logins. No cookies. No blockchain. No company between you and your data.
+No central servers. No domain names. No certificate authorities. No logins. No cookies. No blockchain. No cloud.
 
-Just nodes, cryptographic identity, and a set of elegant rules that produce a resilient, intelligent, economically self-sustaining collective — one that gets **faster, cheaper, and harder to destroy** the more people join it.
-
-> *"Plug your USB stick in anywhere in the world, open a browser, and your entire digital life reconstructs itself from the network. Pull it out and you were never there."*
-
+Just nodes, cryptographic identity.
 ---
 
 ## The Core Idea
 
-Every node in BorgIOS is an identical clone. No masters, no workers, no special hardware. Just nodes running the same code, self-organizing into a shallow broadcast tree, communicating via cryptographically signed JSON messages.
+Every node in BorgIOS is an identical clone. No masters, no workers, no special hardware. Just nodes running the same code, self-organizing into a shallow broadcast trees, communicating via cryptographically signed JSON messages.
 
-Your identity is an **EC keypair**. Your data is **signed shards** scattered across the network. Your access token is **the message itself** — timestamped, signed, and self-verifying. No login required. Ever.
+Your identity is an **EC keypair**. Your data is **signed shards** scattered across the network. Your access token is **the message itself** — timestamped, signed, and self-verifying. No login required. 
 
 ---
 
@@ -152,21 +149,20 @@ Nodes detect when they're behind a router and register as `internalIP→external
 
 ## Identity & Security
 
-### Your USB Stick IS Your Identity
+### Your EC keypair IS Your Identity
 
 ```
 Seed phrase (24 words)
     → deterministically generates EC keypair
-    → keypair lives on USB stick
-    → USB stick runs BorgHUIConduit locally
+    → keypair stored on your device
+    → BorgHUIConduit nodeJS local server
     → browser connects to localhost
     → every message signed with your key
     → your data in the network is yours, mathematically
 ```
 
-Lose the USB: regenerate from seed phrase.  
-Move to a new machine: plug in USB, open browser, everything is there.  
-Pull out the USB: no trace left on the host machine.
+Lose the your keypair: regenerate from seed phrase.  
+Restores keypair and data cypher are restored.
 
 ### No Domains. No CAs. No Cookies. No Sessions.
 
