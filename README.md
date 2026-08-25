@@ -316,9 +316,7 @@ Logins required:               0
 
 ## Philosophy
 
-BorgIOS was not designed to improve the existing internet. It was designed to replace its foundations.
-
-The existing web was built for documents and retrofitted for identity, payments, privacy, and sovereignty — all as afterthoughts, all controlled by intermediaries. BorgIOS builds those primitives correctly from the start:
+The existing web was built for documents and retrofitted for identity, payments, privacy, and sovereignty — all as afterthoughts, all controlled by intermediaries. BorgIOS provides those primitives out of the box for free. 
 
 - **Identity** is a keypair, not a username
 - **Auth** is a signature, not a password  
