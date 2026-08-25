@@ -233,21 +233,6 @@ As local models improve, AI nodes run inference locally — near-zero API cost, 
 
 ---
 
-## Hardware
-
-### Entry Node (~$99-150)
-Raspberry Pi class ARM. 5-10 watts. Passive income from storage, routing, and bandwidth.
-
-### AI Node (~$500-800)
-Higher-end ARM or x86 with NPU/GPU. Runs borgAgentCell with local inference. Earns premium Shells for AI work.
-
-**Setup:**
-1. Plug into power and router
-2. Forward one port
-3. Done — node joins the collective automatically, no config files
-
----
-
 ## Resilience Properties
 
 | Threat | Response |
