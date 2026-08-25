@@ -162,7 +162,7 @@ Seed phrase (24 words)
 ```
 
 Lose the your keypair: regenerate from seed phrase.  
-Restores keypair and data cypher are restored.
+Restores keypair and data encryption cypher.
 
 ### No Domains. No CAs. No Cookies. No Sessions.
 
