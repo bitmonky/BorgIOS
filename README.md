@@ -195,7 +195,6 @@ The network's native currency. The genesis wallet holds **20 million Borg Shells
 - Shard storage
 - Compute time
 - Bandwidth and routing
-- Running a Dogecoin bridge node (`dogeNodeCell`)
 - Providing content consumed by other users
 
 **Spend Shells on:**
@@ -294,7 +293,6 @@ BTraderOrganCell:      ✅ operational
 AI agent colony:       ✅ operational
 fStreamCell:           🔧 ~80% complete
 serviceMgrCell:        🔧 in progress
-dogeNodeCell:          🔧 in progress
 ```
 
 ---
