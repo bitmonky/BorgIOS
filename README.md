@@ -91,7 +91,6 @@ Cells communicate only through receptors. No cross-talk. No shared state. Each c
 | `cronoTreeCell` | Network time unification |
 | `peerPaysCell` | Borg Shell ledger |
 | `btraderOrganCell` | Borg Shell ↔ Dogecoin exchange |
-| `dogeNodeCell` | Dogecoin bridge |
 | `borgAgentCell` | AI agent colony |
 | `mailTreeCell` | Distributed messaging |
 | `peerMemoryCell` | Natural language memory search |
