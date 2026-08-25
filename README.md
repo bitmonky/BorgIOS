@@ -204,23 +204,8 @@ The network's native currency. The genesis wallet holds **20 million Borg Shells
 
 ### BTraderOrganCell — The Exchange
 
-Borg Shells trade against Dogecoin.
+Borg Shells distributed trading platform.
 
-```
-User sends Doge to their BorgDoge address
-    → dogeNodeCell detects incoming transaction
-    → BTrader locks the Doge
-    → releases Borg Shells to user's keypair
-    → finds Shell seller wanting Doge
-    → atomic swap completes
-    → dogeNodeCell operator earns Shells
-```
-
-No exchange account. No KYC. No custodial risk. The BorgDoge address is derived from the user's EC keypair — it's theirs by the same math that makes everything else theirs.
-
-**Why Dogecoin:** Low fees, fast settlement, wide availability. Micro-transactions are viable.
-
----
 
 ## The AI Layer
 
