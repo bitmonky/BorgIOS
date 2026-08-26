@@ -1,6 +1,9 @@
 # BorgIOS
 ### Borg Internet Operating System
-**A self-organizing, self-healing, self-funding distributed network where your USB stick is your identity and the network is your computer.**
+**A self-organizing, self-healing distributed network operating system.**
+
+# Current Status
+I have a seven node test network running you can access the network using the BorgHUI nodeJS client: [Available Here](https://github.com/bitmonky/borgHUI)  
 
 Disclaimer: This project is experimental and under active development. BorgIOS and BorgHUI Conduit may contain bugs, incomplete features, or breaking changes. It is not intended for production use, and no guarantees are made regarding reliability, data integrity, or security.
 
@@ -10,21 +13,18 @@ Disclaimer: This project is experimental and under active development. BorgIOS a
 
 ## What Is BorgIOS?
 
-BorgIOS is a peer-to-peer network operating system built from the ground up on a single principle: **the network owns itself**.
+BorgIOS is a peer-to-peer network operating system where services are self organizing networks of identical cells.
 
-No central servers. No domain names. No certificate authorities. No logins. No cookies. No blockchain. No company between you and your data.
+No central servers. No domain names. No certificate authorities. No logins. No cookies. No blockchain. No cloud.
 
-Just nodes, cryptographic identity, and a set of elegant rules that produce a resilient, intelligent, economically self-sustaining collective — one that gets **faster, cheaper, and harder to destroy** the more people join it.
-
-> *"Plug your USB stick in anywhere in the world, open a browser, and your entire digital life reconstructs itself from the network. Pull it out and you were never there."*
-
+Just nodes, cryptographic identity.
 ---
 
 ## The Core Idea
 
-Every node in BorgIOS is an identical clone. No masters, no workers, no special hardware. Just nodes running the same code, self-organizing into a shallow broadcast tree, communicating via cryptographically signed JSON messages.
+Every node in BorgIOS is an identical clone. No masters, no workers, no special hardware. Just nodes running the same code, self-organizing into a shallow broadcast trees, communicating via cryptographically signed JSON messages.
 
-Your identity is an **EC keypair**. Your data is **signed shards** scattered across the network. Your access token is **the message itself** — timestamped, signed, and self-verifying. No login required. Ever.
+Your identity is an **EC keypair**. Your data is **signed shards** scattered across the network. Your access token is **the message itself** — timestamped, signed, and self-verifying. No login required. 
 
 ---
 
@@ -94,7 +94,6 @@ Cells communicate only through receptors. No cross-talk. No shared state. Each c
 | `cronoTreeCell` | Network time unification |
 | `peerPaysCell` | Borg Shell ledger |
 | `btraderOrganCell` | Borg Shell ↔ Dogecoin exchange |
-| `dogeNodeCell` | Dogecoin bridge |
 | `borgAgentCell` | AI agent colony |
 | `mailTreeCell` | Distributed messaging |
 | `peerMemoryCell` | Natural language memory search |
@@ -152,21 +151,20 @@ Nodes detect when they're behind a router and register as `internalIP→external
 
 ## Identity & Security
 
-### Your USB Stick IS Your Identity
+### Your EC keypair IS Your Identity
 
 ```
 Seed phrase (24 words)
     → deterministically generates EC keypair
-    → keypair lives on USB stick
-    → USB stick runs BorgHUIConduit locally
+    → keypair stored on your device
+    → BorgHUIConduit nodeJS local server
     → browser connects to localhost
     → every message signed with your key
     → your data in the network is yours, mathematically
 ```
 
-Lose the USB: regenerate from seed phrase.  
-Move to a new machine: plug in USB, open browser, everything is there.  
-Pull out the USB: no trace left on the host machine.
+Lose the your keypair: regenerate from seed phrase.  
+Restores keypair and data encryption cypher.
 
 ### No Domains. No CAs. No Cookies. No Sessions.
 
@@ -199,7 +197,6 @@ The network's native currency. The genesis wallet holds **20 million Borg Shells
 - Shard storage
 - Compute time
 - Bandwidth and routing
-- Running a Dogecoin bridge node (`dogeNodeCell`)
 - Providing content consumed by other users
 
 **Spend Shells on:**
@@ -210,23 +207,8 @@ The network's native currency. The genesis wallet holds **20 million Borg Shells
 
 ### BTraderOrganCell — The Exchange
 
-Borg Shells trade against Dogecoin.
+Borg Shells distributed trading platform.
 
-```
-User sends Doge to their BorgDoge address
-    → dogeNodeCell detects incoming transaction
-    → BTrader locks the Doge
-    → releases Borg Shells to user's keypair
-    → finds Shell seller wanting Doge
-    → atomic swap completes
-    → dogeNodeCell operator earns Shells
-```
-
-No exchange account. No KYC. No custodial risk. The BorgDoge address is derived from the user's EC keypair — it's theirs by the same math that makes everything else theirs.
-
-**Why Dogecoin:** Low fees, fast settlement, wide availability. Micro-transactions are viable.
-
----
 
 ## The AI Layer
 
@@ -251,21 +233,6 @@ Agents communicate with humans through borgHUI's chat interface.
 **DeepSeek R1** is particularly well-suited to reasoning through the BorgIOS protocol.
 
 As local models improve, AI nodes run inference locally — near-zero API cost, continuous operation, the network becomes genuinely self-maintaining and self-improving.
-
----
-
-## Hardware
-
-### Entry Node (~$99-150)
-Raspberry Pi class ARM. 5-10 watts. Passive income from storage, routing, and bandwidth.
-
-### AI Node (~$500-800)
-Higher-end ARM or x86 with NPU/GPU. Runs borgAgentCell with local inference. Earns premium Shells for AI work.
-
-**Setup:**
-1. Plug into power and router
-2. Forward one port
-3. Done — node joins the collective automatically, no config files
 
 ---
 
@@ -298,7 +265,6 @@ BTraderOrganCell:      ✅ operational
 AI agent colony:       ✅ operational
 fStreamCell:           🔧 ~80% complete
 serviceMgrCell:        🔧 in progress
-dogeNodeCell:          🔧 in progress
 ```
 
 ---
@@ -320,9 +286,7 @@ Logins required:               0
 
 ## Philosophy
 
-BorgIOS was not designed to improve the existing internet. It was designed to replace its foundations.
-
-The existing web was built for documents and retrofitted for identity, payments, privacy, and sovereignty — all as afterthoughts, all controlled by intermediaries. BorgIOS builds those primitives correctly from the start:
+The existing web was built for documents and retrofitted for identity, payments, privacy, and sovereignty — all as afterthoughts, all controlled by intermediaries. BorgIOS provides those primitives out of the box for free. 
 
 - **Identity** is a keypair, not a username
 - **Auth** is a signature, not a password  
