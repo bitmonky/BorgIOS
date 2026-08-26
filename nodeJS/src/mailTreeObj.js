@@ -19,11 +19,62 @@ const schedule        = require('node-schedule');
 const {MkyWebConsole} = require('./networkWebConsole.js');
 const {pcrypt}        = require('./peerCrypt');
 const {BorgECMail}    = require('./BorgECMail.js');
+const {BorgIOSptreeAPI}   = require("./borgIOSptreeAPI.js");
 
 addslashes  = require ('./addslashes');
 
 const algorithm = 'aes256';
 
+const { NodeSSH } = require('node-ssh');
+
+async function testSSHCredentialsSimple(config) {
+    const { host, port = 22, username, password, timeout = 10000 } = config;
+    
+    const ssh = new NodeSSH();
+    
+    try {
+        await ssh.connect({
+            host,
+            port,
+            username,
+            password,
+            readyTimeout: timeout
+        });
+        
+        // Optionally run a test command
+        const result = await ssh.execCommand('echo "Connection successful"');
+        
+        ssh.dispose();
+        
+        return {
+            success: true,
+            message: 'Authentication successful',
+            host,
+            username,
+            testOutput: result.stdout.trim()
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: `Authentication failed: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+// Usage example
+async function testExample() {
+    // Replace with actual credentials
+    const credentials = {
+        host: 'your-server-ip',
+        port: 22,
+        username: 'your-username',
+        password: 'your-password'
+    };
+    
+    const result = await testSSHCredentialsSimple(credentials);
+    console.log(result);
+}
 function encrypt(buffer,pword){
   pword = pword.substr(0,31);
   var cipher = crypto.createCipher(algorithm,pword);
@@ -439,6 +490,19 @@ class mailTreeCellReceptor{
   }
   async reqRegisterMyFarm(j,res){
     console.log(`reqRegisterMyFarm():: heard j`,j);
+
+    // Check User Shells Balance
+    let doCheck = await this.peer.PTree.peerPaysGetMyBalance(j.sig.ownMUID);
+    console.log(`reqRegisterMyFarm():: doCheck`,doCheck);
+    let balance = 0;
+    if (doCheck.error === false && doCheck.status == 200 && doCheck.json.result === true){
+      balance = doCheck.json.balance.balance;
+    }
+    if (balance < 1000.0 ) {
+      res.end('{"result":false,"nRecs":0,"msg":"Error - NSF_ShellsNoSoup4U :. you need 1000 shells to open a Farm"}');
+      return;
+    }
+  
     if (await this.reqQryFarmAvailable(j) !== null) {
       res.end('{"result":false,"nRecs":0,"msg":"Farm Already registered"}');
       return;
@@ -716,6 +780,7 @@ class mailTreeObj {
     this.isRoot     = null;
     this.status     = 'starting';
     this.net        = peerTree;
+    this.PTree      = new BorgIOSptreeAPI(peerTree);
     this.receptor   = null;
     this.wcon       = new MkyWebConsole(this.net,con,this,'mailTreeCell');
   }
