@@ -295,6 +295,7 @@ class peerMemCellReceptor{
       return;
     }
     if (j.req == 'searchMemory'){
+      j.qry.seeker = req.borgToken;
       this.doSearch(j,res);
       return;
     }
@@ -344,7 +345,7 @@ class peerMemCellReceptor{
     res.end(JSON.stringify(qres));
   }
   async doSearch(j,res){
-    console.log('doSearch qryStr is: ',j.qry.qryStr);
+    console.log('doSearch qryStr is: ',j);
     if(j.qry.qryStr === null || j.qry.qryStr == ' ' || j.qryStr == ''){
       res.end('{"result": null,"data":"Empty Or Null Qry"}');
       return;
@@ -361,11 +362,12 @@ class peerMemCellReceptor{
     //this.searchIndex = this.isThere(j.qry.key);
     this.results = {result : 0, msg : 'no results found'};
     var breq = {
-      to : 'peerMemCells',
-      qry : j.qry,
-      qmgr : qry
+      to   : 'peerMemCells',
+      qry  : j.qry,
+      qmgr : qry,
     }
-    console.log('bcast search request to memoryCell group: ',breq.qmgr);
+
+    console.log('bcast search request to memoryCell group: ',breq);
     this.peer.net.broadcast(breq);
     const qres = await this.getSearchResults(j);
     res.end(JSON.stringify(qres));
@@ -923,7 +925,14 @@ class peerMemoryObj {
        SQLr += `where pmcIsPrivate is null ${scope.search + qtype} and (`;
      }
      else {
-       SQLr += `where pmcMownerID = '${j.qry.ownerID}' and pmcIsPrivate ${j.qry.isPrivate} ${scope.search + qtype} and (`;
+       if (j.qry.isPrivate === ' = 1 ') {
+         // !! Should revalidate the seeker signature here.
+
+         SQLr += `where pmcMownerID = '${j.seeker.Address}' and pmcIsPrivate ${j.qry.isPrivate} ${scope.search + qtype} and (`;
+       } 
+       else {
+         SQLr += `where pmcMownerID = '${j.qry.ownerID}' and pmcIsPrivate ${j.qry.isPrivate} ${scope.search + qtype} and (`;
+       } 
      }
      var SQL = SQLr;
      var n = 1;
