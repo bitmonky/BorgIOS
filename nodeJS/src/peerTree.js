@@ -4974,6 +4974,37 @@ class gPowKey {
     this.isMining = false;
     this.stopMining = null;
   }
+  doVerifyProof(proof,difficulty) {
+    // 1. Verify the hash meets difficulty
+    const targetPrefix = '0'.repeat(difficulty);
+    const isValidHash = proof.hash.substring(0, difficulty) === targetPrefix;
+  
+    // 2. Recalculate hash to ensure it matches
+    const data = proof.wIP + proof.work + proof.nonce;
+    const computedHash = crypto.createHash('sha256').update(data).digest('hex');
+    const hashMatches = computedHash === proof.hash;
+  
+    // 3. Verify the signature
+    const isSignatureValid = crypto.verify(
+      'sha256',
+      Buffer.from(proof.sig.token),
+      proof.sig.pubKey,
+      proof.sig.sig
+    );
+  
+    // 4. Verify the token matches the proof data
+    const tokenMatches = JSON.stringify({
+      req    : proof.req,
+      reqId  : proof.reqId,
+      peerID : proof.peerID,
+      work   : proof.work,
+      wIP    : proof.wIP,
+      nonce  : proof.nonce,
+      hash   : proof.hash
+    }) === proof.sig.token;
+  
+    return isValidHash && hashMatches && isSignatureValid && tokenMatches;
+  }
   async doPow(difficulty,work,remIP,reqId=null) {
     //console.error('gPowKey.doPow():: Doing POW for:',remIP);
     var work = this.que.push(remIP,work,difficulty,reqId);
@@ -5000,7 +5031,7 @@ class gPowKey {
     }
   }
   signMsg(stok) {
-    const sig = this.signingKey.sign(this.calculateHash(stok), 'base64');
+    const sig = this.net.signingKey.sign(this.net.calculateHash(stok), 'base64');
     const hexSig = sig.toDER('hex');
     return hexSig;
   }
@@ -5024,13 +5055,21 @@ class gPowKey {
      //console.error('gPowKey.repeatHash():: this.stopMining:',this.stopMining);
      if(!this.stopMining){
         var qres = {
-          req   : 'pNodeListGenIP',
-          reqId : this.reqId,
-          work  : this.work,
-          wIP   : this.ip,
-          nonce : this.nonce,
-          hash  : this.hash
+          req    : 'pNodeListGenIP',
+          reqId  : this.reqId,
+          peerID : this.net.peerMUID,
+          work   : this.work,
+          wIP    : this.ip,
+          nonce  : this.nonce,
+          hash   : this.hash
         }
+        const proofStr = JSON.stringify(qres);
+        const sig = {
+          pubKey : this.net.publicKey,
+          token  : proofStr,
+          sig    : this.signMsg(proofStr)
+        }
+        qres.sig = sig;
         this.net.sendReply(this.remIP,qres);
       }
       this.stopMining = false;
