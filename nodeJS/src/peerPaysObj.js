@@ -1004,16 +1004,17 @@ class peerPaysObj {
         to    : 'peerPayCells',
         req   : 'sendNodeList',
         reqId : reqId,
+        difficulty : 2,
         nodes : maxIP,
         work  : crypto.randomBytes(20).toString('hex') 
       }
 
       this.net.broadcast(req);
       this.net.on('mkyReply', mkyReply = (r)=>{
-         console.log(`broadcast heard:: `, r);
         if (r.req == 'pNodeListGenIP' && r.reqId == reqId){
-          console.log('mkyReply NodeGen is:',r);
-          if (IPs.length < maxIP && !IPs.includes(r.remIp)){
+          const checkPOW = this.net.gpow.doVerifyProof(r,req.difficulty);
+          console.log('mkyReply NodeGen is:',checkPOW);
+          if (IPs.length < maxIP && !IPs.includes(r.remIp) && checkPOW){
             IPs.push(r.remIp);
           }
           else {
@@ -1030,7 +1031,7 @@ class peerPaysObj {
     this.net.gpow.doStop(remIp);
   }
   doPow(j,remIp){
-    this.net.gpow.doPow(2,j.work,remIp,j.reqId);
+    this.net.gpow.doPow(j.difficulty,j.work,remIp,j.reqId);
   }
   doReplyHelloBack(remIp){
     var reply = {
