@@ -1183,7 +1183,7 @@ class shardTreeObj {
     if (j.xnodes.includes(this.net.nIp)){
       return;
     }
-    this.net.gpow.doPow(2,j.work,remIp);
+    this.net.gpow.doPow(j.difficulty,j.work,remIp,j.reqId);
   }
   /******************************************************
   Delete All Shard Files And Owner Record from this node
@@ -1372,19 +1372,24 @@ class shardTreeObj {
         resolve(IPs);
       },7*1000);
 
+      const reqId =  crypto.randomUUID();
       var req = {
         to     : 'shardCells',
         req    : 'sendNodeList',
+        reqId  : reqId,
         nodes  : maxIP,
         xnodes : excludeIps,
-        work   : crypto.randomBytes(20).toString('hex') 
+        work   : crypto.randomBytes(20).toString('hex'),
+        difficulty : 2 
       }
 
       this.net.broadcast(req);
       this.net.on('mkyReply', mkyReply = (r)=>{
-        if (r.req == 'pNodeListGenIP'){
-          //console.log('mkyReply NodeGen is:',r);
-          if (IPs.length < maxIP){
+        console.log(`heard::`,req,r);
+        if (r.req == 'pNodeListGenIP' && r.reqId === reqId){
+          const checkPOW = this.net.gpow.doVerifyProof(r,req.difficulty);
+          console.log('mkyReply NodeGen is:',checkPOW,r);
+          if (IPs.length < maxIP && !IPs.includes(r.remIp)){
             IPs.push(r.remIp);
           }
           else {

@@ -4921,7 +4921,7 @@ class gPowQue {
      if (this.inList(ip,reqId) === null) {
        this.POWnodes.push(node);
      }
-     return this.pop();
+     return;
    }
    remove(ip,reqId){
      var breakFor = {};
@@ -4934,6 +4934,9 @@ class gPowQue {
        });
      }
      catch(e){}
+   }
+   length(){
+     return this.POWnodes.length;
    }
    inList(ip,reqId){
      var isIn = null;
@@ -4962,36 +4965,42 @@ class gPowQue {
 // *********************************************************
 // CLASS: gPowKey
 // A Proof of work class used for selection of random nodes from the PeerTree
-// 
+// STATUS: tested
+ 
 class gPowKey {
   constructor(myIP,net) {
     this.net     = net;
-    this.nonce   = 0;
-    this.hash    = "";
-    this.ip      = myIP;
-    this.remIP   = null;
     this.que     = new gPowQue();
-    this.isMining = false;
-    this.stopMining = null;
+    this.jobs    = new Map();
+  }
+  getJob(work){
+    const job = {
+      work       : work.work,
+      reqId      : work.reqId,
+      nonce      : 0,
+      hash       : "",
+      ip         : this.net.rnet.myIp,
+      remIP      : work.ip,
+      isMining   : false,
+      stopMining : false
+    }
+    return job;
   }
   doVerifyProof(proof,difficulty) {
     // 1. Verify the hash meets difficulty
     const targetPrefix = '0'.repeat(difficulty);
     const isValidHash = proof.hash.substring(0, difficulty) === targetPrefix;
-  
+
     // 2. Recalculate hash to ensure it matches
     const data = proof.wIP + proof.work + proof.nonce;
     const computedHash = crypto.createHash('sha256').update(data).digest('hex');
     const hashMatches = computedHash === proof.hash;
   
     // 3. Verify the signature
-    const isSignatureValid = crypto.verify(
-      'sha256',
-      Buffer.from(proof.sig.token),
-      proof.sig.pubKey,
-      proof.sig.sig
-    );
-  
+    const publicKey = ec.keyFromPublic(proof.sig.pubKey, 'hex');
+    const msgHash   = this.net.calculateHash(proof.sig.token);
+    const isSignatureValid = publicKey.verify(msgHash, proof.sig.sig);
+
     // 4. Verify the token matches the proof data
     const tokenMatches = JSON.stringify({
       req    : proof.req,
@@ -5002,66 +5011,69 @@ class gPowKey {
       nonce  : proof.nonce,
       hash   : proof.hash
     }) === proof.sig.token;
-  
+
     return isValidHash && hashMatches && isSignatureValid && tokenMatches;
   }
   async doPow(difficulty,work,remIP,reqId=null) {
-    //console.error('gPowKey.doPow():: Doing POW for:',remIP);
-    var work = this.que.push(remIP,work,difficulty,reqId);
-    while(work){
-      //console.error('While Working');
-      this.work = work.work;
-      this.remIP = work.ip;
-      this.reqId = work.reqId;
-      this.isMining = true;
-      this.stopMining = false;
-      this.repeatHash(work.diff);
-      work = this.que.pop();
+    if (reqId === null) reqId = crypto.randomUUID();
+
+    this.que.push(remIP,work,difficulty,reqId);
+    let job = null;
+    let newWork = null;
+    console.log(`doPow():: que`,this.que);
+    while(this.que.length()){
+      newWork = this.que.pop();
+      this.jobs.set(newWork.reqId,this.getJob(newWork));
+      job = this.jobs.get(newWork.reqId)
+      job.isMining   = true;
+      job.stopMining = false;
+      this.repeatHash(this.jobs.get(newWork.reqId),newWork.diff);
     }
   }
   doStop(remIP,reqId=null){
-    //console.error('gPowKey.doStop():: Do Stop Initiated:'+this.remIP+'|',remIP);
-    if (this.remIP == remIP){
-      //console.error('gPowKey.doStop():: OPTION STOPPING:'+this.remIP+'|',remIP);
-      this.stopMining = true;
+    const job = this.jobs.get(reqId);
+    if (!job) return;
+
+    if (job.remIP === remIP){
+      job.stopMining = true;
     }
     else {
-      //console.error('gPowKey.doStop():: OPTION REMOVE FROM QUE:'+this.remIP+'|',remIP);
       this.que.remove(remIP,reqId);
     }
+    this.jobs.delete(reqId);
   }
   signMsg(stok) {
     const sig = this.net.signingKey.sign(this.net.calculateHash(stok), 'base64');
     const hexSig = sig.toDER('hex');
     return hexSig;
   }
-  async calculateHash() {
-    var data = this.ip + this.work + this.nonce;
-    var hash = crypto.createHash('sha256').update(data).digest('hex');
+  async calculateHash(job) {
+    var data = job.ip + job.work + job.nonce;
+    const hash = crypto.createHash('sha256').update(data).digest('hex');
+    console.log(hash);
     return hash;
   }
-  async repeatHash(difficulty){
-    if (!this.stopMining && this.hash.substring(0, difficulty) !== Array(difficulty + 1).join('0')) {
-      this.nonce = Math.floor(Math.random() * Math.floor(9999999999999));
-      this.hash = await this.calculateHash();
-      if (this.stopMining){
-        //console.error('gPowKey.repeatHash():: HALT intiated:',this.remIP);
+  async repeatHash(job,difficulty){
+    if (!job.stopMining && job.hash.substring(0, difficulty) !== Array(difficulty + 1).join('0')) {
+      job.nonce = Math.floor(Math.random() * Math.floor(9999999999999));
+      job.hash  = await this.calculateHash(job);
+      if (job.stopMining){
+        console.error('gPowKey.repeatHash():: HALT intiated:',job.remIP);
       }
       else {
-        var timeout = setTimeout( ()=>{this.repeatHash(difficulty);},1);
+        var timeout = setTimeout( ()=>{this.repeatHash(job,difficulty);},1);
       }
     }
     else {
-     //console.error('gPowKey.repeatHash():: this.stopMining:',this.stopMining);
-     if(!this.stopMining){
+     if(job.stopMining === false){
         var qres = {
           req    : 'pNodeListGenIP',
-          reqId  : this.reqId,
+          reqId  : job.reqId,
           peerID : this.net.peerMUID,
-          work   : this.work,
-          wIP    : this.ip,
-          nonce  : this.nonce,
-          hash   : this.hash
+          work   : job.work,
+          wIP    : job.ip,
+          nonce  : job.nonce,
+          hash   : job.hash
         }
         const proofStr = JSON.stringify(qres);
         const sig = {
@@ -5070,10 +5082,10 @@ class gPowKey {
           sig    : this.signMsg(proofStr)
         }
         qres.sig = sig;
-        this.net.sendReply(this.remIP,qres);
+        this.net.sendReply(job.remIP,qres);
       }
-      this.stopMining = false;
-      this.isMining = false;
+      job.stopMining = false;
+      job.isMining   = false;
 
     }
   }
