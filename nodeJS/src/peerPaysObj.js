@@ -285,17 +285,18 @@ class peerPaysCellReceptor{
       return;
     }
     var IPs = await this.peer.receptorReqNodeList(j);
-    availTranNodes = IPs.length;
+    availTranNodes = IPs.size;
 
-    if (IPs.length == 0){
+    if (IPs.size == 0){
       res.end('{"result":"transFail","nRecs":0,"peerPays":"No Nodes Available Right Now"}');
       return;
     }
     var n = 0;
     var hosts = [];
     var nStored = 0;
-    for (var IP of IPs){
+    for (var [IP,pow] of IPs){
       try {
+        j.pow = pow;
         var qres = await this.peer.receptorReqMakeUserTrans(j,IP);
         if (qres){
           nStored = nStored +1;
@@ -305,10 +306,15 @@ class peerPaysCellReceptor{
       catch(err) {
         console.log('peerPays transaction failed on:',IP);
       }
-      console.log('n is:',n,'length:: ',IPs.length);
-      if (n==IPs.length -1){
-        await this.reqConfirmUserTrans(IPs,j);  // notify hosts it is safe to set the confirmation status for the the txID
-        res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":"'+j.trans.auth.tx+'","hosts":'+JSON.stringify(hosts)+'}');
+      console.log('n is:',n,'length:: ',IPs.size);
+      if (n==IPs.size -1){
+        const IPsOnly = Array.from(IPs.keys());
+        if (nStored > 0) {
+          await this.reqConfirmUserTrans(IPsOnly,j);  // notify hosts it is safe to set the confirmation status for the the txID
+          res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":"'+j.trans.auth.tx+'","hosts":'+JSON.stringify(hosts)+'}');
+          return;
+        }
+        res.end('{"result":"transFail","nCopies":0,"peerPays":"No Confirmations"}');
         return;
       }
       n = n + 1;
@@ -331,18 +337,19 @@ class peerPaysCellReceptor{
     }
 
     var IPs = await this.peer.receptorReqNodeList(j);
-    availTranNodes = IPs.length;
+    availTranNodes = IPs.size;
 
     console.log('XXRANDNODES:',IPs,availTranNodes);
-    if (IPs.length == 0){
+    if (IPs.size == 0){
       res.end('{"result":"transFail","nRecs":0,"peerPays":"No Nodes Available Right Now"}');
       return;
     }
     var n = 0;
     var hosts = [];
     var nStored = 0;
-    for (var IP of IPs){
+    for (var [IP,pow] of IPs){
       try {
+        j.pow = pow;
         var qres = await this.peer.receptorReqMakeUserTrans(j,IP);
         if (qres){
           nStored = nStored +1;
@@ -352,10 +359,15 @@ class peerPaysCellReceptor{
       catch(err) {
         console.log('peerPays transaction failed on:',IP);
       }
-      console.log('n is:',n,'length:: ',IPs.length);
-      if (n==IPs.length -1){
-        await this.reqConfirmUserTrans(IPs,j);  // notify hosts it is safe to set the confirmation status for the the txID
-        res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":"'+j.trans.auth.tx+'","hosts":'+JSON.stringify(hosts)+'}');
+      console.log('n is:',n,'length:: ',IPs.size);
+      if (n==IPs.size -1){
+        const IPsOnly = Array.from(IPs.keys());
+        if (nStored > 0) {
+          await this.reqConfirmUserTrans(IPsOnly,j);  // notify hosts it is safe to set the confirmation status for the the txID
+          res.end('{"result":"tranOK","nCopies":'+nStored+',"txID":"'+j.trans.auth.tx+'","hosts":'+JSON.stringify(hosts)+'}');
+          return;
+        }
+        res.end('{"result":"transFail","nCopies":0,"peerPays":"No Confirmations"}');
         return;
       }
       n = n + 1;
@@ -992,11 +1004,12 @@ class peerPaysObj {
       var mkyReply = null;
       const maxIP = availTranNodes; //j.trans.payment.nCopies;
       console.log('receptorReqNodeList::',j.trans);
-      var   IPs = [];
+      var results = new Map();
+      
       const gtime = setTimeout( ()=>{
         console.log('Send Node List Request Timeout:');
         this.net.removeListener('mkyReply', mkyReply);
-        resolve(IPs);
+        resolve(results);
       },3*1000);
 
       const reqId = crypto.randomUUID();
@@ -1014,14 +1027,15 @@ class peerPaysObj {
         if (r.req == 'pNodeListGenIP' && r.reqId == reqId){
           const checkPOW = this.net.gpow.doVerifyProof(r,req.difficulty);
           console.log('mkyReply NodeGen is:',checkPOW);
-          if (IPs.length < maxIP && !IPs.includes(r.remIp) && checkPOW){
-            IPs.push(r.remIp);
+          const isThere = results.get(r.remIp);
+          if (results.size < maxIP && !isThere && checkPOW){
+            results.set(r.remIp,r);
           }
           else {
             this.receptorReqStopIPGen(req.work,reqId);
             clearTimeout(gtime);
             this.net.removeListener('mkyReply', mkyReply);
-            resolve(IPs);
+            resolve(results);
           }
         }
       });

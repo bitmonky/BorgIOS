@@ -5020,7 +5020,6 @@ class gPowKey {
     this.que.push(remIP,work,difficulty,reqId);
     let job = null;
     let newWork = null;
-    console.log(`doPow():: que`,this.que);
     while(this.que.length()){
       newWork = this.que.pop();
       this.jobs.set(newWork.reqId,this.getJob(newWork));
@@ -5050,7 +5049,6 @@ class gPowKey {
   async calculateHash(job) {
     var data = job.ip + job.work + job.nonce;
     const hash = crypto.createHash('sha256').update(data).digest('hex');
-    console.log(hash);
     return hash;
   }
   async repeatHash(job,difficulty){
