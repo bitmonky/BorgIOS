@@ -93,7 +93,7 @@ Cells communicate only through receptors. No cross-talk. No shared state. Each c
 | `fStreamCell` | Adaptive media streaming |
 | `cronoTreeCell` | Network time unification |
 | `peerPaysCell` | Borg Shell ledger |
-| `btraderOrganCell` | Borg Shell ↔ Dogecoin exchange |
+| `btraderOrganCell` | Borg Shells exchange |
 | `borgAgentCell` | AI agent colony |
 | `mailTreeCell` | Distributed messaging |
 | `peerMemoryCell` | Natural language memory search |
@@ -101,7 +101,7 @@ Cells communicate only through receptors. No cross-talk. No shared state. Each c
 | `ftreeFileMgrCell` | File management |
 | `borgAgentBrain` | Agent coordination & Mnemosyne protocol |
 
-Each cell's **DNA** (name, ports, maxChildren) is baked in at definition time. Cells clone themselves across the network carrying their DNA. Every `shardTreeCell` in the world is always on the same port. No config files. No service discovery complexity.
+Each cell's **DNA** (name, ports, maxChildren) is baked in at definition time. Cells clone themselves across the network carrying their DNA. Every `shardTreeCell` is always on the same port. No config files. No service discovery complexity.
 
 ### Shards — The Network IS the Filesystem
 
