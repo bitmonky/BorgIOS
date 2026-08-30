@@ -18,13 +18,12 @@ let SFarmAccountant = null;
 
 if (process.title == 'cronoTreeCell'){
   try {
-    ({SFarmAccountant} = require('./sFarmAccountant.js'));
+    const {SFarmAccountant} = require('./sFarmAccountant.js');
   } catch (err) {
     console.warn('peerTree:: sFarmAccountant.js unavailable, accounting disabled:',err.message);
   }
 }
-
-const db = require('./shellFarmerDB');
+const {ShellFarmerDB} = require('./shellFarmerDB');
 
 //console.error('running::',process.title);
 // Create a writable stream to your desired file
@@ -3741,6 +3740,7 @@ class MkyRouting {
      return new Promise((resolve) =>{
        const SQL = `SELECT count(*) as nRec FROM shellFarmer.tblWhiteList where nodeIp = ?`;
        let params = [Ip]; 
+       if (!this.net.db) {console.log(`no db`,this.net.db); resolve(true); return;}
        this.net.db.query(SQL,params, (err, result,fields)=>{
          if (err){
            console.log(err);
@@ -5191,7 +5191,8 @@ class PeerTreeNet extends  EventEmitter {
       this.initFarmerTools();
    }
    async initFarmerTools(){
-      this.db           = db.getConnectionSF();
+      this.dbm = new ShellFarmerDB(this);
+      this.db  = await this.dbm.init();
       this.loginMap     = await this.loadLoginsFromFile();
       setInterval(() => {this.pruneLoginMapTimer();}, 60_000);
       if (process.title == 'cronoTreeCell'){

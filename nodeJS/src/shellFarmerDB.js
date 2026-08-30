@@ -1,6 +1,11 @@
 const fs = require('fs');
 const mysql = require('mysql2');
 
+let heartbeatInterval = null;
+let heartbeatFailures = 0;
+let dbIsConnected     = false;
+const MAX_HEARTBEAT_FAILURES = 1;
+
 let dba = null;
 
 // Load DB config
@@ -16,44 +21,92 @@ try {
   console.log('Error parsing `shellfarmerdbconf` file');
 }
 
-let conSF = createConnectionSF();
-
-function createConnectionSF() {
-  const connection = mysql.createConnection({
-    host: "127.0.0.1",
-    user: dba.user,
-    password: dba.pass,
-    database: "shellFarmer",
-    dateStrings: "date",
-    multipleStatements: true,
-    supportBigNumbers: true
-  });
-
-  connection.connect((err) => {
-    if (err) {
-      console.error('Error connecting to BTrader database:', err);
-      setTimeout(createConnection, 2000); // Retry
-    } else {
-      console.log('Connected to BTrader database');
+class ShellFarmerDB {
+  constructor(net) {
+    this.net = net;
+  }
+  async init(){
+    const doTry = await createConnectionSF(this);
+    console.log(`ShellFarmerDB.Init`,doTry);
+    return this.conSF;
+  }
+  startHeartbeat(connection) {
+    console.log(`💔 Heartbeat Pulse`);
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
     }
+  
+    heartbeatInterval = setInterval(() => {
+      if (!connection || !connection.threadId) {
+        console.log('⚠️HeartBeat: No connection ');
+        //clearInterval(heartbeatInterval);
+        return;
+      }
+     
+      // Use ping or simple query
+      connection.query('SELECT 1', async (err) => {
+        if (err) {
+          heartbeatFailures++;
+          console.log(`💔 Heartbeat failed (${heartbeatFailures}/${MAX_HEARTBEAT_FAILURES}):`, err.code);
+        
+          if (heartbeatFailures >= MAX_HEARTBEAT_FAILURES) {
+            console.log('🔄 Multiple failures - reconnecting...');
+            //clearInterval(heartbeatInterval);
+            await createConnectionSF(this);
+          }
+        }
+        else {
+          heartbeatFailures = 0;
+          //console.log('💓 Heartbeat OK');
+        }
+      });
+    }, 3000); // Every 3 seconds
+  }
+}
+let connection = null;
+function createConnectionSF(dbm) {
+  return new Promise((resolve) => {
+    console.log(`createConnectionSF():: `,dbIsConnected);
+
+    connection = mysql.createConnection({
+      host: "127.0.0.1",
+      user: dba.user,
+      password: dba.pass,
+      database: "shellFarmer",
+      dateStrings: "date",
+      multipleStatements: true,
+      supportBigNumbers: true
+    });
+
+    const lsConnect = connection.connect((err) => {
+      if (err) {
+        console.error('Error connecting to shellFarmer database:', err);
+      } else {
+        console.log('Connected to shellFarmer database');
+        dbm.conSF  = connection;
+        dbm.net.db = dbm.conSF;
+        resolve(true);
+        dbm.startHeartbeat(connection);
+      }
+    });
+    lsOnDBer = connection.on('error', (err) => {
+      console.error('BORG:shellFarmerDB MySQL Error:', err);
+
+      if (err.fatal || 
+          err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' ||
+          err.code === 'ECONNRESET') {
+
+        console.log('Reconnecting after fatal error...');
+        try {
+          connection.destroy();
+        } catch (e) {
+           console.log(`connection.destroy():: failed`,e);
+           process.exit(1);
+        }
+      }
+    });
   });
-
-  connection.on('error', (err) => {
-    console.error('BORG:BTrader MySQL Error:', err);
-
-    if (err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' ||
-        err.code === 'ECONNRESET') {
-
-      console.log('Reconnecting after fatal error...');
-      connection.destroy();
-      con = createConnectionSF(); // Reconnect
-    }
-  });
-
-  return connection;
 }
 
-module.exports = {
-  getConnectionSF: () => conSF
-};
+module.exports.ShellFarmerDB = ShellFarmerDB;
 
