@@ -6,13 +6,8 @@ function checkAndInstallDependencies($dependencies) {
             if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
                 echo "Please install {$dependency['name']} manually on Windows.\n";
             } else {
-                exec($dependency['install_command'], $output, $return_var);
-                if ($return_var === 0) {
-                    echo "{$dependency['name']} installed successfully.\n";
-                } else {
-                    echo "Failed to install {$dependency['name']}.\n";
-                    return false;
-                }
+                echo "Please install {$dependency['name']} manually: {$dependency['install_command']}\n";
+                return false;
             }
         } else {
             echo "{$dependency['name']} is already installed.\n";
