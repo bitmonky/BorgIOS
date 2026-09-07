@@ -1,5 +1,7 @@
-const PtreeReceptor = require('./ptreeReceptorObj');
+const PtreeReceptor    = require('./ptreeReceptorObj');
 const {MkyWebConsole}  = require('./networkWebConsole.js');
+
+const crypto           = require('crypto');
 
 class CronoTreeReceptor extends PtreeReceptor {
   constructor(peerTree, port) {
@@ -171,10 +173,11 @@ class CronoTreeObj {
     }
     this.net.broadcast(req);
   }
-  receptorReqNodeList(j){
+  receptorReqNodeList(j,exIPs=[],nCopys=3){
     return new Promise( (resolve,reject)=>{
       var mkyReply = null;
-      const maxIP = j.agent.nCopys;
+      let maxIP = j?.agent?.nCopys;
+      if (!maxIP) maxIP = nCopys;
       var   IPs = [];
       const gtime = setTimeout( ()=>{
         console.log('Send Node List Request Timeout:');

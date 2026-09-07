@@ -10,8 +10,10 @@ class PtreeReceptorObj {
     this.port           = recPort;
     this.secureReceptor = secure;
     this.allow          = ["127.0.0.1"];
+    this.endPoints      = [];
 
     this.readConfigFile();
+    setTimeout(() =>{ this.watchEndPoints();},15*1000);
 
     const options = {
       key: fs.readFileSync('keys/privkey.pem'),
@@ -79,7 +81,13 @@ class PtreeReceptorObj {
         return;
       }
       json.msg.borgToken = json.borgToken;
-
+  
+      if (json.msg.req == 'selectEndPoints'){
+        res.setHeader('Content-Type', 'application/json');
+        res.writeHead(200);
+        this.selectEndPoints(json.msg,res);
+        return;
+      }
       this.handleReq(json, res,req);
     });
   }
@@ -107,7 +115,40 @@ class PtreeReceptorObj {
     res.writeHead(500);
     res.end('handleReq not implemented');
   }
+  async watchEndPoints() {
+    try {
+      const j = { shard: { nCopys: this.nWatch } };
 
+      let maxIPs = this.peer.net.maxEndPoints;
+      if (maxIPs > this.peer.net.rnet.r.lnode) maxIPs = this.peer.net.rnet.r.lnode;  
+
+      let IPs = await this.peer.receptorReqNodeList(j,[],maxIPs);
+
+      // Normalize into full URLs
+      IPs = IPs.map(IP => `https://${IP}:${this.port}`);
+
+      // Store them
+      this.endPoints = [...IPs];
+
+     //console.log(`watchEndPoints():: updated endpoints:`, this.endPoints);
+
+    } catch (err) {
+      console.error("watchEndPoints() error:", err);
+    }
+
+    // Schedule next update
+    setTimeout(() => this.watchEndPoints(),this.peer.net.endPointWatchTimer);
+  }
+  selectEndPoints(j, res) {
+    if (!this.endPoints || this.endPoints.length === 0) {
+      return res.end(`{"result":"noEndpoints"}`);
+    }
+
+    res.end(JSON.stringify({
+      result: "listOK",
+      useReceptors: this.endPoints
+    }));
+  }
   //
   // ---------------------------------------------------------
   //  xhrJSON — Node equivalent of tryJFetchURLnew()

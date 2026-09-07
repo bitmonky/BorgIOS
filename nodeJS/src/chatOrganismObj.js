@@ -9,6 +9,7 @@ const {BorgIOSptreeAPI}   = require("./borgIOSptreeAPI.js");
 
 const db            = require('./bchatDB');
 const crypto        = require('crypto');
+const borgMaxChats  = 100;
 
 // -----------------------------------------------------
 // Manages Individual chat memories
@@ -49,8 +50,8 @@ class channelObj {
     // 1. Persist New Chat To Database.
     if (msg?.isBCast !== true){
       this.cell.websoc.loungeHosts.forEach((host)=>{
-        console.log(`pushNewMsg(ownMUID,msg):: persist`);
-        this.cell.writeNewChatToChanLog(this.ID,chat);
+        console.log(`pushNewMsg(ownMUID,msg):: persist to`, host);
+        this.cell.writeNewChatToChanLog(host.remIp,this.ID,chat);
       });
     }
 
@@ -134,9 +135,12 @@ class channelMgr {
     });
     return ups;
   }
-  async getChanState(chanID){
+  async getChanState(chanID,hosts){
     const channel = this.liveChannels.get(chanID);
-    console.log(`getChanState(chanID):: channel`,channel);
+    console.log(`getChanState(chanID):: channel`,channel,hosts);
+    if (channel.chats.length === 0) {
+      channel.chats = await this.cell.doReadChanChatDB(chanID,hosts);
+    }
     let state = {
       chanID : chanID,
       users  : this.getUserProfiles(channel.users),
@@ -209,9 +213,67 @@ class ChatOrganismObj {
     }
     this.net.sendMsg(remIp,msg);
   }
-  async writeNewChatToChanLog(chanId,chat) {
+  async doReadChanChatDB(chanID,hosts){
+    if (hosts.length === 0) return [];
+
+    let msg = {
+      req      : 'sendChatsLog',
+      response : 'sendChatsLogResult',
+      chanId   : chanID
+    }
+
+    const randomIndex = Math.floor(Math.random() * hosts.length);
+    let doTry = await this.net.reqReply.waitForReply(hosts[randomIndex].remIp, msg); 
+    console.log(`doReadChanChatDB():: doTry is `,doTry);
+    if (doTry.result === 'OK'){
+      return doTry.chats;
+    }
+    return [];
+  }
+  async doSendChatsLog(remIp,j){
+    let reply = {
+      response : 'sendChatsLogResult',
+      reqId    : j.reqId,
+      result   : 'OK',
+      chats    : []
+    }
+    const SQL = 'SELECT csFrom as `from`,csText as `text` ,csTime as `time` from `bchat`.`tblChanState` where csCCMasterID = ? order by csTime limit ?';
+    const params = [j.chanId,borgMaxChats];
+    reply.chats = await new Promise((resolve, reject) => {
+      this.db.query(SQL, params, (err, result) => {
+        if (err) {
+          resolve([]);
+          console.log(`doSendChatsLog(remIp,j):: `,SQL,params,err);
+          reply.result = 'DB_FAIL';
+          return;
+        }
+        resolve(result);
+      });
+    });
+    console.log(`doSendChatsLog():: sending reply `,reply);
+    this.net.sendReply(remIp,reply);
+  }
+   
+  async writeNewChatToChanLog(remIp,chanId,chat) {
+    let msg = {
+      req      : 'persistChatToDB',
+      response : 'persistChatToDBResult',
+      chanId   : chanId,
+      chat     : chat
+    }
+    let doTry = await this.net.reqReply.waitForReply(remIp, msg);
+    return doTry
+  }  
+
+  async doPersistChatToDB(remIp,j){
+    let reply = {
+      response  : 'persistChatToDBResult',
+      reqId     : j.reqId,
+      result    : 'OK'
+    }
+    const chat = j.chat;
     const SQL = 'INSERT into `bchat`.`tblChanState` (csCCMasterID,csFrom,csText,csTime) values (?,?,?,?) ';
-    const params = [chanId,chat.from,chat.text,chat.time];
+    const params = [j.chanId,chat.from,chat.text,chat.time];
     const newChatId = await new Promise((resolve, reject) => {
       this.db.query(SQL, params, (err, result) => {
         if (err) {
@@ -222,7 +284,8 @@ class ChatOrganismObj {
         resolve('OK');
       });
     });
-    console.log(`writeNewChatToChanLog(chanId,chat):: `,chanId,chat,SQL,params,newChatId);  
+    console.log(`writeNewChatToChanLog(j.chanId,chat):: `,j.chanId,chat,SQL,params,newChatId,reply);  
+    this.net.sendReply(remIp,reply);
   }
   async attachUser(userMUID){
     // Keep a map of user profile info to reduce calls to mailTree 
@@ -362,6 +425,15 @@ class ChatOrganismObj {
   // ---------------------------------------------------------
   async handleReq(remIp, j) {
     console.log(`handleReq():: `,remIp,j);
+
+    if (j.req === 'persistChatToDB'){
+      await this.doPersistChatToDB(remIp,j);
+      return true;
+    }
+    if (j.req === 'sendChatsLog'){
+      await this.doSendChatsLog(remIp,j);
+      return true;
+    }
     if (j.req === 'directChatReq') {
       this.handleDirectChatReq(j);
       return true;
@@ -630,9 +702,7 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
     console.log(`init():: hotNodes`,this.hotNodes);
     if (Array.isArray(found)) {
       this.loungeHosts = found;
-      console.log(`websoc.init():: found`,found);
-      //this.rooms = null; //new channelMgr(this.cell);
-      return
+      return;
     }
     this.loungeHosts = [];
   }
@@ -674,7 +744,7 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
       chan: {
         chanID    : this.cell.net.borgMasterID,
         title     : 'Borg Space Lounge',
-        chanState : await this.rooms.getChanState(this.cell.net.borgMasterID)
+        chanState : await this.rooms.getChanState(this.cell.net.borgMasterID,this.loungeHosts)
       },
       timestamp: Date.now()
     } 
@@ -700,20 +770,25 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
     };
     console.log(`handleWSMessage():: `,responseMsg,clientId,identity);
 
+    let reqOK = false;
     switch (msg.req) {
       case 'createBorgChannel':
         responseMsg.json = await this.doCreateBorgChannel(msg);
+        reqOK = true;
         break;
     }
-    switch (msg.type) {
-      case 'chat':
-        await this.rooms.pushNewMsg(identity.Address,responseMsg);
-        responseMsg.json = {chat: 'OK'}; 
-        break;
+    console.log(`reqOK::`,reqOK);
+    if (reqOK === false) {
+      switch (msg.type) {
+        case 'chat':
+          await this.rooms.pushNewMsg(identity.Address,responseMsg);
+          responseMsg.json = {chat: 'OK'}; 
+          break;
 
-      default:
-        responseMsg.json = {error: true,msg: 'No Handler Found For Request'};
-    } 
+        default:
+          responseMsg.json = {error: true,msg: 'No Handler Found For Request'};
+      } 
+    }
     // Send the enhanced response using parent logic
     super.handleWSMessage(responseMsg, ws, clientId, identity);
   }
@@ -723,7 +798,7 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
     console.log(`doCreateBorgChannel():: starting`,msg);
     let doTry = await this.cell.cellCreateBorgChannel(msg);
     console.log(`doCreateBorgChannel():: doTry`,doTry);
-    return {error:true,msg: 'doCreateBorgChannel method incomplete'};
+    return doTry; //{error:true,msg: 'doCreateBorgChannel method incomplete'};
   }  
 }
 

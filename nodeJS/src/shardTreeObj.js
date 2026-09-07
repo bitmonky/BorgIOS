@@ -139,7 +139,6 @@ class shardTreeCellReceptor{
     this.port      = recPort;
     this.allow     = ["127.0.0.1"];
     this.endPoints = null;
-    this.nWatch    = 5;
     this.endPointWatchTimer = 5*60*1000;
     this.mutex =  new Mutex();
 
@@ -473,9 +472,12 @@ class shardTreeCellReceptor{
   }
   async watchEndPoints() {
     try {
-      const j = { shard: { nCopys: this.nWatch } };
+      let maxIPs = this.peer.net.maxEndPoints;
+      if (maxIPs > this.peer.net.rnet.r.lnode) maxIPs = this.peer.net.rnet.r.lnode;
 
-     //console.log(`watchEndPoints():: fetching endpoints…`);
+      const j = { shard: { nCopys: maxIPs } };
+
+      //console.log(`watchEndPoints():: fetching endpoints…`);
 
       let IPs = await this.peer.receptorReqNodeList(j);
 

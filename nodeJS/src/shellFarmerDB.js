@@ -3,7 +3,6 @@ const mysql = require('mysql2');
 
 let heartbeatInterval = null;
 let heartbeatFailures = 0;
-let dbIsConnected     = false;
 const MAX_HEARTBEAT_FAILURES = 1;
 
 let dba = null;
@@ -66,8 +65,11 @@ class ShellFarmerDB {
 let connection = null;
 function createConnectionSF(dbm) {
   return new Promise((resolve) => {
-    console.log(`createConnectionSF():: `,dbIsConnected);
-
+    if (connection) {
+      console.log(`createConnectionSF():: destroy old con`);
+      connection.destroy();
+      connection = null;
+    }
     connection = mysql.createConnection({
       host: "127.0.0.1",
       user: dba.user,

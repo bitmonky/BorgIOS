@@ -146,6 +146,8 @@ const maxPacket           = 300000000;
 const maxNetErrors        = 5;
 const verifyRootTimer     = 3500;
 const joinWaitForDropTime = 60*1000;
+const maxEndPoints        = 15;
+const endPointWatchTimer  = 5*60*1000; 
 
 process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 
@@ -5150,6 +5152,9 @@ class MkyMsgQMgr {
 class PeerTreeNet extends  EventEmitter {
    constructor (options,network=null,port=1336,wmon=1339,maxPeers=2,portals=[]){
       super(); 
+      this.maxEndPoints = maxEndPoints;
+      this.endPointWatchTimer = endPointWatchTimer;
+
       this.reqReplyObj  = new PtreeGenRequestHandler(this);
       this.reqReply     = new PtreeGenRequestHandler(this,false);
       this.bcastMgr     = new PtreeMultiReplyHandler(this);
