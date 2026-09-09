@@ -3267,12 +3267,12 @@ class ftreeFileMgrObj {
         });
     });
   }
-  receptorReqNodeList(j,excludeIps=[]){
+  receptorReqNodeList(j,excludeIps=[],nCopys=3){
     return new Promise( (resolve,reject)=>{
      //console.log('receptorReqNodeList::',j);
       var mkyReply = null;
-      const maxIP = j.repo.nCopys;
-      var   IPs = [];
+      let maxIP = j?.repo?.nCopys;
+      if (!maxIP) maxIP = nCopys;      var   IPs = [];
       const gtime = setTimeout( ()=>{
        //console.log('Send Node List Request Timeout:');
         this.net.removeListener('mkyReply', mkyReply);
