@@ -430,6 +430,7 @@ class mailTreeCellReceptor{
     j.nCopies  = maxIPs;
 
     let regIPs = await this.peer.receptorReqInBoxKeyIPs(j);
+    console.log(`reqRegisterInBox():: registeredIPs`,regIPs);
     if (regIPs.length === 0){
       regIPs = await this.peer.receptorReqNodeList(j);
       if (regIPs.length == 0){
@@ -1064,6 +1065,7 @@ class mailTreeObj {
     return;
   }
   sayHelloPeerGroup(){
+    return;
     var breq = {
       to  : 'mailCells',
       req : 'hello'
@@ -1097,11 +1099,11 @@ class mailTreeObj {
     return publicKey.verify(calculateHash(sig.token), sig.signature);
   }
   doSendInBoxKey(j,remIp){
-     console.log(`doSendInBoxKey`,j);
      var res = {
-       req    : 'sendInBoxKeyResult',
-       reqId  : j.reqId,
-       result : false
+       req     : 'sendInBoxKeyResult',
+       include : 'self',
+       reqId   : j.reqId,
+       result  : false
      }
      if (this.isValidSig(j.sig)){
        //*store the public key and reply true
@@ -1225,6 +1227,7 @@ class mailTreeObj {
 
      if (this.isValidSig(j.sig)){
        //*store or update the Borg User Mail Registry.
+       console.log(j);
        const checkSQL = `SELECT msubID FROM mailTree.mailSubscriber WHERE msubMUID = ?`;
 
        con.query(checkSQL, [j.sig.ownMUID], (err, rows) => {
@@ -1253,7 +1256,7 @@ class mailTreeObj {
            // the one already registered, or mail addressed to it stops sealing.
            const updateSQL = ` UPDATE mailTree.mailSubscriber SET msubIconFName  = ?, msubIconFCSum  = ?, msubIconRName  = ?, msubIconFolder = ?,
               msubIconPath   = ?, msubIconFType  = ?, msubBorgNic  = ?, msubMailPubKey = coalesce(?,msubMailPubKey)  WHERE msubMUID = ? `;
-
+           console.log(updateSQL,values);
            con.query(updateSQL, values, (err2, result2) => {
              if (err2) {
                console.error("mailSubscriber update error:", err2);
@@ -1278,7 +1281,7 @@ class mailTreeObj {
              j.icon?.ftype  || null,
              j.nic          || null
            ];
-
+           console.log(SQL,values);
            con.query(SQL ,values, (err, result,fields)=>{
              if (err){
                console.log(err);
@@ -1581,24 +1584,21 @@ class mailTreeObj {
       let mkyReply = null;
 
       const gtime = setTimeout( ()=>{
-        console.log('max reply time completed:',j,IPs);
         this.net.removeListener('mkyReply', mkyReply);
         resolve(IPs);
-      },1000);
+      },1800);
       
       const bcast = {
-        to    : 'mailCells',
-        req   : 'sendInBoxKey',
-        reqId : reqId,
-        MUID  : j.ownMUID,
-        sig   : j.sig
+        to      : 'mailCells',
+        req     : 'sendInBoxKey',
+        reqId   : reqId,
+        include : 'self',
+        MUID    : j.ownMUID,
+        sig     : j.sig
       }
-      console.log(`receptorReqInBoxKeyIPs():: `,bcast);
       this.net.broadcast(bcast);
       this.net.on('mkyReply',mkyReply = (r) =>{
-        console.log('ptorReqInBoxKeyIPs():: heard:',r);
         if (r.req === 'sendInBoxKeyResult' && reqId === r.reqId){
-          console.log('receptorReqInBoxKeyIPs():: mkyReply is:',r.remIp);
           IPs.push(r.remIp);
         }
       });
