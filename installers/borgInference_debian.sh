@@ -34,6 +34,8 @@ mkdir -p /mnt/db/dumps
 
 cd /peerTree
 
+echo '{"baseURL":"https://api.deepseek.com","apiKey":""}' > keys/opai.conf
+
 # ---------------------------------------------------------
 # Download PeerTree core libs
 # ---------------------------------------------------------
