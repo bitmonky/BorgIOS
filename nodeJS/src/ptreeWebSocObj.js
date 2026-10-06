@@ -219,8 +219,9 @@ class PeerWebSocObj {
         // Authentication failed
         console.log(`Authentication failed for client ${clientId}`);
         this._sendToClient(ws, {
-          type: 'auth_failed',
-          error: 'Authentication failed',
+          type   : 'auth_failed',
+          error  : 'Authentication failed',
+          token  : borgToken,
           timestamp: Date.now()
         });
         // Close connection after failed authentication

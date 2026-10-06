@@ -277,6 +277,7 @@ class ChatOrganismObj {
     const newChatId = await new Promise((resolve, reject) => {
       this.db.query(SQL, params, (err, result) => {
         if (err) {
+          console.log(SQL,params,err);
           resolve(null);
           reply.result = 'DB_FAIL';
           return;
@@ -319,7 +320,7 @@ class ChatOrganismObj {
   // Handle incoming broadcast chat messages
   // ---------------------------------------------------------
   async handleBCast(j) {
-    console.log('handleBCast():: heard! ',j);
+    //console.log('handleBCast():: heard! ',j);
     if (j.remIp == this.net.nIp && j.msg?.include !== 'self') {
       console.log('ignoring bcast to self',this.net.nIp,j);
       return;
@@ -342,8 +343,20 @@ class ChatOrganismObj {
         this.chatLog.push(j.data);
         return;
       }
+      if (j.msg.req === 'getChannelById') {
+        this.doGetChannelById(j.remIp,j.msg);
+        return;
+      }
+      if (j.msg.req === 'findChannelById') {
+        this.doFindChannelById(j.remIp,j.msg);
+        return;
+       }
       if (j.msg.req === 'getMasterChannel'){
         await this.doGetMasterChannel(j.remIp,j.msg);
+        return;
+      }
+      if (j.msg.req === 'sendMatchingChannels'){
+        this.doSendMatchingChannels(j.msg,j.remIp);
         return;
       }
     }
@@ -457,7 +470,7 @@ class ChatOrganismObj {
     }
     let hotNodes = await this.net.bcastMgr.getReplies(BCast,500);
 
-    console.log(`checkForBorgMasterChannel():: hotnodes `,hotNodes);
+    console.log(`findActiveChanHosts():: hotnodes `,hotNodes);
     if (Array.isArray(hotNodes)) {
       return hotNodes.map(item => ({ remIp: item.reply.remIp, status: item.reply.status }));
     }
@@ -468,17 +481,7 @@ class ChatOrganismObj {
   }
   async cellCreateBorgChannel(j){
 
-    let found = await this.checkForBorgMasterChannel();
-    console.log(`cellCreateBorgChannel():: found`,found);
-    if (found === false || found === null ){
-      j.isBorgChatMaster = true;
-    }
-    j.ccMasterID = this.net.calculateHash(JSON.stringify(j));
-
-    if (j.isBorgChatMaster) {
-      j.ccMasterID = this.net.borgMasterID;
-    }
-
+    j.ccMasterID  = this.net.calculateHash(JSON.stringify(j));
     j.newChanDate = new Date(Date.now()).toISOString().slice(0, 19).replace('T', ' ');
 
     var IPs = await this.receptorReqNodeList(j,[]);
@@ -506,48 +509,34 @@ class ChatOrganismObj {
     var nStored = 0;
     var newChanID = null;
     
-    const id = setInterval(() => {
-      console.log(`Results[]:: `,results);
-      if (results.length == IPs.length){
-        clearInterval(id);
-        for (var r of results) {
-          if (r.qres) {
-            nStored++;
-            hosts.push({host:r.qres.remMUID,ip:r.qres.remIp});
-            newChanID = r.newChanID;
+    result = await new Promise((resolve) =>{
+      const id = setInterval(() => {
+        console.log(`Results[]:: `,results);
+        if (results.length == IPs.length){
+          clearInterval(id);
+          for (var r of results) {
+            if (r.qres) {
+              nStored++;
+              hosts.push({host:r.IP});
+              newChanID = r.qres;
             
+            }
           }
+          console.log('New Channel Stored::TotalTime',Date.now() - startT,'chanID: ',newChanID,'nStored::',nStored);
+          result = {result:"chanOK",nStored: nStored,msg:"Channel Created",chanID: newChanID,hosts: hosts};
+          resolve(result);
         }
-        console.log('New Channel Stored::TotalTime',Date.now() - startT,'chanID: ',chanID,'nStored::',nStored);
-        result = {result:"chanOK",nStored: nStored,msg:"Channel Created",chanID:newChanID,hosts: hosts};
-
-      }
-      trys++;
-      if (trys > 25) {
-        clearInterval(id);
-        //console.log('Interval stopped.',results);
-        result = {result:"FAILED",nStored:nStored,chanID:newChanID,hosts:hosts};
-      }
-    }, 300);
+        trys++;
+        if (trys > 25) {
+          clearInterval(id);
+          //console.log('Interval stopped.',results);
+          result = {result:"FAILED",nStored:nStored,chanID:newChanID,hosts:hosts};
+          resolve(result);
+        }
+      }, 300);
+    });
 
     return result;
-  }
-  async checkForBorgMasterChannel(){
-    let BCast = {
-      req      : 'getMasterChannel',
-      response : 'getMasterChannelResult',
-      include  : 'self'
-    }
-    let doTry = await this.net.bcastMgr.getReplies(BCast);
-
-    //console.log(`checkForBorgMasterChannel():: `,doTry);
-    if (Array.isArray(doTry)) {
-      return doTry.map(item => ({ remIp: item.reply.remIp, result: item.reply.result }));
-    }
-    if (doTry.result === 'NOBODY') {
-      return null;
-    }
-    return false;
   }
   async doFindHotChan(j,remIp){
     const reply = {
@@ -568,6 +557,117 @@ class ChatOrganismObj {
     reply.status = {isHot:true,ncons: hotChan.users.size};
     console.log(`doFindHotChan(j,remIp):: found... sending`,remIp,reply);
     this.net.sendReply(remIp, reply);
+  }
+  async checkForChannelById(id){
+    let BCast = {
+      req      : 'findChannelById',
+      response : 'findChannelByIdResult',
+      chanId   : chanId,
+      include  : 'self'
+    }
+    let doTry = await this.net.bcastMgr.getReplies(BCast);
+
+    //console.log(`checkForChannelById():: `,doTry);
+    if (Array.isArray(doTry)) {
+      return doTry.map(item => ({ remIp: item.reply.remIp, result: item.reply.result }));
+    }
+    if (doTry.result === 'NOBODY') {
+      return null;
+    }
+    return false;
+  }
+  async doFindChannelById(remIp,j){
+    const reply = {
+      response : 'findChannelByIdResult',
+      reqId    : j.reqId,
+      result   : 'OK',
+      include  : 'self'
+    }
+    const SQL = 'Select count(*) nRec from `bchat`.`tblChatChan` where ccMasterID = ?';
+    const params = [j.chanId];
+    console.log(`doFindChannelByID():: `,SQL,params);
+    let nRec = await new Promise((resolve, reject) => {
+      this.db.query(SQL, params, (err, result) => {
+        if (err) {
+          resolve(null);
+          return;
+        }
+        console.log(result);
+        resolve(result[0].nRec);
+      });
+    });
+    // reply only if found.
+    console.log(`nRec:: is`,nRec);
+    if (nRec > 0){
+      console.log(`sending reply`,remIp,reply);
+      reply.result = 'OK';
+      this.net.sendReply(remIp, reply);
+    }
+  }
+  async checkForBorgChannelById(chanID){
+    let BCast = {
+      req      : 'getChannelById',
+      response : 'getChannelByIdResult',
+      chanID   : chanID,
+      include  : 'self'
+    }
+    let doTry = await this.net.bcastMgr.getReplies(BCast);
+
+    console.log(`checkForBorgChannelById():: `,doTry);
+    if (Array.isArray(doTry)) {
+      return doTry.map(item => ({ remIp: item.reply.remIp, data: {result: item.reply.result,tRec: item.reply.tRec }}));
+    }
+    if (doTry.result === 'NOBODY') {
+      return null;
+    }
+    return false;
+  }
+  async doGetChannelById(remIp,j){
+    const reply = {
+      response : 'getChannelByIdResult',
+      reqId    : j.reqId,
+      result   : 'OK',
+      tRec     : null,
+      include  : 'self'
+    }
+    const SQL = 'Select * from `bchat`.`tblChatChan` where ccMasterID = ?';
+    const params = [j.chanID];
+    console.log(`doGetChannelById():: `,SQL,params);
+    let result = await new Promise((resolve, reject) => {
+      this.db.query(SQL, params, (err, result) => {
+        if (err) {
+          resolve([]);
+          return;
+        }
+        console.log(result);
+        resolve(result);
+      });
+    });
+    // reply only if found.
+    console.log(`result:: is`,result);
+    if (result.length > 0){
+      console.log(`sending reply`,remIp,reply);
+      reply.result = 'OK';
+      reply.tRec   = result[0];
+      this.net.sendReply(remIp, reply);
+    }
+  }
+  async checkForBorgMasterChannel(){
+    let BCast = {
+      req      : 'getMasterChannel',
+      response : 'getMasterChannelResult',
+      include  : 'self'
+    }
+    let doTry = await this.net.bcastMgr.getReplies(BCast);
+
+    //console.log(`checkForBorgMasterChannel():: `,doTry);
+    if (Array.isArray(doTry)) {
+      return doTry.map(item => ({ remIp: item.reply.remIp, result: item.reply.result }));
+    }
+    if (doTry.result === 'NOBODY') {
+      return null;
+    }
+    return false;
   }
   async doGetMasterChannel(remIp,j){
     const reply = {
@@ -611,8 +711,9 @@ class ChatOrganismObj {
     return null;
   } 
   async doStoreNewChannel(j){
+    console.log(`doStoreNewChannel(j):: `,j);
     const reply = {
-      reponse   : 'storeNewChannelResult',
+      response  : 'storeNewChannelResult',
       reqId     : j.reqId,
       result    : 'OK',
       newChanId : null
@@ -622,6 +723,7 @@ class ChatOrganismObj {
     reply.newChanId = await new Promise((resolve, reject) => {
       this.db.query(SQL, params, (err, result) => {
         if (err) {
+          console.log(sql,params,err);
           resolve(null);
           reply.result = 'DB_FAIL';
           return;
@@ -674,6 +776,73 @@ class ChatOrganismObj {
         }
       });
     });
+  }
+  doQryBorgChannels(msg) {
+    return new Promise((resolve) => {
+      const results = new Map();
+
+      const mkyReply = (r) => {
+        if (r.req === 'sendMatchingChannelsResult' && r.reqId === msg.reqId) {
+          if (r.result === true && Array.isArray(r.tRec)) {
+            r.tRec.forEach((rec) => {
+              if (!results.has(rec.ccMasterID)) {
+                console.log(`doQryBorgUsers():: setting `,rec.ccTopic);
+                results.set(rec.ccMasterID, rec);
+              }
+            });
+          }
+
+          // Stop early if we reached max
+          if (results.size >= msg.max) {
+            clearTimeout(gtime);
+            this.net.removeListener("mkyReply", mkyReply);
+
+            // Convert to sorted array
+            const sorted = [...results.values()]
+              .sort((a, b) => a.ccTopic.localeCompare(b.ccTopic));
+
+            resolve(sorted);
+          }
+        }
+      };
+
+      const gtime = setTimeout(() => {
+        console.log("Qry max time Timeout:");
+        this.net.removeListener("mkyReply", mkyReply);
+
+        // Convert to sorted array on timeout too
+        const sorted = [...results.values()]
+          .sort((a, b) => a.ccTopic.localeCompare(b.ccTopic));
+
+          resolve(sorted);
+      }, 300);
+
+      // Avoid duplicate listeners
+      this.net.removeListener("mkyReply", mkyReply);
+      this.net.on("mkyReply", mkyReply);
+
+      this.net.broadcast(msg);
+    });
+  }
+  doSendMatchingChannels(j,remIp){
+     var reply = {
+       req    : 'sendMatchingChannelsResult',
+       reqId  : j.reqId,
+       result : false
+     }
+     const SQL = `select * from bchat.tblChatChan where ccTopic like order by ccTopic limit ?`;
+     const params = [`%${j.qry}%`,j.max];
+     con.query(SQL ,params, async(err, result,fields)=>{
+       if (err){
+         console.log(err);
+       }
+       else {
+         reply.result = true;
+         reply.tRec   = result;
+
+         if (result.length > 0 ) this.net.sendReply(remIp,reply);
+       }
+     });
   }
   doPowStop(remIp){
     console.log(`doPowStop():: `,remIp);
@@ -776,7 +945,16 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
         responseMsg.json = await this.doCreateBorgChannel(msg);
         reqOK = true;
         break;
+      case 'openBorgChannelById':
+        responseMsg.json = await this.doOpenBorgChannelById(msg); 
+        reqOK = true;
+        break;
+      case 'findChannel':
+        responseMgs.json = await this.reqQryBorgChannels(msg);
+        reqOK = true;
+        break;
     }
+    
     console.log(`reqOK::`,reqOK);
     if (reqOK === false) {
       switch (msg.type) {
@@ -792,6 +970,16 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
     // Send the enhanced response using parent logic
     super.handleWSMessage(responseMsg, ws, clientId, identity);
   }
+  async reqQryBorgChannels(j){
+     const msg = {
+       req   : 'sendMatchingChannels',
+       reqId : crypto.randomUUID(),
+       qry   : j.qry,
+       max   : j.maxRows
+     }
+     const result = await this.cell.doQryBorgChannels(msg);
+     return {result:true,tRec : result};
+  }
   async doCreateBorgChannel(msg){
     msg.data.ownMUID = msg.borgToken.Address;
     
@@ -800,6 +988,47 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
     console.log(`doCreateBorgChannel():: doTry`,doTry);
     return doTry; //{error:true,msg: 'doCreateBorgChannel method incomplete'};
   }  
+  async doOpenBorgChannelById(msg){
+    console.log(`doOpenBorgChannelById()::`,msg);
+    msg.ownMUID = msg.borgToken.Address;
+
+    let found = await this.cell.checkForBorgChannelById(msg.chanID);
+
+    this.hotNodes = await this.cell.findActiveChanHosts(msg.chanID);
+    if (this.hotNodes?.result === 'NOBODY' || this.hotNodes === null) this.hotNodes = [];
+
+    console.log(`doOpenBorgChannelById():: hotNodes`,this.hotNodes);
+    if (Array.isArray(found)) {
+      this.loungeHosts = found;
+      //return;
+    }
+    console.log(`doOpenBorgChannelById():: this.loungeHosts`, this.loungeHosts);
+
+    let chanObj = new channelObj(this.cell);
+    const randomIndex = Math.floor(Math.random() * this.loungeHosts.length);
+    const host = this.loungeHosts[randomIndex];
+    console.log(`getBorgLounge():: randomIndex`,randomIndex,host);
+
+    chanObj.ID       = msg.chanID;
+
+    chanObj.hostIP = host.remIp;
+    chanObj.title  = host.data.tRec.ccTopic;
+    chanObj.desc   = host.data.tRec.ccDescription;
+    chanObj.ownID  = host.data.tRec.ccOwnID;
+
+    this.rooms.liveChannels.set(chanObj.ID,chanObj);
+    await this.rooms.addUser(msg.ownMUID,chanObj.ID);
+    msg.chan  = {
+      chanID : chanObj.ID,
+      title  : chanObj.title,
+      chanState : await this.rooms.getChanState(chanObj.ID,this.loungeHosts)
+    }
+
+    const doTry =  {result: 'noCodeReady',msg: msg,timeStamp: Date.now()};
+
+    console.log(`doCreateBorgChannel():: doTry`,doTry);
+    return doTry; 
+  }
 }
 
 // ---------------------------------------------------------

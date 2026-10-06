@@ -6170,22 +6170,22 @@ class PeerTreeNet extends  EventEmitter {
 
         if (this.rnet.r.nodeNbr == 1 && hrtbeat.pings.length == 0){
           let nstat = await this.checkInternet();
-          ////console.error("PeerTreeNet.heartBeat():: Bitcoin Network Found:",nstat);
+          //console.error("PeerTreeNet.heartBeat():: Bitcoin Network Found:",nstat);
           if (!nstat){
-            //console.error('Alone And Offline');
-            hrtbeat.myStatus = 'AloneOffline';
-            this.setNodeBackToStartup('AloneOffline');
+            console.error('Alone And Offline');
+            //hrtbeat.myStatus = 'AloneOffline';
+            //this.setNodeBackToStartup('AloneOffline');
           }
           else {
 	    hrtbeat.myStatus = 'Alone';
             this.rnet.r.status = 'root'
-            ////console.error('PeerTreeNet.heartBeat():: lowering pulse rate to 15000!');
+            //console.error('PeerTreeNet.heartBeat():: lowering pulse rate to 15000!');
             this.pulseRate = 500;
           }
         }
       }
       else {
-        ////console.error('PeerTreeNet.heartBeat():: Skipping',this.rnet.err,this.rnet.status);
+        //console.error('PeerTreeNet.heartBeat():: Skipping',this.rnet.err,this.rnet.status);
       }
     }
     catch(err){ 
@@ -6268,8 +6268,8 @@ class PeerTreeNet extends  EventEmitter {
       if (hbeat.myStatus != 'OK' && (this.rnet.r.nodeNbr == 1 || this.rnet.r.nodeNbr == 2)){
         let finalCheck = await this.checkInternet();
         if (!finalCheck){
-          //console.error('PeerTreeNet.reviewMyStatus():: finalCheck::setNodeBackToStartup');
-          this.setNodeBackToStartup('finalCheck::setNodeBackToStartup');
+          console.error('PeerTreeNet.reviewMyStatus():: finalCheck::setNodeBackToStartup');
+          //this.setNodeBackToStartup('finalCheck::setNodeBackToStartup');
         }
         else {hbeat.myStatus = 'OK';}
       }
@@ -6279,7 +6279,9 @@ class PeerTreeNet extends  EventEmitter {
   }
   async setNodeBackToStartup(msg='noMsg',bestNewRootIp=null,retry=false){
     
-   //console.error(`setNodeBackToStartup():: status: ${this.rnet.status}  BNR ${bestNewRootIp} msg was ${msg} `);
+   const stack = new Error().stack.split('\n');
+   console.error(`setNodeBackToStartup():: stack`,stack);
+   console.error(`setNodeBackToStartup():: status: ${this.rnet.status}  BNR ${bestNewRootIp} msg was ${msg} `);
    console.error(`setNodeBackToStartup():: cellLock: ${this.rnet.cellLock}  BNR ${retry}  tryJoins ${this.rnet.tryJoins}`);
 
 
