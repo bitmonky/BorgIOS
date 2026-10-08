@@ -830,9 +830,10 @@ class ChatOrganismObj {
        reqId  : j.reqId,
        result : false
      }
-     const SQL = `select * from bchat.tblChatChan where ccTopic like order by ccTopic limit ?`;
+     console.log(`doSendMatchingChannels():: j`,j);
+     const SQL = `select * from bchat.tblChatChan where ccTopic like ? order by ccTopic limit ?`;
      const params = [`%${j.qry}%`,j.max];
-     con.query(SQL ,params, async(err, result,fields)=>{
+     this.db.query(SQL ,params, async(err, result,fields)=>{
        if (err){
          console.log(err);
        }
@@ -950,7 +951,7 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
         reqOK = true;
         break;
       case 'findChannel':
-        responseMgs.json = await this.reqQryBorgChannels(msg);
+        responseMsg.json = await this.reqQryBorgChannels(msg);
         reqOK = true;
         break;
     }
@@ -974,8 +975,8 @@ class ChatOrganismWebSoc extends PtreeWebSoc {
      const msg = {
        req   : 'sendMatchingChannels',
        reqId : crypto.randomUUID(),
-       qry   : j.qry,
-       max   : j.maxRows
+       qry   : j.data.qry,
+       max   : j.data.maxRows
      }
      const result = await this.cell.doQryBorgChannels(msg);
      return {result:true,tRec : result};
